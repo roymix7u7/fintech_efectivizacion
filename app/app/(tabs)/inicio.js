@@ -127,7 +127,7 @@ export default function InicioScreen() {
       {perfil?.validado_por && (
         <TouchableOpacity
           style={styles.btnNuevaOp}
-          onPress={() => router.push("/(tabs)/operaciones")}
+          onPress={() => router.push("/nueva-operacion")}
         >
           <Text style={styles.btnNuevaOpText}>+ Nueva operación</Text>
         </TouchableOpacity>
