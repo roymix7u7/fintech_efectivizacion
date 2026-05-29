@@ -28,16 +28,23 @@ export default function PerfilScreen() {
   }
 
   async function cerrarSesion() {
-    Alert.alert("Cerrar sesión", "¿Estás seguro?", [
-      { text: "Cancelar" },
-      {
-        text: "Sí",
-        onPress: async () => {
-          await supabase.auth.signOut();
-          router.replace("/");
+    if (typeof window !== "undefined") {
+      if (window.confirm("¿Estás seguro de cerrar sesión?")) {
+        await supabase.auth.signOut();
+        router.replace("/");
+      }
+    } else {
+      Alert.alert("Cerrar sesión", "¿Estás seguro?", [
+        { text: "Cancelar" },
+        {
+          text: "Sí",
+          onPress: async () => {
+            await supabase.auth.signOut();
+            router.replace("/");
+          },
         },
-      },
-    ]);
+      ]);
+    }
   }
 
   return (

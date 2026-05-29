@@ -17,8 +17,11 @@ export default function LoginScreen() {
   const router = useRouter();
 
   async function handleLogin() {
-    if (!email || !password)
+    if (!email || !password) {
+      if (typeof window !== "undefined")
+        return window.alert("Completa todos los campos.");
       return Alert.alert("Error", "Completa todos los campos.");
+    }
     setLoading(true);
 
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -28,10 +31,10 @@ export default function LoginScreen() {
 
     if (error) {
       setLoading(false);
+      if (typeof window !== "undefined") return window.alert(error.message);
       return Alert.alert("Error", error.message);
     }
 
-    // Verificar que sea cliente
     const { data: userData } = await supabase
       .from("users")
       .select("rol, estado")
@@ -41,6 +44,8 @@ export default function LoginScreen() {
     if (!userData || userData.rol !== "cliente") {
       await supabase.auth.signOut();
       setLoading(false);
+      if (typeof window !== "undefined")
+        return window.alert("Esta app es solo para clientes.");
       return Alert.alert(
         "Error",
         "Esta app es solo para clientes. Usa el panel web.",
@@ -50,6 +55,8 @@ export default function LoginScreen() {
     if (userData.estado === "bloqueado") {
       await supabase.auth.signOut();
       setLoading(false);
+      if (typeof window !== "undefined")
+        return window.alert("Tu cuenta está bloqueada.");
       return Alert.alert(
         "Error",
         "Tu cuenta está bloqueada. Contacta soporte.",
@@ -57,7 +64,13 @@ export default function LoginScreen() {
     }
 
     setLoading(false);
-    router.replace("/(tabs)/inicio");
+
+    // Redirigir según estado
+    if (userData.estado === "activo") {
+      router.replace("/(tabs)/inicio");
+    } else {
+      router.replace("/en-revision");
+    }
   }
 
   return (

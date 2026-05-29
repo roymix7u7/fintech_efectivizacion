@@ -103,12 +103,18 @@ export default function RegistroScreen() {
       );
     }
 
-    setLoading(false);
-    Alert.alert(
-      "Cuenta creada",
-      "Tu cuenta está en revisión. Te notificaremos cuando sea aprobada.",
-      [{ text: "OK", onPress: () => router.replace("/login") }],
-    );
+    if (typeof window !== "undefined") {
+      window.alert(
+        "Cuenta creada. Tu cuenta está en revisión. Te notificaremos cuando sea aprobada.",
+      );
+      router.replace("/login");
+    } else {
+      Alert.alert(
+        "Cuenta creada",
+        "Tu cuenta está en revisión. Te notificaremos cuando sea aprobada.",
+        [{ text: "OK", onPress: () => router.replace("/login") }],
+      );
+    }
   }
 
   return (

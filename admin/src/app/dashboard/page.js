@@ -3,12 +3,19 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession, logout } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function DashboardPage() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    kycPendientes: 0,
+    porVerificar: 0,
+    porDepositar: 0,
+    depositadasHoy: 0,
+  });
   const router = useRouter();
 
   useEffect(() => {
@@ -17,10 +24,43 @@ export default function DashboardPage() {
         router.push("/login");
       } else {
         setSession(s);
+        cargarStats();
       }
       setLoading(false);
     });
   }, [router]);
+
+  async function cargarStats() {
+    const { count: kycPendientes } = await supabase
+      .from("users")
+      .select("*", { count: "exact", head: true })
+      .eq("rol", "cliente")
+      .eq("estado", "pendiente");
+
+    const { count: porVerificar } = await supabase
+      .from("operaciones")
+      .select("*", { count: "exact", head: true })
+      .eq("estado", "pendiente_verificacion");
+
+    const { count: porDepositar } = await supabase
+      .from("operaciones")
+      .select("*", { count: "exact", head: true })
+      .eq("estado", "pendiente_deposito");
+
+    const hoy = new Date().toISOString().split("T")[0];
+    const { count: depositadasHoy } = await supabase
+      .from("operaciones")
+      .select("*", { count: "exact", head: true })
+      .eq("estado", "depositado")
+      .gte("fecha_deposito", hoy);
+
+    setStats({
+      kycPendientes: kycPendientes || 0,
+      porVerificar: porVerificar || 0,
+      porDepositar: porDepositar || 0,
+      depositadasHoy: depositadasHoy || 0,
+    });
+  }
 
   async function handleLogout() {
     await logout();
@@ -54,34 +94,43 @@ export default function DashboardPage() {
         <h2 className="text-2xl font-semibold mb-6">Dashboard</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Card>
+          <Card
+            className="cursor-pointer hover:border-gray-300"
+            onClick={() => router.push("/kyc")}
+          >
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-gray-500">
                 KYC Pendientes
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">0</p>
+              <p className="text-3xl font-bold">{stats.kycPendientes}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card
+            className="cursor-pointer hover:border-gray-300"
+            onClick={() => router.push("/verificacion")}
+          >
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-gray-500">
                 Op. por verificar
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">0</p>
+              <p className="text-3xl font-bold">{stats.porVerificar}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card
+            className="cursor-pointer hover:border-gray-300"
+            onClick={() => router.push("/tesoreria")}
+          >
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-gray-500">
                 Op. por depositar
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">0</p>
+              <p className="text-3xl font-bold">{stats.porDepositar}</p>
             </CardContent>
           </Card>
           <Card>
@@ -91,7 +140,7 @@ export default function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">0</p>
+              <p className="text-3xl font-bold">{stats.depositadasHoy}</p>
             </CardContent>
           </Card>
         </div>
