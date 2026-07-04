@@ -184,8 +184,8 @@ export default function KYCDetallePage() {
               <p className="font-medium">{perfil?.telefono || "—"}</p>
             </div>
             <div>
-              <span className="text-gray-500">DNI (encriptado)</span>
-              <p className="font-medium">{perfil?.dni ? "••••••••" : "—"}</p>
+              <span className="text-gray-500">DNI</span>
+              <p className="font-medium">{perfil?.dni || "—"}</p>
             </div>
             <div>
               <span className="text-gray-500">Dirección</span>

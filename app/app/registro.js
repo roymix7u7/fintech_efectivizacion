@@ -19,31 +19,124 @@ export default function RegistroScreen() {
     apellidos: "",
     email: "",
     password: "",
+    confirmarPassword: "",
     telefono: "",
     dni: "",
     direccion: "",
     codigo_promo: "",
   });
+  const [codigoOtp, setCodigoOtp] = useState("");
   const [fotos, setFotos] = useState({
     dni_frontal: null,
     dni_posterior: null,
     selfie: null,
   });
   const [loading, setLoading] = useState(false);
+  const [reenviando, setReenviando] = useState(false);
+  const [userId, setUserId] = useState(null);
   const router = useRouter();
 
   function updateForm(key, value) {
     setForm({ ...form, [key]: value });
   }
 
+  function alerta(msg) {
+    if (typeof window !== "undefined") window.alert(msg);
+  }
+
+  // ── PASO 1: Validar datos y crear usuario ──────────────────
+
+  async function enviarCodigoVerificacion() {
+    console.log("Ejecutando enviarCodigoVerificacion");
+    console.log("Form:", form);
+
+    setLoading(true);
+    console.log("Llamando signUp...");
+
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+      });
+
+      console.log("SignUp completado:", { authData, authError });
+
+      if (authError) {
+        setLoading(false);
+        console.log("Error en signUp:", authError.message);
+        return alerta("Error: " + authError.message);
+      }
+
+      setUserId(authData.user?.id);
+      console.log("userId:", authData.user?.id);
+      setLoading(false);
+      setPaso(2);
+      alerta("Se envió un código de verificación a " + form.email);
+    } catch (err) {
+      console.log("Excepción en signUp:", err);
+      setLoading(false);
+      alerta("Error inesperado: " + err.message);
+    }
+    if (
+      !form.nombres ||
+      !form.apellidos ||
+      !form.dni ||
+      !form.telefono ||
+      !form.email ||
+      !form.password
+    ) {
+      return alerta("Completa todos los campos obligatorios.");
+    }
+    if (form.dni.length !== 8) return alerta("El DNI debe tener 8 dígitos.");
+    if (form.password.length < 8)
+      return alerta("La contraseña debe tener al menos 8 caracteres.");
+    if (!/[A-Z]/.test(form.password))
+      return alerta("La contraseña debe tener al menos una letra mayúscula.");
+    if (!/[a-z]/.test(form.password))
+      return alerta("La contraseña debe tener al menos una letra minúscula.");
+    if (!/[0-9]/.test(form.password))
+      return alerta("La contraseña debe tener al menos un número.");
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(form.password))
+      return alerta(
+        "La contraseña debe tener al menos un carácter especial (!@#$%...).",
+      );
+    if (form.password !== form.confirmarPassword)
+      return alerta("Las contraseñas no coinciden.");
+  }
+
+  // ── PASO 2: Verificar código OTP ───────────────────────────
+  async function verificarCodigo() {
+    if (codigoOtp.length !== 6)
+      return alerta("Ingresa el código de 6 dígitos.");
+    setLoading(true);
+
+    const { error } = await supabase.auth.verifyOtp({
+      email: form.email,
+      token: codigoOtp,
+      type: "signup",
+    });
+
+    if (error) {
+      setLoading(false);
+      return alerta("Código inválido o expirado. Solicita uno nuevo.");
+    }
+
+    setLoading(false);
+    setPaso(3);
+  }
+
+  async function reenviarCodigo() {
+    setReenviando(true);
+    await supabase.auth.resend({ type: "signup", email: form.email });
+    setReenviando(false);
+    alerta("Nuevo código enviado. El anterior ya no es válido.");
+  }
+
+  // ── PASO 3: Fotos y finalizar registro ─────────────────────
   async function seleccionarFoto(tipo) {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-
-    if (status !== "granted") {
-      const msg = "Se necesita permiso para usar la cámara.";
-      if (typeof window !== "undefined") window.alert(msg);
-      return;
-    }
+    if (status !== "granted")
+      return alerta("Se necesita permiso para usar la cámara.");
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ["images"],
@@ -59,12 +152,8 @@ export default function RegistroScreen() {
 
   async function seleccionarDeGaleria(tipo) {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (status !== "granted") {
-      const msg = "Se necesita permiso para acceder a la galería.";
-      if (typeof window !== "undefined") window.alert(msg);
-      return;
-    }
+    if (status !== "granted")
+      return alerta("Se necesita permiso para acceder a la galería.");
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
@@ -81,135 +170,79 @@ export default function RegistroScreen() {
   async function subirFoto(uri, path) {
     const response = await fetch(uri);
     const blob = await response.blob();
-
     const { error } = await supabase.storage
       .from("kyc-documentos")
-      .upload(path, blob, {
-        contentType: "image/jpeg",
-        upsert: true,
-      });
-
+      .upload(path, blob, { contentType: "image/jpeg", upsert: true });
     if (error) throw error;
 
     const { data } = await supabase.storage
       .from("kyc-documentos")
       .createSignedUrl(path, 60 * 60 * 24 * 365);
-
     return data.signedUrl;
   }
 
-  function validarPaso1() {
-    if (
-      !form.nombres ||
-      !form.apellidos ||
-      !form.dni ||
-      !form.telefono ||
-      !form.email ||
-      !form.password
-    ) {
-      const msg = "Completa todos los campos obligatorios.";
-      if (typeof window !== "undefined") window.alert(msg);
-      return false;
-    }
-    if (form.dni.length !== 8) {
-      const msg = "El DNI debe tener 8 dígitos.";
-      if (typeof window !== "undefined") window.alert(msg);
-      return false;
-    }
-    if (form.password.length < 6) {
-      const msg = "La contraseña debe tener al menos 6 caracteres.";
-      if (typeof window !== "undefined") window.alert(msg);
-      return false;
-    }
-    return true;
-  }
-
-  function validarPaso2() {
+  async function finalizarRegistro() {
     if (!fotos.dni_frontal || !fotos.dni_posterior || !fotos.selfie) {
-      const msg =
-        "Debes subir las 3 fotos: DNI frontal, DNI posterior y selfie.";
-      if (typeof window !== "undefined") window.alert(msg);
-      return false;
+      return alerta("Sube las 3 fotos requeridas.");
     }
-    return true;
-  }
-
-  async function handleRegistro() {
-    if (!validarPaso2()) return;
     setLoading(true);
 
     try {
-      // 1. Crear usuario en Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
-      });
+      const uid = userId;
 
-      if (authError) throw new Error(authError.message);
-      const userId = authData.user?.id;
-      if (!userId) throw new Error("No se pudo crear la cuenta.");
-
-      // 2. Crear registro en tabla users
+      // Crear en tabla users
       const { error: userError } = await supabase.from("users").insert({
-        id: userId,
+        id: uid,
         email: form.email,
         rol: "cliente",
         estado: "pendiente",
       });
-      if (userError)
-        throw new Error("Error creando usuario: " + userError.message);
+      if (userError) throw new Error(userError.message);
 
-      // 3. Subir fotos a Supabase Storage
-      let urlDniFrontal = null;
-      let urlDniPosterior = null;
-      let urlSelfie = null;
-
+      // Subir fotos
+      let urlFrontal = null,
+        urlPosterior = null,
+        urlSelfie = null;
       try {
-        urlDniFrontal = await subirFoto(
+        urlFrontal = await subirFoto(
           fotos.dni_frontal.uri,
-          `${userId}/dni_frontal.jpg`,
+          `${uid}/dni_frontal.jpg`,
         );
-        urlDniPosterior = await subirFoto(
+        urlPosterior = await subirFoto(
           fotos.dni_posterior.uri,
-          `${userId}/dni_posterior.jpg`,
+          `${uid}/dni_posterior.jpg`,
         );
-        urlSelfie = await subirFoto(fotos.selfie.uri, `${userId}/selfie.jpg`);
-      } catch (uploadError) {
-        console.log("Error subiendo fotos:", uploadError.message);
-        // Continuamos aunque falle la subida — el perfil se crea igual
+        urlSelfie = await subirFoto(fotos.selfie.uri, `${uid}/selfie.jpg`);
+      } catch (e) {
+        console.log("Error subiendo fotos:", e.message);
       }
 
-      // 4. Crear perfil del cliente
+      // Crear perfil
       const { error: perfilError } = await supabase
         .from("perfiles_cliente")
         .insert({
-          user_id: userId,
+          user_id: uid,
           nombres: form.nombres,
           apellidos: form.apellidos,
           dni: form.dni,
           telefono: form.telefono,
           direccion: form.direccion,
           codigo_promo: form.codigo_promo || null,
-          foto_dni_frontal: urlDniFrontal,
-          foto_dni_posterior: urlDniPosterior,
+          foto_dni_frontal: urlFrontal,
+          foto_dni_posterior: urlPosterior,
           foto_selfie: urlSelfie,
         });
-      if (perfilError)
-        throw new Error("Error creando perfil: " + perfilError.message);
+      if (perfilError) throw new Error(perfilError.message);
 
       setLoading(false);
-      const msg =
-        "Cuenta creada. Tu cuenta está en revisión. Te notificaremos cuando sea aprobada.";
-      if (typeof window !== "undefined") {
-        window.alert(msg);
-      }
+      alerta(
+        "¡Cuenta creada! Tu cuenta está en revisión. Te notificaremos cuando sea aprobada.",
+      );
+      await supabase.auth.signOut();
       router.replace("/login");
     } catch (err) {
       setLoading(false);
-      const msg = "Error: " + err.message;
-      if (typeof window !== "undefined") {
-        window.alert(msg);
-      }
+      alerta("Error: " + err.message);
     }
   }
 
@@ -220,13 +253,18 @@ export default function RegistroScreen() {
         <View style={[styles.pasoDot, paso >= 1 && styles.pasoDotActive]} />
         <View style={styles.pasoLinea} />
         <View style={[styles.pasoDot, paso >= 2 && styles.pasoDotActive]} />
+        <View style={styles.pasoLinea} />
+        <View style={[styles.pasoDot, paso >= 3 && styles.pasoDotActive]} />
       </View>
       <Text style={styles.pasoLabel}>
         {paso === 1
-          ? "Paso 1 de 2 — Datos personales"
-          : "Paso 2 de 2 — Documentos de identidad"}
+          ? "Paso 1 de 3 — Datos personales"
+          : paso === 2
+            ? "Paso 2 de 3 — Verificar correo"
+            : "Paso 3 de 3 — Documentos de identidad"}
       </Text>
 
+      {/* ── PASO 1: Datos personales ── */}
       {paso === 1 && (
         <View style={styles.form}>
           <Text style={styles.title}>Crear cuenta</Text>
@@ -275,7 +313,6 @@ export default function RegistroScreen() {
             value={form.codigo_promo}
             onChangeText={(v) => updateForm("codigo_promo", v)}
           />
-
           <View style={styles.divider} />
 
           <TextInput
@@ -286,21 +323,90 @@ export default function RegistroScreen() {
             keyboardType="email-address"
             autoCapitalize="none"
           />
+
           <TextInput
             style={styles.input}
-            placeholder="Contraseña * (mín. 6 caracteres)"
+            placeholder="Contraseña * (mín. 8 caracteres)"
             value={form.password}
             onChangeText={(v) => updateForm("password", v)}
             secureTextEntry
           />
 
+          {form.password.length > 0 && (
+            <View style={styles.validaciones}>
+              <Text
+                style={
+                  form.password.length >= 8 ? styles.valOk : styles.valFail
+                }
+              >
+                {form.password.length >= 8 ? "✅" : "❌"} Mínimo 8 caracteres
+              </Text>
+              <Text
+                style={
+                  /[A-Z]/.test(form.password) ? styles.valOk : styles.valFail
+                }
+              >
+                {/[A-Z]/.test(form.password) ? "✅" : "❌"} Una letra mayúscula
+              </Text>
+              <Text
+                style={
+                  /[a-z]/.test(form.password) ? styles.valOk : styles.valFail
+                }
+              >
+                {/[a-z]/.test(form.password) ? "✅" : "❌"} Una letra minúscula
+              </Text>
+              <Text
+                style={
+                  /[0-9]/.test(form.password) ? styles.valOk : styles.valFail
+                }
+              >
+                {/[0-9]/.test(form.password) ? "✅" : "❌"} Un número
+              </Text>
+              <Text
+                style={
+                  /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(form.password)
+                    ? styles.valOk
+                    : styles.valFail
+                }
+              >
+                {/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(form.password)
+                  ? "✅"
+                  : "❌"}{" "}
+                Un carácter especial
+              </Text>
+            </View>
+          )}
+
+          <TextInput
+            style={styles.input}
+            placeholder="Confirmar contraseña *"
+            value={form.confirmarPassword}
+            onChangeText={(v) => updateForm("confirmarPassword", v)}
+            secureTextEntry
+          />
+
+          {form.confirmarPassword.length > 0 && (
+            <Text
+              style={
+                form.password === form.confirmarPassword
+                  ? styles.valOk
+                  : styles.valFail
+              }
+            >
+              {form.password === form.confirmarPassword
+                ? "✅ Las contraseñas coinciden"
+                : "❌ Las contraseñas no coinciden"}
+            </Text>
+          )}
+
           <TouchableOpacity
             style={styles.btn}
-            onPress={() => {
-              if (validarPaso1()) setPaso(2);
-            }}
+            onPress={enviarCodigoVerificacion}
+            disabled={loading}
           >
-            <Text style={styles.btnText}>Siguiente →</Text>
+            <Text style={styles.btnText}>
+              {loading ? "Enviando código..." : "Siguiente →"}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -314,113 +420,102 @@ export default function RegistroScreen() {
         </View>
       )}
 
+      {/* ── PASO 2: Verificar correo ── */}
       {paso === 2 && (
+        <View style={styles.form}>
+          <Text style={styles.title}>Verificar correo</Text>
+          <Text style={styles.subtitle}>
+            Ingresa el código de 6 dígitos enviado a {form.email}
+          </Text>
+
+          <TextInput
+            style={styles.inputCode}
+            placeholder="000000"
+            value={codigoOtp}
+            onChangeText={(v) => setCodigoOtp(v.replace(/\D/g, "").slice(0, 6))}
+            keyboardType="numeric"
+            maxLength={6}
+            textAlign="center"
+          />
+
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={verificarCodigo}
+            disabled={loading || codigoOtp.length !== 6}
+          >
+            <Text style={styles.btnText}>
+              {loading ? "Verificando..." : "Verificar código"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={reenviarCodigo}
+            disabled={reenviando}
+            style={styles.reenviar}
+          >
+            <Text style={styles.reenviarText}>
+              {reenviando
+                ? "Reenviando..."
+                : "¿No recibiste el código? Reenviar"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => setPaso(1)} style={styles.link}>
+            <Text style={styles.linkText}>← Cambiar datos</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ── PASO 3: Fotos de identidad ── */}
+      {paso === 3 && (
         <View style={styles.form}>
           <Text style={styles.title}>Documentos</Text>
           <Text style={styles.subtitle}>
             Sube tus fotos de DNI y una selfie
           </Text>
 
-          {/* DNI Frontal */}
-          <Text style={styles.fotoLabel}>📄 DNI Frontal *</Text>
-          {fotos.dni_frontal ? (
-            <View style={styles.fotoPreview}>
-              <Image
-                source={{ uri: fotos.dni_frontal.uri }}
-                style={styles.fotoImage}
-              />
-              <TouchableOpacity
-                onPress={() => setFotos({ ...fotos, dni_frontal: null })}
-              >
-                <Text style={styles.fotoRemove}>Cambiar</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.fotoBtns}>
-              <TouchableOpacity
-                style={styles.fotoBtn}
-                onPress={() => seleccionarFoto("dni_frontal")}
-              >
-                <Text style={styles.fotoBtnText}>📷 Cámara</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.fotoBtn}
-                onPress={() => seleccionarDeGaleria("dni_frontal")}
-              >
-                <Text style={styles.fotoBtnText}>🖼️ Galería</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* DNI Posterior */}
-          <Text style={styles.fotoLabel}>📄 DNI Posterior *</Text>
-          {fotos.dni_posterior ? (
-            <View style={styles.fotoPreview}>
-              <Image
-                source={{ uri: fotos.dni_posterior.uri }}
-                style={styles.fotoImage}
-              />
-              <TouchableOpacity
-                onPress={() => setFotos({ ...fotos, dni_posterior: null })}
-              >
-                <Text style={styles.fotoRemove}>Cambiar</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.fotoBtns}>
-              <TouchableOpacity
-                style={styles.fotoBtn}
-                onPress={() => seleccionarFoto("dni_posterior")}
-              >
-                <Text style={styles.fotoBtnText}>📷 Cámara</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.fotoBtn}
-                onPress={() => seleccionarDeGaleria("dni_posterior")}
-              >
-                <Text style={styles.fotoBtnText}>🖼️ Galería</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Selfie */}
-          <Text style={styles.fotoLabel}>🤳 Selfie sosteniendo el DNI *</Text>
-          {fotos.selfie ? (
-            <View style={styles.fotoPreview}>
-              <Image
-                source={{ uri: fotos.selfie.uri }}
-                style={styles.fotoImage}
-              />
-              <TouchableOpacity
-                onPress={() => setFotos({ ...fotos, selfie: null })}
-              >
-                <Text style={styles.fotoRemove}>Cambiar</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.fotoBtns}>
-              <TouchableOpacity
-                style={styles.fotoBtn}
-                onPress={() => seleccionarFoto("selfie")}
-              >
-                <Text style={styles.fotoBtnText}>📷 Cámara</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.fotoBtn}
-                onPress={() => seleccionarDeGaleria("selfie")}
-              >
-                <Text style={styles.fotoBtnText}>🖼️ Galería</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          {["dni_frontal", "dni_posterior", "selfie"].map((tipo) => {
+            const labels = {
+              dni_frontal: "📄 DNI Frontal *",
+              dni_posterior: "📄 DNI Posterior *",
+              selfie: "🤳 Selfie sosteniendo el DNI *",
+            };
+            return (
+              <View key={tipo}>
+                <Text style={styles.fotoLabel}>{labels[tipo]}</Text>
+                {fotos[tipo] ? (
+                  <View style={styles.fotoPreview}>
+                    <Image
+                      source={{ uri: fotos[tipo].uri }}
+                      style={styles.fotoImage}
+                    />
+                    <TouchableOpacity
+                      onPress={() => setFotos({ ...fotos, [tipo]: null })}
+                    >
+                      <Text style={styles.fotoRemove}>Cambiar</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.fotoBtns}>
+                    <TouchableOpacity
+                      style={styles.fotoBtn}
+                      onPress={() => seleccionarFoto(tipo)}
+                    >
+                      <Text style={styles.fotoBtnText}>📷 Cámara</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.fotoBtn}
+                      onPress={() => seleccionarDeGaleria(tipo)}
+                    >
+                      <Text style={styles.fotoBtnText}>🖼️ Galería</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            );
+          })}
 
           <View style={styles.botonesNav}>
-            <TouchableOpacity
-              style={styles.btnSecondary}
-              onPress={() => setPaso(1)}
-            >
-              <Text style={styles.btnSecondaryText}>← Volver</Text>
-            </TouchableOpacity>
             <TouchableOpacity
               style={[
                 styles.btn,
@@ -428,7 +523,7 @@ export default function RegistroScreen() {
                 (!fotos.dni_frontal || !fotos.dni_posterior || !fotos.selfie) &&
                   styles.btnDisabled,
               ]}
-              onPress={handleRegistro}
+              onPress={finalizarRegistro}
               disabled={
                 loading ||
                 !fotos.dni_frontal ||
@@ -459,10 +554,10 @@ const styles = StyleSheet.create({
   pasoDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#ddd" },
   pasoDotActive: { backgroundColor: "#111" },
   pasoLinea: {
-    width: 40,
+    width: 30,
     height: 2,
     backgroundColor: "#ddd",
-    marginHorizontal: 8,
+    marginHorizontal: 6,
   },
   pasoLabel: {
     fontSize: 13,
@@ -480,6 +575,15 @@ const styles = StyleSheet.create({
     padding: 14,
     fontSize: 16,
   },
+  inputCode: {
+    borderWidth: 2,
+    borderColor: "#111",
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 28,
+    fontWeight: "700",
+    letterSpacing: 8,
+  },
   divider: { height: 1, backgroundColor: "#eee", marginVertical: 8 },
   btn: {
     backgroundColor: "#111",
@@ -491,17 +595,10 @@ const styles = StyleSheet.create({
   btnFlex: { flex: 1 },
   btnDisabled: { backgroundColor: "#ccc" },
   btnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  btnSecondary: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-  },
-  btnSecondaryText: { color: "#666", fontSize: 16, fontWeight: "600" },
-  botonesNav: { flexDirection: "row", gap: 12, marginTop: 8 },
   link: { marginTop: 24, alignItems: "center" },
   linkText: { color: "#666", fontSize: 14 },
+  reenviar: { alignItems: "center", paddingVertical: 8 },
+  reenviarText: { color: "#3B82F6", fontSize: 14 },
   fotoLabel: { fontSize: 15, fontWeight: "600", color: "#111", marginTop: 8 },
   fotoBtns: { flexDirection: "row", gap: 10 },
   fotoBtn: {
@@ -522,4 +619,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#f0f0f0",
   },
   fotoRemove: { fontSize: 14, color: "#3B82F6", fontWeight: "500" },
+  botonesNav: { flexDirection: "row", gap: 12, marginTop: 8 },
+  validaciones: { gap: 4, paddingLeft: 4 },
+  valOk: { fontSize: 13, color: "#10B981" },
+  valFail: { fontSize: 13, color: "#EF4444" },
 });

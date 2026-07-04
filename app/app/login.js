@@ -44,28 +44,21 @@ export default function LoginScreen() {
     if (!userData || userData.rol !== "cliente") {
       await supabase.auth.signOut();
       setLoading(false);
-      if (typeof window !== "undefined")
-        return window.alert("Esta app es solo para clientes.");
-      return Alert.alert(
-        "Error",
-        "Esta app es solo para clientes. Usa el panel web.",
-      );
+      const msg = "Esta app es solo para clientes.";
+      if (typeof window !== "undefined") return window.alert(msg);
+      return Alert.alert("Error", msg);
     }
 
     if (userData.estado === "bloqueado") {
       await supabase.auth.signOut();
       setLoading(false);
-      if (typeof window !== "undefined")
-        return window.alert("Tu cuenta está bloqueada.");
-      return Alert.alert(
-        "Error",
-        "Tu cuenta está bloqueada. Contacta soporte.",
-      );
+      const msg = "Tu cuenta está bloqueada. Contacta soporte.";
+      if (typeof window !== "undefined") return window.alert(msg);
+      return Alert.alert("Error", msg);
     }
 
     setLoading(false);
 
-    // Redirigir según estado
     if (userData.estado === "activo") {
       router.replace("/(tabs)/inicio");
     } else {
@@ -94,6 +87,14 @@ export default function LoginScreen() {
           onChangeText={setPassword}
           secureTextEntry
         />
+
+        <TouchableOpacity
+          onPress={() => router.push("/recuperar")}
+          style={styles.forgotLink}
+        >
+          <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={styles.btn}
           onPress={handleLogin}
@@ -132,6 +133,8 @@ const styles = StyleSheet.create({
     padding: 14,
     fontSize: 16,
   },
+  forgotLink: { alignItems: "flex-end" },
+  forgotText: { color: "#3B82F6", fontSize: 14 },
   btn: {
     backgroundColor: "#111",
     borderRadius: 12,
