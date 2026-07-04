@@ -20,6 +20,7 @@ export default function KYCDetallePage() {
   const [accion, setAccion] = useState(null);
   const router = useRouter();
   const params = useParams();
+  const [fotoModal, setFotoModal] = useState(null);
 
   useEffect(() => {
     getSession().then((s) => {
@@ -46,6 +47,22 @@ export default function KYCDetallePage() {
       .select("*")
       .eq("user_id", params.id)
       .single();
+
+    // Generar URLs firmadas para las fotos
+    if (perfilData) {
+      const campos = ["foto_dni_frontal", "foto_dni_posterior", "foto_selfie"];
+      for (const campo of campos) {
+        if (perfilData[campo] && perfilData[campo].includes(params.id)) {
+          const path = `${params.id}/${campo.replace("foto_", "")}.jpg`;
+          const { data } = await supabase.storage
+            .from("kyc-documentos")
+            .createSignedUrl(path, 3600);
+          if (data?.signedUrl) {
+            perfilData[campo] = data.signedUrl;
+          }
+        }
+      }
+    }
 
     setPerfil(perfilData);
     if (perfilData?.tasa_comision) setTasa(String(perfilData.tasa_comision));
@@ -198,7 +215,8 @@ export default function KYCDetallePage() {
                   <img
                     src={perfil.foto_dni_frontal}
                     alt="DNI Frontal"
-                    className="rounded border w-full h-40 object-cover"
+                    className="rounded border w-full h-40 object-cover cursor-pointer hover:opacity-80 transition"
+                    onClick={() => setFotoModal(perfil.foto_dni_frontal)}
                   />
                 ) : (
                   <div className="rounded border h-40 flex items-center justify-center bg-gray-100 text-gray-400 text-sm">
@@ -212,7 +230,8 @@ export default function KYCDetallePage() {
                   <img
                     src={perfil.foto_dni_posterior}
                     alt="DNI Posterior"
-                    className="rounded border w-full h-40 object-cover"
+                    className="rounded border w-full h-40 object-cover cursor-pointer hover:opacity-80 transition"
+                    onClick={() => setFotoModal(perfil.foto_dni_posterior)}
                   />
                 ) : (
                   <div className="rounded border h-40 flex items-center justify-center bg-gray-100 text-gray-400 text-sm">
@@ -226,7 +245,8 @@ export default function KYCDetallePage() {
                   <img
                     src={perfil.foto_selfie}
                     alt="Selfie"
-                    className="rounded border w-full h-40 object-cover"
+                    className="rounded border w-full h-40 object-cover cursor-pointer hover:opacity-80 transition"
+                    onClick={() => setFotoModal(perfil.foto_selfie)}
                   />
                 ) : (
                   <div className="rounded border h-40 flex items-center justify-center bg-gray-100 text-gray-400 text-sm">
@@ -238,7 +258,30 @@ export default function KYCDetallePage() {
           </CardContent>
         </Card>
 
+        {/* Modal de foto a pantalla completa */}
+        {fotoModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center cursor-pointer"
+            style={{ backgroundColor: "rgba(0,0,0,0.9)" }}
+            onClick={() => setFotoModal(null)}
+          >
+            <button
+              className="absolute top-4 right-4 text-white text-3xl font-bold hover:text-gray-300"
+              onClick={() => setFotoModal(null)}
+            >
+              ✕
+            </button>
+            <img
+              src={fotoModal}
+              alt="Foto ampliada"
+              className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        )}
+
         {/* Acciones — solo si está pendiente u observado */}
+
         {(cliente?.estado === "pendiente" ||
           cliente?.estado === "observado") && (
           <Card>
