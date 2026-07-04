@@ -18,9 +18,10 @@ export default function RootLayout() {
         <Stack.Screen name="registro" options={{ title: "Crear cuenta" }} />
         <Stack.Screen name="en-revision" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="empresa" options={{ title: "Sobre nosotros" }} />
         <Stack.Screen
-          name="nueva-operacion"
-          options={{ title: "Nueva operación" }}
+          name="guia/[banco]"
+          options={{ title: "Guía del banco" }}
         />
       </Stack>
     </>

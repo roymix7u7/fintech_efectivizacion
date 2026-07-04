@@ -10,10 +10,9 @@ import { useRouter } from "expo-router";
 import { supabase } from "../../src/lib/supabase";
 
 export default function InicioScreen() {
-  const [usuario, setUsuario] = useState(null);
   const [perfil, setPerfil] = useState(null);
-  const [stats, setStats] = useState({ pendientes: 0, depositadas: 0 });
   const [alertas, setAlertas] = useState([]);
+  const [guias, setGuias] = useState([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -25,7 +24,6 @@ export default function InicioScreen() {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return;
-    setUsuario(user);
 
     const { data: perfilData } = await supabase
       .from("perfiles_cliente")
@@ -34,30 +32,22 @@ export default function InicioScreen() {
       .single();
     setPerfil(perfilData);
 
-    // Contar operaciones
-    if (perfilData) {
-      const { count: pendientes } = await supabase
-        .from("operaciones")
-        .select("*", { count: "exact", head: true })
-        .eq("cliente_id", perfilData.id)
-        .in("estado", ["pendiente_verificacion", "pendiente_deposito"]);
-
-      const { count: depositadas } = await supabase
-        .from("operaciones")
-        .select("*", { count: "exact", head: true })
-        .eq("cliente_id", perfilData.id)
-        .eq("estado", "depositado");
-
-      setStats({ pendientes: pendientes || 0, depositadas: depositadas || 0 });
-    }
-
-    // Alertas activas
+    // Últimas 3 noticias
     const { data: alertasData } = await supabase
       .from("alertas_sistema")
       .select("*")
       .eq("activa", true)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(3);
     setAlertas(alertasData || []);
+
+    // Guías de banco activas
+    const { data: guiasData } = await supabase
+      .from("guias_banco")
+      .select("id, banco, imagen_portada, activa")
+      .eq("activa", true)
+      .order("banco");
+    setGuias(guiasData || []);
   }
 
   const alertaColors = {
@@ -68,69 +58,115 @@ export default function InicioScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Alertas globales */}
-      {alertas.map((alerta) => {
-        const c = alertaColors[alerta.tipo] || alertaColors.info;
-        return (
-          <View
-            key={alerta.id}
-            style={[
-              styles.alerta,
-              { backgroundColor: c.bg, borderColor: c.border },
-            ]}
-          >
-            <Text style={[styles.alertaTitulo, { color: c.text }]}>
-              {alerta.titulo}
-            </Text>
-            <Text style={[styles.alertaMensaje, { color: c.text }]}>
-              {alerta.mensaje}
-            </Text>
-          </View>
-        );
-      })}
-
       {/* Saludo */}
       <Text style={styles.saludo}>Hola, {perfil?.nombres || "Usuario"} 👋</Text>
 
       {/* Estado de cuenta */}
-      {usuario && perfil && (
-        <View
-          style={[
-            styles.estadoCard,
-            perfil.validado_por ? styles.estadoActivo : styles.estadoPendiente,
-          ]}
-        >
-          <Text style={styles.estadoTexto}>
-            {perfil.validado_por ? "✅ Cuenta activa" : "⏳ Cuenta en revisión"}
+      <View
+        style={[
+          styles.estadoCard,
+          perfil?.validado_por ? styles.estadoActivo : styles.estadoPendiente,
+        ]}
+      >
+        <Text style={styles.estadoTexto}>
+          {perfil?.validado_por ? "✅ Cuenta activa" : "⏳ Cuenta en revisión"}
+        </Text>
+        {!perfil?.validado_por && (
+          <Text style={styles.estadoSub}>
+            Tu cuenta está siendo revisada por nuestro equipo.
           </Text>
-          {!perfil.validado_por && (
-            <Text style={styles.estadoSub}>
-              Tu cuenta está siendo revisada por nuestro equipo.
-            </Text>
-          )}
-        </View>
-      )}
-
-      {/* Stats */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{stats.pendientes}</Text>
-          <Text style={styles.statLabel}>En proceso</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{stats.depositadas}</Text>
-          <Text style={styles.statLabel}>Depositadas</Text>
-        </View>
+        )}
       </View>
 
-      {/* Acción rápida */}
-      {perfil?.validado_por && (
+      {/* Accesos rápidos */}
+      <View style={styles.quickActions}>
         <TouchableOpacity
-          style={styles.btnNuevaOp}
-          onPress={() => router.push("/nueva-operacion")}
+          style={styles.quickBtn}
+          onPress={() => router.push("/(tabs)/noticias")}
         >
-          <Text style={styles.btnNuevaOpText}>+ Nueva operación</Text>
+          <Text style={styles.quickIcon}>📢</Text>
+          <Text style={styles.quickLabel}>Noticias</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickBtn}
+          onPress={() => router.push("/(tabs)/tarjetas")}
+        >
+          <Text style={styles.quickIcon}>💳</Text>
+          <Text style={styles.quickLabel}>Tarjetas</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickBtn}
+          onPress={() => router.push("/empresa")}
+        >
+          <Text style={styles.quickIcon}>🏢</Text>
+          <Text style={styles.quickLabel}>Empresa</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickBtn}
+          onPress={() => router.push("/(tabs)/perfil")}
+        >
+          <Text style={styles.quickIcon}>👤</Text>
+          <Text style={styles.quickLabel}>Mi cuenta</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Últimas noticias */}
+      {alertas.length > 0 && (
+        <>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Últimas noticias</Text>
+            <TouchableOpacity onPress={() => router.push("/(tabs)/noticias")}>
+              <Text style={styles.verTodo}>Ver todo</Text>
+            </TouchableOpacity>
+          </View>
+          {alertas.map((alerta) => {
+            const c = alertaColors[alerta.tipo] || alertaColors.info;
+            return (
+              <View
+                key={alerta.id}
+                style={[
+                  styles.noticiaCard,
+                  { backgroundColor: c.bg, borderColor: c.border },
+                ]}
+              >
+                <Text style={[styles.noticiaTitulo, { color: c.text }]}>
+                  {alerta.titulo}
+                </Text>
+                <Text
+                  style={[styles.noticiaMensaje, { color: c.text }]}
+                  numberOfLines={2}
+                >
+                  {alerta.mensaje}
+                </Text>
+              </View>
+            );
+          })}
+        </>
+      )}
+
+      {/* Guías de banco */}
+      {guias.length > 0 && (
+        <>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Guías de bancos</Text>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.guiasRow}
+          >
+            {guias.map((guia) => (
+              <TouchableOpacity
+                key={guia.id}
+                style={styles.guiaCard}
+                onPress={() => router.push(`/guia/${guia.banco}`)}
+              >
+                <Text style={styles.guiaIcon}>🏦</Text>
+                <Text style={styles.guiaBanco}>{guia.banco}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </>
       )}
     </ScrollView>
   );
@@ -140,16 +176,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9f9f9" },
   content: { padding: 20, paddingBottom: 40 },
   saludo: { fontSize: 24, fontWeight: "700", color: "#111", marginBottom: 16 },
-  alerta: { borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 12 },
-  alertaTitulo: { fontWeight: "600", fontSize: 14, marginBottom: 4 },
-  alertaMensaje: { fontSize: 13 },
-  estadoCard: { borderRadius: 12, padding: 16, marginBottom: 20 },
+  estadoCard: { borderRadius: 12, padding: 16, marginBottom: 24 },
   estadoActivo: { backgroundColor: "#F0FDF4" },
   estadoPendiente: { backgroundColor: "#FFFBEB" },
   estadoTexto: { fontSize: 16, fontWeight: "600", color: "#111" },
   estadoSub: { fontSize: 13, color: "#666", marginTop: 4 },
-  statsRow: { flexDirection: "row", gap: 12, marginBottom: 20 },
-  statCard: {
+  quickActions: { flexDirection: "row", gap: 12, marginBottom: 28 },
+  quickBtn: {
     flex: 1,
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -158,13 +191,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#eee",
   },
-  statNumber: { fontSize: 28, fontWeight: "700", color: "#111" },
-  statLabel: { fontSize: 13, color: "#666", marginTop: 4 },
-  btnNuevaOp: {
-    backgroundColor: "#111",
-    borderRadius: 12,
-    padding: 16,
+  quickIcon: { fontSize: 28, marginBottom: 6 },
+  quickLabel: { fontSize: 12, color: "#666", fontWeight: "500" },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 12,
   },
-  btnNuevaOpText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  sectionTitle: { fontSize: 18, fontWeight: "700", color: "#111" },
+  verTodo: { fontSize: 14, color: "#3B82F6", fontWeight: "500" },
+  noticiaCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+  },
+  noticiaTitulo: { fontWeight: "600", fontSize: 14, marginBottom: 4 },
+  noticiaMensaje: { fontSize: 13 },
+  guiasRow: { marginBottom: 20 },
+  guiaCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 20,
+    marginRight: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#eee",
+    width: 100,
+  },
+  guiaIcon: { fontSize: 32, marginBottom: 8 },
+  guiaBanco: { fontSize: 13, fontWeight: "600", color: "#111" },
 });

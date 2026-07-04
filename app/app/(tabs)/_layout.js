@@ -17,28 +17,28 @@ export default function TabsLayout() {
         name="inicio"
         options={{
           title: "Inicio",
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>🏠</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>🏠</Text>,
         }}
       />
       <Tabs.Screen
-        name="operaciones"
+        name="noticias"
         options={{
-          title: "Operaciones",
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>📋</Text>,
+          title: "Noticias",
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>📢</Text>,
         }}
       />
       <Tabs.Screen
         name="tarjetas"
         options={{
           title: "Tarjetas",
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>💳</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>💳</Text>,
         }}
       />
       <Tabs.Screen
         name="perfil"
         options={{
           title: "Mi cuenta",
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>👤</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>👤</Text>,
         }}
       />
     </Tabs>

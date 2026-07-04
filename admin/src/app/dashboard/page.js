@@ -12,9 +12,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     kycPendientes: 0,
-    porVerificar: 0,
-    porDepositar: 0,
-    depositadasHoy: 0,
+    clientesActivos: 0,
+    noticiasActivas: 0,
+    guiasActivas: 0,
   });
   const router = useRouter();
 
@@ -37,28 +37,27 @@ export default function DashboardPage() {
       .eq("rol", "cliente")
       .eq("estado", "pendiente");
 
-    const { count: porVerificar } = await supabase
-      .from("operaciones")
+    const { count: clientesActivos } = await supabase
+      .from("users")
       .select("*", { count: "exact", head: true })
-      .eq("estado", "pendiente_verificacion");
+      .eq("rol", "cliente")
+      .eq("estado", "activo");
 
-    const { count: porDepositar } = await supabase
-      .from("operaciones")
+    const { count: noticiasActivas } = await supabase
+      .from("alertas_sistema")
       .select("*", { count: "exact", head: true })
-      .eq("estado", "pendiente_deposito");
+      .eq("activa", true);
 
-    const hoy = new Date().toISOString().split("T")[0];
-    const { count: depositadasHoy } = await supabase
-      .from("operaciones")
+    const { count: guiasActivas } = await supabase
+      .from("guias_banco")
       .select("*", { count: "exact", head: true })
-      .eq("estado", "depositado")
-      .gte("fecha_deposito", hoy);
+      .eq("activa", true);
 
     setStats({
       kycPendientes: kycPendientes || 0,
-      porVerificar: porVerificar || 0,
-      porDepositar: porDepositar || 0,
-      depositadasHoy: depositadasHoy || 0,
+      clientesActivos: clientesActivos || 0,
+      noticiasActivas: noticiasActivas || 0,
+      guiasActivas: guiasActivas || 0,
     });
   }
 
@@ -107,40 +106,40 @@ export default function DashboardPage() {
               <p className="text-3xl font-bold">{stats.kycPendientes}</p>
             </CardContent>
           </Card>
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/verificacion")}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-500">
-                Op. por verificar
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{stats.porVerificar}</p>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/tesoreria")}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-500">
-                Op. por depositar
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{stats.porDepositar}</p>
-            </CardContent>
-          </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-gray-500">
-                Depositadas hoy
+                Clientes activos
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">{stats.depositadasHoy}</p>
+              <p className="text-3xl font-bold">{stats.clientesActivos}</p>
+            </CardContent>
+          </Card>
+          <Card
+            className="cursor-pointer hover:border-gray-300"
+            onClick={() => router.push("/alertas")}
+          >
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-gray-500">
+                Noticias activas
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold">{stats.noticiasActivas}</p>
+            </CardContent>
+          </Card>
+          <Card
+            className="cursor-pointer hover:border-gray-300"
+            onClick={() => router.push("/guias")}
+          >
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-gray-500">
+                Guías de banco
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold">{stats.guiasActivas}</p>
             </CardContent>
           </Card>
         </div>
@@ -159,36 +158,34 @@ export default function DashboardPage() {
           </Card>
           <Card
             className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/verificacion")}
-          >
-            <CardContent className="p-6">
-              <h3 className="font-semibold mb-1">
-                Verificación de operaciones
-              </h3>
-              <p className="text-sm text-gray-500">
-                Revisar vouchers y aprobar operaciones
-              </p>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/tesoreria")}
-          >
-            <CardContent className="p-6">
-              <h3 className="font-semibold mb-1">Tesorería</h3>
-              <p className="text-sm text-gray-500">
-                Realizar depósitos y marcar completados
-              </p>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:border-gray-300"
             onClick={() => router.push("/alertas")}
           >
             <CardContent className="p-6">
-              <h3 className="font-semibold mb-1">Alertas globales</h3>
+              <h3 className="font-semibold mb-1">Noticias y avisos</h3>
               <p className="text-sm text-gray-500">
-                Crear y gestionar alertas para clientes
+                Crear y gestionar noticias para clientes
+              </p>
+            </CardContent>
+          </Card>
+          <Card
+            className="cursor-pointer hover:border-gray-300"
+            onClick={() => router.push("/guias")}
+          >
+            <CardContent className="p-6">
+              <h3 className="font-semibold mb-1">Guías de banco</h3>
+              <p className="text-sm text-gray-500">
+                Editar pasos e imágenes por banco
+              </p>
+            </CardContent>
+          </Card>
+          <Card
+            className="cursor-pointer hover:border-gray-300"
+            onClick={() => router.push("/auditoria")}
+          >
+            <CardContent className="p-6">
+              <h3 className="font-semibold mb-1">Auditoría</h3>
+              <p className="text-sm text-gray-500">
+                Historial de acciones del sistema
               </p>
             </CardContent>
           </Card>
