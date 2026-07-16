@@ -211,22 +211,23 @@ export default function DashboardPage() {
               </p>
             </CardContent>
           </Card>
+
+          <Card
+            className="cursor-pointer hover:border-gray-300"
+            onClick={() => router.push("/tarjetas")}
+          >
+            <CardContent className="p-6">
+              <h3 className="font-semibold mb-1">Verificación de tarjetas</h3>
+              <p className="text-sm text-gray-500">
+                Aprobar o rechazar tarjetas de clientes
+              </p>
+            </CardContent>
+          </Card>
+
           <Card
             className="cursor-pointer hover:border-gray-300"
             onClick={() => router.push("/auditoria")}
           >
-            <Card
-              className="cursor-pointer hover:border-gray-300"
-              onClick={() => router.push("/tarjetas")}
-            >
-              <CardContent className="p-6">
-                <h3 className="font-semibold mb-1">Verificación de tarjetas</h3>
-                <p className="text-sm text-gray-500">
-                  Aprobar o rechazar tarjetas de clientes
-                </p>
-              </CardContent>
-            </Card>
-
             <CardContent className="p-6">
               <h3 className="font-semibold mb-1">Auditoría</h3>
               <p className="text-sm text-gray-500">
