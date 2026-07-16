@@ -9,7 +9,7 @@ export default function TabsLayout() {
         headerShadowVisible: false,
         headerTitleStyle: { fontWeight: "600", fontSize: 17 },
         tabBarStyle: { backgroundColor: "#fff", borderTopColor: "#eee" },
-        tabBarActiveTintColor: "#111",
+        tabBarActiveTintColor: "#1B2A4A",
         tabBarInactiveTintColor: "#999",
       }}
     >
@@ -21,10 +21,10 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="noticias"
+        name="solicitudes"
         options={{
-          title: "Noticias",
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>📢</Text>,
+          title: "Solicitudes",
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>📋</Text>,
         }}
       />
       <Tabs.Screen
@@ -32,6 +32,13 @@ export default function TabsLayout() {
         options={{
           title: "Tarjetas",
           tabBarIcon: () => <Text style={{ fontSize: 20 }}>💳</Text>,
+        }}
+      />
+      <Tabs.Screen
+        name="noticias"
+        options={{
+          title: "Noticias",
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>📢</Text>,
         }}
       />
       <Tabs.Screen

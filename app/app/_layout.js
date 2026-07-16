@@ -27,6 +27,10 @@ export default function RootLayout() {
           name="guia/[banco]"
           options={{ title: "Guía del banco" }}
         />
+        <Stack.Screen
+          name="nueva-solicitud"
+          options={{ title: "Nueva solicitud" }}
+        />
       </Stack>
     </>
   );

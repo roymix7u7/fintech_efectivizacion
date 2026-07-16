@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "../src/lib/supabase";
+import COLORS from "../src/theme/colors";
 
 export default function RecuperarScreen() {
   const [paso, setPaso] = useState(1);
@@ -23,17 +24,27 @@ export default function RecuperarScreen() {
     if (typeof window !== "undefined") window.alert(msg);
   }
 
+  const passChecks = {
+    length: nuevaPassword.length >= 8,
+    upper: /[A-Z]/.test(nuevaPassword),
+    lower: /[a-z]/.test(nuevaPassword),
+    number: /[0-9]/.test(nuevaPassword),
+    special: /\W/.test(nuevaPassword),
+    match: nuevaPassword === confirmarPassword && confirmarPassword.length > 0,
+  };
+
   async function enviarCodigo() {
-    if (!email) return alerta("Ingresa tu correo electrónico.");
+    if (!email) {
+      alerta("Ingresa tu correo electrónico.");
+      return;
+    }
     setLoading(true);
-
     const { error } = await supabase.auth.resetPasswordForEmail(email);
-
     if (error) {
       setLoading(false);
-      return alerta("Error: " + error.message);
+      alerta("Error: " + error.message);
+      return;
     }
-
     setLoading(false);
     setPaso(2);
     alerta("Se envió un código de recuperación a tu correo.");
@@ -43,38 +54,58 @@ export default function RecuperarScreen() {
     setReenviando(true);
     await supabase.auth.resetPasswordForEmail(email);
     setReenviando(false);
-    alerta("Código reenviado. El código anterior ya no es válido.");
+    alerta("Código reenviado. El anterior ya no es válido.");
   }
 
   async function verificarYCambiar() {
-    if (!codigo) return alerta("Ingresa el código.");
-    if (!nuevaPassword || nuevaPassword.length < 6)
-      return alerta("La contraseña debe tener al menos 6 caracteres.");
-    if (nuevaPassword !== confirmarPassword)
-      return alerta("Las contraseñas no coinciden.");
+    if (!codigo) {
+      alerta("Ingresa el código.");
+      return;
+    }
+    if (!passChecks.length) {
+      alerta("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+    if (!passChecks.upper) {
+      alerta("Debe tener al menos una mayúscula.");
+      return;
+    }
+    if (!passChecks.lower) {
+      alerta("Debe tener al menos una minúscula.");
+      return;
+    }
+    if (!passChecks.number) {
+      alerta("Debe tener al menos un número.");
+      return;
+    }
+    if (!passChecks.special) {
+      alerta("Debe tener al menos un carácter especial.");
+      return;
+    }
+    if (!passChecks.match) {
+      alerta("Las contraseñas no coinciden.");
+      return;
+    }
 
     setLoading(true);
-
-    // Verificar el OTP
     const { error: otpError } = await supabase.auth.verifyOtp({
       email,
       token: codigo,
       type: "recovery",
     });
-
     if (otpError) {
       setLoading(false);
-      return alerta("Código inválido o expirado. Solicita uno nuevo.");
+      alerta("Código inválido o expirado.");
+      return;
     }
 
-    // Cambiar contraseña
     const { error: updateError } = await supabase.auth.updateUser({
       password: nuevaPassword,
     });
-
     if (updateError) {
       setLoading(false);
-      return alerta("Error al cambiar contraseña: " + updateError.message);
+      alerta("Error: " + updateError.message);
+      return;
     }
 
     await supabase.auth.signOut();
@@ -84,80 +115,117 @@ export default function RecuperarScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={s.container}>
       {paso === 1 && (
         <>
-          <Text style={styles.title}>Recuperar contraseña</Text>
-          <Text style={styles.subtitle}>
-            Ingresa tu correo y te enviaremos un código de recuperación
-          </Text>
+          <View style={s.iconCard}>
+            <Text style={s.icon}>🔐</Text>
+            <Text style={s.title}>Recuperar contraseña</Text>
+            <Text style={s.subtitle}>
+              Ingresa tu correo y te enviaremos un código
+            </Text>
+          </View>
 
-          <View style={styles.form}>
+          <View style={s.form}>
             <TextInput
-              style={styles.input}
+              style={s.input}
               placeholder="Correo electrónico"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
+              placeholderTextColor={COLORS.textLight}
             />
             <TouchableOpacity
-              style={styles.btn}
+              style={s.btn}
               onPress={enviarCodigo}
               disabled={loading}
             >
-              <Text style={styles.btnText}>
+              <Text style={s.btnText}>
                 {loading ? "Enviando..." : "Enviar código"}
               </Text>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => router.back()} style={styles.link}>
-            <Text style={styles.linkText}>← Volver al login</Text>
+          <TouchableOpacity onPress={() => router.back()} style={s.link}>
+            <Text style={s.linkText}>← Volver al login</Text>
           </TouchableOpacity>
         </>
       )}
 
       {paso === 2 && (
         <>
-          <Text style={styles.title}>Verificar código</Text>
-          <Text style={styles.subtitle}>
-            Ingresa el código enviado a {email}
-          </Text>
+          <View style={s.iconCard}>
+            <Text style={s.icon}>📧</Text>
+            <Text style={s.title}>Verificar código</Text>
+            <Text style={s.subtitle}>Ingresa el código enviado a</Text>
+            <Text style={s.emailHighlight}>{email}</Text>
+          </View>
 
-          <View style={styles.form}>
+          <View style={s.form}>
             <TextInput
-              style={styles.inputCode}
+              style={s.inputCode}
               placeholder="000000"
               value={codigo}
               onChangeText={(v) => setCodigo(v.replace(/\D/g, "").slice(0, 6))}
               keyboardType="numeric"
               maxLength={6}
               textAlign="center"
+              placeholderTextColor={COLORS.textLight}
             />
 
             <TextInput
-              style={styles.input}
-              placeholder="Nueva contraseña (mín. 6 caracteres)"
+              style={s.input}
+              placeholder="Nueva contraseña (mín. 8 caracteres)"
               value={nuevaPassword}
               onChangeText={setNuevaPassword}
               secureTextEntry
+              placeholderTextColor={COLORS.textLight}
             />
 
+            {nuevaPassword.length > 0 && (
+              <View style={s.validaciones}>
+                <Text style={passChecks.length ? s.valOk : s.valFail}>
+                  {passChecks.length ? "✅" : "❌"} Mínimo 8 caracteres
+                </Text>
+                <Text style={passChecks.upper ? s.valOk : s.valFail}>
+                  {passChecks.upper ? "✅" : "❌"} Una mayúscula
+                </Text>
+                <Text style={passChecks.lower ? s.valOk : s.valFail}>
+                  {passChecks.lower ? "✅" : "❌"} Una minúscula
+                </Text>
+                <Text style={passChecks.number ? s.valOk : s.valFail}>
+                  {passChecks.number ? "✅" : "❌"} Un número
+                </Text>
+                <Text style={passChecks.special ? s.valOk : s.valFail}>
+                  {passChecks.special ? "✅" : "❌"} Un carácter especial
+                </Text>
+              </View>
+            )}
+
             <TextInput
-              style={styles.input}
+              style={s.input}
               placeholder="Confirmar nueva contraseña"
               value={confirmarPassword}
               onChangeText={setConfirmarPassword}
               secureTextEntry
+              placeholderTextColor={COLORS.textLight}
             />
 
+            {confirmarPassword.length > 0 && (
+              <Text style={passChecks.match ? s.valOk : s.valFail}>
+                {passChecks.match
+                  ? "✅ Contraseñas coinciden"
+                  : "❌ No coinciden"}
+              </Text>
+            )}
+
             <TouchableOpacity
-              style={styles.btn}
+              style={s.btn}
               onPress={verificarYCambiar}
               disabled={loading}
             >
-              <Text style={styles.btnText}>
+              <Text style={s.btnText}>
                 {loading ? "Cambiando..." : "Cambiar contraseña"}
               </Text>
             </TouchableOpacity>
@@ -165,9 +233,9 @@ export default function RecuperarScreen() {
             <TouchableOpacity
               onPress={reenviarCodigo}
               disabled={reenviando}
-              style={styles.reenviar}
+              style={s.reenviar}
             >
-              <Text style={styles.reenviarText}>
+              <Text style={s.reenviarText}>
                 {reenviando
                   ? "Reenviando..."
                   : "¿No recibiste el código? Reenviar"}
@@ -175,8 +243,8 @@ export default function RecuperarScreen() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => setPaso(1)} style={styles.link}>
-            <Text style={styles.linkText}>← Cambiar correo</Text>
+          <TouchableOpacity onPress={() => setPaso(1)} style={s.link}>
+            <Text style={s.linkText}>← Cambiar correo</Text>
           </TouchableOpacity>
         </>
       )}
@@ -184,42 +252,57 @@ export default function RecuperarScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.background,
     padding: 32,
     justifyContent: "center",
   },
-  title: { fontSize: 28, fontWeight: "700", color: "#111" },
-  subtitle: { fontSize: 16, color: "#666", marginTop: 4, marginBottom: 32 },
+  iconCard: { alignItems: "center", marginBottom: 28 },
+  icon: { fontSize: 56, marginBottom: 12 },
+  title: { fontSize: 24, fontWeight: "700", color: COLORS.text },
+  subtitle: { fontSize: 15, color: COLORS.textSecondary, marginTop: 4 },
+  emailHighlight: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.primary,
+    marginTop: 4,
+  },
   form: { gap: 14 },
   input: {
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: COLORS.border,
     borderRadius: 12,
     padding: 14,
     fontSize: 16,
+    backgroundColor: COLORS.white,
+    color: COLORS.text,
   },
   inputCode: {
     borderWidth: 2,
-    borderColor: "#111",
+    borderColor: COLORS.primary,
     borderRadius: 12,
     padding: 16,
     fontSize: 28,
     fontWeight: "700",
     letterSpacing: 8,
+    backgroundColor: COLORS.white,
+    color: COLORS.text,
   },
   btn: {
-    backgroundColor: "#111",
+    backgroundColor: COLORS.primary,
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
     marginTop: 4,
   },
-  btnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  btnText: { color: COLORS.white, fontSize: 16, fontWeight: "600" },
   link: { marginTop: 24, alignItems: "center" },
-  linkText: { color: "#666", fontSize: 14 },
+  linkText: { color: COLORS.textSecondary, fontSize: 14 },
   reenviar: { alignItems: "center", paddingVertical: 8 },
-  reenviarText: { color: "#3B82F6", fontSize: 14 },
+  reenviarText: { color: COLORS.secondary, fontSize: 14, fontWeight: "500" },
+  validaciones: { gap: 4, paddingLeft: 4 },
+  valOk: { fontSize: 13, color: COLORS.success },
+  valFail: { fontSize: 13, color: COLORS.error },
 });

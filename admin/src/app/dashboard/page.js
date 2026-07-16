@@ -53,11 +53,17 @@ export default function DashboardPage() {
       .select("*", { count: "exact", head: true })
       .eq("activa", true);
 
+    const { count: solicitudesPendientes } = await supabase
+      .from("solicitudes")
+      .select("*", { count: "exact", head: true })
+      .eq("estado", "pendiente");
+
     setStats({
       kycPendientes: kycPendientes || 0,
       clientesActivos: clientesActivos || 0,
       noticiasActivas: noticiasActivas || 0,
       guiasActivas: guiasActivas || 0,
+      solicitudesPendientes: solicitudesPendientes || 0,
     });
   }
 
