@@ -13,6 +13,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({
     kycPendientes: 0,
     clientesActivos: 0,
+    solicitudesPendientes: 0,
     noticiasActivas: 0,
     guiasActivas: 0,
   });
@@ -43,6 +44,11 @@ export default function DashboardPage() {
       .eq("rol", "cliente")
       .eq("estado", "activo");
 
+    const { count: solicitudesPendientes } = await supabase
+      .from("solicitudes")
+      .select("*", { count: "exact", head: true })
+      .eq("estado", "pendiente");
+
     const { count: noticiasActivas } = await supabase
       .from("alertas_sistema")
       .select("*", { count: "exact", head: true })
@@ -53,17 +59,12 @@ export default function DashboardPage() {
       .select("*", { count: "exact", head: true })
       .eq("activa", true);
 
-    const { count: solicitudesPendientes } = await supabase
-      .from("solicitudes")
-      .select("*", { count: "exact", head: true })
-      .eq("estado", "pendiente");
-
     setStats({
       kycPendientes: kycPendientes || 0,
       clientesActivos: clientesActivos || 0,
+      solicitudesPendientes: solicitudesPendientes || 0,
       noticiasActivas: noticiasActivas || 0,
       guiasActivas: guiasActivas || 0,
-      solicitudesPendientes: solicitudesPendientes || 0,
     });
   }
 
@@ -98,7 +99,7 @@ export default function DashboardPage() {
       <main className="p-6 max-w-6xl mx-auto">
         <h2 className="text-2xl font-semibold mb-6">Dashboard</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
           <Card
             className="cursor-pointer hover:border-gray-300"
             onClick={() => router.push("/kyc")}
@@ -120,6 +121,21 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold">{stats.clientesActivos}</p>
+            </CardContent>
+          </Card>
+          <Card
+            className="cursor-pointer hover:border-gray-300"
+            onClick={() => router.push("/solicitudes")}
+          >
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-gray-500">
+                Solicitudes pendientes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold">
+                {stats.solicitudesPendientes}
+              </p>
             </CardContent>
           </Card>
           <Card
@@ -159,6 +175,17 @@ export default function DashboardPage() {
               <h3 className="font-semibold mb-1">Gestión KYC</h3>
               <p className="text-sm text-gray-500">
                 Revisar y aprobar clientes pendientes
+              </p>
+            </CardContent>
+          </Card>
+          <Card
+            className="cursor-pointer hover:border-gray-300"
+            onClick={() => router.push("/solicitudes")}
+          >
+            <CardContent className="p-6">
+              <h3 className="font-semibold mb-1">Solicitudes</h3>
+              <p className="text-sm text-gray-500">
+                Revisar comprobantes de operaciones
               </p>
             </CardContent>
           </Card>
