@@ -45,6 +45,7 @@ export default function NuevaSolicitudScreen() {
       .select("*")
       .eq("cliente_id", perfilData.id)
       .eq("activa", true)
+      .eq("estado", "aprobado")
       .order("created_at", { ascending: false });
     setTarjetas(tarjetasData || []);
   }
