@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   View,
   Text,
@@ -52,9 +52,13 @@ function InputField({
   toggleShow,
   isShown,
   autoCapitalize,
+  onLayout,
+  onFocus,
+  returnKeyType,
+  onSubmitEditing,
 }) {
   return (
-    <View style={s.inputContainer}>
+    <View style={s.inputContainer} onLayout={onLayout}>
       <Ionicons
         name={icon}
         size={20}
@@ -66,6 +70,9 @@ function InputField({
         placeholder={placeholder}
         value={value}
         onChangeText={onChangeText}
+        onFocus={onFocus}
+        returnKeyType={returnKeyType || "next"}
+        onSubmitEditing={onSubmitEditing}
         keyboardType={keyboard || "default"}
         maxLength={maxLength}
         secureTextEntry={Boolean(secure) && !isShown}
@@ -172,6 +179,42 @@ export default function RegistroScreen() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [abierto, setAbierto] = useState(null);
   const router = useRouter();
+
+  /**
+   * Desplazamiento al campo enfocado.
+   *
+   * El teclado tapa la mitad inferior de la pantalla, asi que al tocar
+   * un campo de abajo el usuario escribe a ciegas y tiene que cerrar el
+   * teclado para comprobar lo que puso.
+   *
+   * Se guarda la posicion de cada campo cuando se dibuja, y al
+   * enfocarlo se lleva cerca del borde superior. Asi queda siempre a la
+   * vista, sin importar cuanto ocupe el teclado en ese telefono.
+   */
+  const scrollRef = useRef(null);
+  const posiciones = useRef({});
+  const inicioForm = useRef(0);
+
+  function recordarPos(campo) {
+    return (e) => {
+      posiciones.current[campo] = e.nativeEvent.layout.y;
+    };
+  }
+
+  function alEnfocar(campo) {
+    return () => {
+      const y = posiciones.current[campo];
+      if (y == null || !scrollRef.current) return;
+      // La espera deja que el teclado termine de subir; sin ella el
+      // desplazamiento se calcula contra una pantalla que aun cambia.
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({
+          y: Math.max(0, inicioForm.current + y - 16),
+          animated: true,
+        });
+      }, 140);
+    };
+  }
 
   function updateForm(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -470,13 +513,23 @@ export default function RegistroScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         style={s.scrollView}
         contentContainerStyle={s.content}
         keyboardShouldPersistTaps="handled"
+        // Arrastrar la lista cierra el teclado: es el gesto natural
+        // para volver a ver el formulario completo.
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
       >
         {/* ── PASO 1: Datos personales ── */}
         {paso === 1 && (
-          <View style={s.form}>
+          <View
+            style={s.form}
+            onLayout={(e) => {
+              inicioForm.current = e.nativeEvent.layout.y;
+            }}
+          >
             <Text style={s.sectionLabel}>Informacion personal</Text>
             <InputField
               icon="person-outline"
@@ -484,6 +537,8 @@ export default function RegistroScreen() {
               value={form.nombres}
               onChangeText={(v) => updateForm("nombres", v)}
               autoCapitalize="words"
+              onLayout={recordarPos("nombres")}
+              onFocus={alEnfocar("nombres")}
             />
             <InputField
               icon="person-outline"
@@ -491,6 +546,8 @@ export default function RegistroScreen() {
               value={form.apellidos}
               onChangeText={(v) => updateForm("apellidos", v)}
               autoCapitalize="words"
+              onLayout={recordarPos("apellidos")}
+              onFocus={alEnfocar("apellidos")}
             />
             <InputField
               icon="id-card-outline"
@@ -501,9 +558,11 @@ export default function RegistroScreen() {
               }
               keyboard="numeric"
               maxLength={8}
+              onLayout={recordarPos("dni")}
+              onFocus={alEnfocar("dni")}
             />
 
-            <View style={s.phoneRow}>
+            <View style={s.phoneRow} onLayout={recordarPos("telefono")}>
               <View style={s.phonePrefix}>
                 <Text style={s.phonePrefixFlag}>PE</Text>
                 <Text style={s.phonePrefixText}>+51</Text>
@@ -512,6 +571,7 @@ export default function RegistroScreen() {
                 <TextInput
                   style={s.input}
                   placeholder="987 654 321"
+                  onFocus={alEnfocar("telefono")}
                   value={form.telefono}
                   onChangeText={(v) =>
                     updateForm("telefono", v.replace(/\D/g, "").slice(0, 9))
@@ -580,6 +640,8 @@ export default function RegistroScreen() {
               placeholder="Direccion * (calle, manzana, lote)"
               value={form.direccion}
               onChangeText={(v) => updateForm("direccion", v)}
+              onLayout={recordarPos("direccion")}
+              onFocus={alEnfocar("direccion")}
             />
             <InputField
               icon="pricetag-outline"
@@ -587,6 +649,8 @@ export default function RegistroScreen() {
               value={form.codigo_promo}
               onChangeText={(v) => updateForm("codigo_promo", v)}
               autoCapitalize="characters"
+              onLayout={recordarPos("promo")}
+              onFocus={alEnfocar("promo")}
             />
 
             <Text style={s.sectionLabel}>Acceso a la cuenta</Text>
@@ -596,6 +660,8 @@ export default function RegistroScreen() {
               value={form.email}
               onChangeText={(v) => updateForm("email", v)}
               keyboard="email-address"
+              onLayout={recordarPos("email")}
+              onFocus={alEnfocar("email")}
             />
             <InputField
               icon="lock-closed-outline"
@@ -606,6 +672,8 @@ export default function RegistroScreen() {
               showToggle
               toggleShow={() => setShowPassword(!showPassword)}
               isShown={showPassword}
+              onLayout={recordarPos("password")}
+              onFocus={alEnfocar("password")}
             />
 
             {form.password.length > 0 && (
@@ -640,6 +708,10 @@ export default function RegistroScreen() {
               showToggle
               toggleShow={() => setShowConfirm(!showConfirm)}
               isShown={showConfirm}
+              onLayout={recordarPos("confirmar")}
+              onFocus={alEnfocar("confirmar")}
+              returnKeyType="done"
+              onSubmitEditing={enviarCodigoVerificacion}
             />
 
             {form.confirmarPassword.length > 0 && (
