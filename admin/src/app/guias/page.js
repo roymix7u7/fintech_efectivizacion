@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import Shell from "@/components/shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -151,20 +152,20 @@ export default function GuiasPage() {
   // Vista de edición de una guía
   if (editando) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <nav className="bg-white border-b px-6 py-4 flex items-center gap-4">
+      <Shell
+        session={session}
+        titulo={`Guía de ${editando.banco}`}
+        descripcion="Pasos que el cliente ve en su app"
+        acciones={
           <button
             onClick={() => setEditando(null)}
-            className="text-gray-500 hover:text-gray-700"
+            className="rounded-lg border border-border px-3 py-2 text-[13px] font-medium text-muted-foreground transition hover:bg-muted"
           >
-            ← Volver
+            Volver a la lista
           </button>
-          <h1 className="text-lg font-semibold">
-            Editando guía: {editando.banco}
-          </h1>
-        </nav>
-
-        <main className="p-6 max-w-3xl mx-auto">
+        }
+      >
+        <div className="max-w-3xl">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-semibold">Pasos de la guía</h2>
             <div className="flex gap-2">
@@ -263,28 +264,19 @@ export default function GuiasPage() {
               ))}
             </div>
           )}
-        </main>
-      </div>
+        </div>
+      </Shell>
     );
   }
 
   // Vista de lista de guías
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            ← Dashboard
-          </button>
-          <h1 className="text-lg font-semibold">Guías de banco</h1>
-        </div>
-        <span className="text-sm text-gray-500">{session.user.email}</span>
-      </nav>
-
-      <main className="p-6 max-w-3xl mx-auto">
+    <Shell
+      session={session}
+      titulo="Guías de banco"
+      descripcion="Pasos para operar por entidad"
+    >
+      <div className="max-w-3xl">
         {/* Crear nueva guía */}
         <Card className="mb-6">
           <CardContent className="p-4">
@@ -373,7 +365,7 @@ export default function GuiasPage() {
             ))}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </Shell>
   );
 }

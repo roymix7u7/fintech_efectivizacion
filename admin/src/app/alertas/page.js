@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import Shell from "@/components/shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -120,21 +121,12 @@ export default function AlertasPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            ← Dashboard
-          </button>
-          <h1 className="text-lg font-semibold">Alertas globales</h1>
-        </div>
-        <span className="text-sm text-gray-500">{session.user.email}</span>
-      </nav>
-
-      <main className="p-6 max-w-3xl mx-auto">
+    <Shell
+      session={session}
+      titulo="Noticias"
+      descripcion="Avisos que ven todos los clientes en su app"
+    >
+      <div className="max-w-3xl">
         {!creando ? (
           <Button onClick={() => setCreando(true)} className="mb-6">
             + Nueva alerta
@@ -268,7 +260,7 @@ export default function AlertasPage() {
             })}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </Shell>
   );
 }

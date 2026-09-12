@@ -2,241 +2,282 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSession, logout } from "@/lib/auth";
+import Link from "next/link";
+import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import Shell, { SECCIONES, Flecha } from "@/components/shell";
+import { Aviso, Estado } from "@/components/marca";
 
 export default function DashboardPage() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    kycPendientes: 0,
-    clientesActivos: 0,
-    solicitudesPendientes: 0,
-    noticiasActivas: 0,
-    guiasActivas: 0,
-  });
+  const [error, setError] = useState("");
+  const [stats, setStats] = useState({});
+  const [recientes, setRecientes] = useState([]);
   const router = useRouter();
 
   useEffect(() => {
-    getSession().then((s) => {
-      if (!s) {
-        router.push("/login");
-      } else {
+    let vivo = true;
+    getSession()
+      .then(async (s) => {
+        if (!vivo) return;
+        if (!s) return router.push("/login");
         setSession(s);
-        cargarStats();
-      }
-      setLoading(false);
-    });
+        await Promise.all([cargarStats(), cargarRecientes()]);
+      })
+      .finally(() => vivo && setLoading(false));
+    return () => {
+      vivo = false;
+    };
   }, [router]);
 
   async function cargarStats() {
-    const { count: kycPendientes } = await supabase
-      .from("users")
-      .select("*", { count: "exact", head: true })
-      .eq("rol", "cliente")
-      .eq("estado", "pendiente");
+    const contar = async (tabla, filtros) => {
+      let q = supabase.from(tabla).select("*", { count: "exact", head: true });
+      for (const [k, v] of Object.entries(filtros)) q = q.eq(k, v);
+      const { count, error } = await q;
+      if (error) throw error;
+      return count || 0;
+    };
 
-    const { count: clientesActivos } = await supabase
-      .from("users")
-      .select("*", { count: "exact", head: true })
-      .eq("rol", "cliente")
-      .eq("estado", "activo");
-
-    const { count: solicitudesPendientes } = await supabase
-      .from("solicitudes")
-      .select("*", { count: "exact", head: true })
-      .eq("estado", "pendiente");
-
-    const { count: noticiasActivas } = await supabase
-      .from("alertas_sistema")
-      .select("*", { count: "exact", head: true })
-      .eq("activa", true);
-
-    const { count: guiasActivas } = await supabase
-      .from("guias_banco")
-      .select("*", { count: "exact", head: true })
-      .eq("activa", true);
-
-    setStats({
-      kycPendientes: kycPendientes || 0,
-      clientesActivos: clientesActivos || 0,
-      solicitudesPendientes: solicitudesPendientes || 0,
-      noticiasActivas: noticiasActivas || 0,
-      guiasActivas: guiasActivas || 0,
-    });
+    try {
+      const [
+        kycPendientes,
+        clientesActivos,
+        solicitudesPendientes,
+        tarjetasPendientes,
+      ] = await Promise.all([
+        contar("users", { rol: "cliente", estado: "pendiente" }),
+        contar("users", { rol: "cliente", estado: "activo" }),
+        contar("solicitudes", { estado: "pendiente" }),
+        contar("tarjetas", { estado: "pendiente", activa: true }),
+      ]);
+      setStats({
+        kycPendientes,
+        clientesActivos,
+        solicitudesPendientes,
+        tarjetasPendientes,
+      });
+    } catch (e) {
+      // Antes los errores de conteo se descartaban y el panel mostraba
+      // ceros, como si de verdad no hubiera nada pendiente.
+      setError("No se pudieron cargar los indicadores: " + e.message);
+    }
   }
 
-  async function handleLogout() {
-    await logout();
-    router.push("/login");
+  async function cargarRecientes() {
+    const { data } = await supabase
+      .from("solicitudes")
+      .select(
+        "id, codigo, estado, created_at, perfiles_cliente (nombres, apellidos)",
+      )
+      .order("created_at", { ascending: false })
+      .limit(6);
+    setRecientes(data || []);
   }
 
   if (loading)
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
         Cargando...
       </div>
     );
   if (!session) return null;
 
+  const hora = new Date().getHours();
+  const saludo = hora < 12 ? "Buenos días" : hora < 19 ? "Buenas tardes" : "Buenas noches";
+
+  const pendientes =
+    (stats.solicitudesPendientes || 0) +
+    (stats.kycPendientes || 0) +
+    (stats.tarjetasPendientes || 0);
+
+  const tarjetas = [
+    {
+      etiqueta: "Comprobantes por revisar",
+      valor: stats.solicitudesPendientes,
+      ruta: "/solicitudes",
+      urgente: true,
+    },
+    {
+      etiqueta: "Clientes por verificar",
+      valor: stats.kycPendientes,
+      ruta: "/kyc",
+      urgente: true,
+    },
+    {
+      etiqueta: "Tarjetas por aprobar",
+      valor: stats.tarjetasPendientes,
+      ruta: session.rol === "admin" ? "/tarjetas" : null,
+      urgente: true,
+    },
+    {
+      etiqueta: "Clientes activos",
+      valor: stats.clientesActivos,
+      ruta: null,
+      urgente: false,
+    },
+  ];
+
+  const accesos = SECCIONES.filter(
+    (s) => s.roles.includes(session.rol) && s.ruta !== "/dashboard",
+  );
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Panel Administrativo</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500">
-            {session.user.email} —{" "}
-            <span className="font-medium uppercase">{session.rol}</span>
-          </span>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            Cerrar sesión
-          </Button>
+    <Shell
+      session={session}
+      contadores={stats}
+      titulo="Resumen"
+      descripcion={
+        pendientes > 0
+          ? `${pendientes} ${pendientes === 1 ? "asunto pendiente" : "asuntos pendientes"} en total`
+          : "Todo al día"
+      }
+    >
+      {error && (
+        <div className="mb-5">
+          <Aviso onCerrar={() => setError("")}>{error}</Aviso>
         </div>
-      </nav>
+      )}
 
-      <main className="p-6 max-w-6xl mx-auto">
-        <h2 className="text-2xl font-semibold mb-6">Dashboard</h2>
+      {/* Saludo y estado general */}
+      <div className="mb-6 overflow-hidden rounded-xl bg-marca-900 p-6 text-white shadow-alzado">
+        <p className="text-[13px] text-white/50">{saludo}</p>
+        <h2 className="mt-1 text-[22px] font-semibold leading-tight">
+          {pendientes > 0
+            ? `Tienes ${pendientes} ${pendientes === 1 ? "asunto" : "asuntos"} esperando`
+            : "No queda nada pendiente"}
+        </h2>
+        {pendientes > 0 && (
+          <Link
+            href={
+              stats.solicitudesPendientes > 0
+                ? "/solicitudes"
+                : stats.kycPendientes > 0
+                  ? "/kyc"
+                  : "/tarjetas"
+            }
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-oro-500 px-4 py-2.5 text-[13px] font-semibold text-marca-900 transition hover:bg-oro-300"
+          >
+            Empezar a revisar
+            <Flecha className="h-4 w-4" />
+          </Link>
+        )}
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/kyc")}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-500">
-                KYC Pendientes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{stats.kycPendientes}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-500">
-                Clientes activos
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{stats.clientesActivos}</p>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/solicitudes")}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-500">
-                Solicitudes pendientes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">
-                {stats.solicitudesPendientes}
+      {/* Indicadores */}
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {tarjetas.map((t) => {
+          const contenido = (
+            <>
+              <p className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
+                {t.etiqueta}
               </p>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/alertas")}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-500">
-                Noticias activas
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{stats.noticiasActivas}</p>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/guias")}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-500">
-                Guías de banco
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{stats.guiasActivas}</p>
-            </CardContent>
-          </Card>
+              <p
+                className={cn(
+                  "cifras mt-2 text-[30px] font-bold leading-none",
+                  t.urgente && t.valor > 0
+                    ? "text-oro-600"
+                    : "text-foreground",
+                )}
+              >
+                {t.valor ?? 0}
+              </p>
+            </>
+          );
+          return t.ruta ? (
+            <Link
+              key={t.etiqueta}
+              href={t.ruta}
+              className="rounded-xl border border-border bg-card p-4 shadow-panel transition hover:border-marca-200 hover:shadow-alzado"
+            >
+              {contenido}
+            </Link>
+          ) : (
+            <div
+              key={t.etiqueta}
+              className="rounded-xl border border-border bg-card p-4 shadow-panel"
+            >
+              {contenido}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+        {/* Últimas solicitudes */}
+        <div className="rounded-xl border border-border bg-card shadow-panel">
+          <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
+            <h3 className="text-[14px] font-semibold">Últimas solicitudes</h3>
+            <Link
+              href="/solicitudes"
+              className="text-[13px] font-medium text-marca-600 transition hover:text-marca-700"
+            >
+              Ver todas
+            </Link>
+          </div>
+          {recientes.length === 0 ? (
+            <p className="px-5 py-8 text-center text-[13px] text-muted-foreground">
+              Todavía no hay solicitudes.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {recientes.map((s) => (
+                <li
+                  key={s.id}
+                  className="flex items-center gap-3 px-5 py-3 transition hover:bg-muted/40"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="cifras font-mono text-[12px] font-semibold text-marca-700">
+                      {s.codigo}
+                    </p>
+                    <p className="truncate text-[13px] text-muted-foreground">
+                      {s.perfiles_cliente
+                        ? `${s.perfiles_cliente.nombres} ${s.perfiles_cliente.apellidos}`
+                        : "Cliente sin perfil"}
+                    </p>
+                  </div>
+                  <Estado valor={s.estado} />
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/kyc")}
-          >
-            <CardContent className="p-6">
-              <h3 className="font-semibold mb-1">Gestión KYC</h3>
-              <p className="text-sm text-gray-500">
-                Revisar y aprobar clientes pendientes
-              </p>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/solicitudes")}
-          >
-            <CardContent className="p-6">
-              <h3 className="font-semibold mb-1">Solicitudes</h3>
-              <p className="text-sm text-gray-500">
-                Revisar comprobantes de operaciones
-              </p>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/alertas")}
-          >
-            <CardContent className="p-6">
-              <h3 className="font-semibold mb-1">Noticias y avisos</h3>
-              <p className="text-sm text-gray-500">
-                Crear y gestionar noticias para clientes
-              </p>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/guias")}
-          >
-            <CardContent className="p-6">
-              <h3 className="font-semibold mb-1">Guías de banco</h3>
-              <p className="text-sm text-gray-500">
-                Editar pasos e imágenes por banco
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/tarjetas")}
-          >
-            <CardContent className="p-6">
-              <h3 className="font-semibold mb-1">Verificación de tarjetas</h3>
-              <p className="text-sm text-gray-500">
-                Aprobar o rechazar tarjetas de clientes
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card
-            className="cursor-pointer hover:border-gray-300"
-            onClick={() => router.push("/auditoria")}
-          >
-            <CardContent className="p-6">
-              <h3 className="font-semibold mb-1">Auditoría</h3>
-              <p className="text-sm text-gray-500">
-                Historial de acciones del sistema
-              </p>
-            </CardContent>
-          </Card>
+        {/* Accesos */}
+        <div className="rounded-xl border border-border bg-card shadow-panel">
+          <div className="border-b border-border px-5 py-3.5">
+            <h3 className="text-[14px] font-semibold">Secciones</h3>
+          </div>
+          <ul className="divide-y divide-border">
+            {accesos.map((s) => {
+              const Icono = s.icono;
+              return (
+                <li key={s.ruta}>
+                  <Link
+                    href={s.ruta}
+                    className="flex items-center gap-3 px-5 py-3.5 transition hover:bg-muted/40"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-marca-50 text-marca-600">
+                      <Icono className="h-[18px] w-[18px]" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-medium text-foreground">
+                        {s.titulo}
+                      </span>
+                      <span className="block truncate text-[12px] text-muted-foreground">
+                        {s.detalle}
+                      </span>
+                    </span>
+                    <Flecha className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         </div>
-      </main>
-    </div>
+      </div>
+    </Shell>
   );
 }

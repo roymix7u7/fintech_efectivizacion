@@ -1,367 +1,653 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
+import { firmarCampo } from "@/lib/storage";
+import { cambiarEstado, registrarAuditoria, notificar } from "@/lib/acciones";
+import { cn } from "@/lib/utils";
+import Shell, { Lupa, Documento, Check, Cruz } from "@/components/shell";
+import Visor from "@/components/visor";
+import { Estado, Dato, Vacio, Aviso } from "@/components/marca";
+
+const BUCKET = "comprobantes";
+const FILTROS = [
+  { clave: "pendiente", etiqueta: "Por revisar" },
+  { clave: "aprobado", etiqueta: "Aprobadas" },
+  { clave: "rechazado", etiqueta: "Rechazadas" },
+];
+const MIN_MOTIVO = 10;
+
+function fechaCorta(iso) {
+  return new Date(iso).toLocaleDateString("es-PE", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+function fechaLarga(iso) {
+  return new Date(iso).toLocaleString("es-PE", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** Cuanto lleva esperando. Una cola se gestiona por antigüedad. */
+function espera(iso) {
+  const horas = Math.floor((Date.now() - new Date(iso).getTime()) / 3600000);
+  if (horas < 1) return { texto: "Recién llegada", urgente: false };
+  if (horas < 24) return { texto: `Hace ${horas} h`, urgente: horas >= 12 };
+  const dias = Math.floor(horas / 24);
+  return { texto: `Hace ${dias} ${dias === 1 ? "día" : "días"}`, urgente: true };
+}
 
 export default function SolicitudesPage() {
   const [session, setSession] = useState(null);
   const [solicitudes, setSolicitudes] = useState([]);
   const [filtro, setFiltro] = useState("pendiente");
   const [seleccionada, setSeleccionada] = useState(null);
+  const [cuentas, setCuentas] = useState([]);
+  const [cargandoCuentas, setCargandoCuentas] = useState(false);
   const [motivo, setMotivo] = useState("");
+  const [modoRechazo, setModoRechazo] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
   const [loading, setLoading] = useState(true);
   const [accion, setAccion] = useState(null);
-  const [fotoModal, setFotoModal] = useState(null);
+  const [error, setError] = useState("");
+  const [contadores, setContadores] = useState({});
   const router = useRouter();
 
-  useEffect(() => {
-    getSession().then((s) => {
-      if (!s) return router.push("/login");
-      if (!["gestor", "admin"].includes(s.rol))
-        return router.push("/dashboard");
-      setSession(s);
-      cargarSolicitudes("pendiente");
-    });
-  }, [router]);
-
-  async function cargarSolicitudes(estado) {
+  const cargar = useCallback(async (estado) => {
     setLoading(true);
+    setError("");
     setFiltro(estado);
     setSeleccionada(null);
+    setModoRechazo(false);
+    setMotivo("");
 
-    const { data } = await supabase
+    const { data, error: consultaError } = await supabase
       .from("solicitudes")
       .select(
-        `
-        id, codigo, banco, estado, nota_cliente, motivo_rechazo,
-        comprobante_url, created_at, fecha_revision,
-        tarjetas (banco, ultimos_4),
-        perfiles_cliente (nombres, apellidos, telefono, dni, user_id)
-      `,
+        `id, codigo, banco, estado, nota_cliente, motivo_rechazo,
+         comprobante_url, created_at, fecha_revision, cliente_id,
+         tarjetas (banco, ultimos_4),
+         perfiles_cliente (nombres, apellidos, telefono, dni, user_id)`,
       )
       .eq("estado", estado)
       .order("created_at", { ascending: true });
 
-    // Generar URLs firmadas para comprobantes
-    if (data) {
-      for (const sol of data) {
-        if (sol.comprobante_url && sol.perfiles_cliente?.user_id) {
-          try {
-            const urlParts = sol.comprobante_url.split("comprobantes/");
-            if (urlParts[1]) {
-              const path = decodeURIComponent(urlParts[1].split("?")[0]);
-              const { data: signedData } = await supabase.storage
-                .from("comprobantes")
-                .createSignedUrl(path, 3600);
-              if (signedData?.signedUrl)
-                sol.comprobante_url = signedData.signedUrl;
-            }
-          } catch (e) {
-            console.log("Error firmando URL:", e);
-          }
-        }
-      }
+    if (consultaError) {
+      setError("No se pudieron cargar las solicitudes: " + consultaError.message);
+      setSolicitudes([]);
+      setLoading(false);
+      return;
     }
 
-    setSolicitudes(data || []);
+    // Las URLs se firman al leer. La columna guarda el path del objeto.
+    const firmadas = await firmarCampo(
+      BUCKET,
+      data || [],
+      "comprobante_url",
+      "comprobante",
+    );
+    setSolicitudes(firmadas);
     setLoading(false);
+
+    // Primera de la cola preseleccionada: revisar es un trabajo en
+    // serie, no hace falta un clic extra para empezar.
+    if (firmadas.length > 0) abrir(firmadas[0]);
+    // abrir solo usa setters de estado, que React garantiza estables.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    getSession().then((s) => {
+      if (!s) return router.push("/login");
+      if (!["gestor", "admin"].includes(s.rol)) return router.push("/dashboard");
+      setSession(s);
+      cargar("pendiente");
+      contarPendientes();
+    });
+  }, [router, cargar]);
+
+  async function contarPendientes() {
+    const cuenta = async (tabla, filtros) => {
+      let q = supabase.from(tabla).select("*", { count: "exact", head: true });
+      for (const [k, v] of Object.entries(filtros)) q = q.eq(k, v);
+      const { count } = await q;
+      return count || 0;
+    };
+    setContadores({
+      solicitudesPendientes: await cuenta("solicitudes", { estado: "pendiente" }),
+      kycPendientes: await cuenta("users", { rol: "cliente", estado: "pendiente" }),
+      tarjetasPendientes: await cuenta("tarjetas", { estado: "pendiente", activa: true }),
+    });
   }
 
-  async function aprobarSolicitud(sol) {
-    setAccion("aprobando");
+  function abrir(sol) {
+    setSeleccionada(sol);
+    setMotivo("");
+    setModoRechazo(false);
+    cargarCuentas(sol.cliente_id);
+  }
 
-    await supabase
-      .from("solicitudes")
-      .update({
-        estado: "aprobado",
+  /**
+   * Cuentas del cliente. Sin esto el operador no sabe a que cuenta
+   * depositar: el cliente las registra en la app pero la solicitud no
+   * apunta a ninguna.
+   */
+  async function cargarCuentas(clienteId) {
+    setCuentas([]);
+    if (!clienteId) return;
+    setCargandoCuentas(true);
+    const { data } = await supabase
+      .from("cuentas_bancarias")
+      .select("id, banco, numero_cuenta, tipo")
+      .eq("cliente_id", clienteId)
+      .eq("activa", true)
+      .order("banco");
+    setCuentas(data || []);
+    setCargandoCuentas(false);
+  }
+
+  async function aprobar(sol) {
+    setAccion("aprobando");
+    setError("");
+
+    // Solo escribe si la fila sigue pendiente, para que dos revisores
+    // no resuelvan la misma solicitud a la vez.
+    const r = await cambiarEstado({
+      tabla: "solicitudes",
+      id: sol.id,
+      estadoActual: "pendiente",
+      estadoNuevo: "aprobado",
+      campos: {
         revisado_por: session.user.id,
         fecha_revision: new Date().toISOString(),
-      })
-      .eq("id", sol.id);
+      },
+    });
+    if (!r.ok) {
+      setAccion(null);
+      setError(r.error);
+      cargar(filtro);
+      return;
+    }
 
-    await supabase.from("auditoria_logs").insert({
+    await registrarAuditoria({
       usuario_id: session.user.id,
       accion: "APROBAR_SOLICITUD",
       entidad: "solicitudes",
       entidad_id: sol.id,
       datos_antes: { estado: "pendiente" },
-      datos_despues: { estado: "aprobado" },
+      datos_despues: { estado: "aprobado", codigo: sol.codigo },
+    });
+    await notificar({
+      userId: sol.perfiles_cliente?.user_id,
+      tipo: "solicitud_aprobada",
+      titulo: "Solicitud aprobada",
+      cuerpo: `Revisamos el comprobante de tu solicitud ${sol.codigo} y quedó aprobada.`,
     });
 
     setAccion(null);
-    setSeleccionada(null);
-    cargarSolicitudes(filtro);
+    cargar(filtro);
+    contarPendientes();
   }
 
-  async function rechazarSolicitud(sol) {
-    if (!motivo.trim()) return alert("Ingresa un motivo de rechazo.");
+  async function rechazar(sol) {
+    const texto = motivo.trim();
+    if (texto.length < MIN_MOTIVO) {
+      setError(
+        `Explica el motivo con al menos ${MIN_MOTIVO} caracteres: el cliente lo va a leer en su app.`,
+      );
+      return;
+    }
     setAccion("rechazando");
+    setError("");
 
-    await supabase
-      .from("solicitudes")
-      .update({
-        estado: "rechazado",
-        motivo_rechazo: motivo,
+    const r = await cambiarEstado({
+      tabla: "solicitudes",
+      id: sol.id,
+      estadoActual: "pendiente",
+      estadoNuevo: "rechazado",
+      campos: {
+        motivo_rechazo: texto,
         revisado_por: session.user.id,
         fecha_revision: new Date().toISOString(),
-      })
-      .eq("id", sol.id);
+      },
+    });
+    if (!r.ok) {
+      setAccion(null);
+      setError(r.error);
+      cargar(filtro);
+      return;
+    }
 
-    await supabase.from("auditoria_logs").insert({
+    await registrarAuditoria({
       usuario_id: session.user.id,
       accion: "RECHAZAR_SOLICITUD",
       entidad: "solicitudes",
       entidad_id: sol.id,
       datos_antes: { estado: "pendiente" },
-      datos_despues: { estado: "rechazado", motivo },
+      datos_despues: { estado: "rechazado", motivo: texto },
+    });
+    await notificar({
+      userId: sol.perfiles_cliente?.user_id,
+      tipo: "solicitud_rechazada",
+      titulo: "Solicitud rechazada",
+      cuerpo: `Tu solicitud ${sol.codigo} fue rechazada. Motivo: ${texto}`,
     });
 
     setAccion(null);
-    setMotivo("");
-    setSeleccionada(null);
-    cargarSolicitudes(filtro);
+    cargar(filtro);
+    contarPendientes();
   }
+
+  const visibles = useMemo(() => {
+    const t = busqueda.trim().toLowerCase();
+    if (!t) return solicitudes;
+    return solicitudes.filter((s) =>
+      [
+        s.codigo,
+        s.banco,
+        s.perfiles_cliente?.nombres,
+        s.perfiles_cliente?.apellidos,
+        s.perfiles_cliente?.dni,
+        s.tarjetas?.ultimos_4,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(t),
+    );
+  }, [solicitudes, busqueda]);
 
   if (!session) return null;
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            ← Dashboard
-          </button>
-          <h1 className="text-lg font-semibold">Solicitudes de clientes</h1>
-        </div>
-        <span className="text-sm text-gray-500">{session.user.email}</span>
-      </nav>
+  const cliente = seleccionada?.perfiles_cliente;
+  const nombre = cliente
+    ? `${cliente.nombres} ${cliente.apellidos}`
+    : "Cliente sin perfil";
 
-      <main className="p-6 max-w-6xl mx-auto">
-        <div className="flex gap-2 mb-6">
-          {["pendiente", "aprobado", "rechazado"].map((e) => (
-            <Button
-              key={e}
-              variant={filtro === e ? "default" : "outline"}
-              size="sm"
-              onClick={() => cargarSolicitudes(e)}
+  return (
+    <Shell
+      session={session}
+      contadores={contadores}
+      titulo="Solicitudes"
+      descripcion={
+        loading
+          ? "Cargando la cola..."
+          : filtro === "pendiente"
+            ? `${solicitudes.length} ${solicitudes.length === 1 ? "comprobante espera" : "comprobantes esperan"} revisión`
+            : `${solicitudes.length} en el historial`
+      }
+      acciones={
+        <div className="hidden items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 sm:flex">
+          {FILTROS.map((f) => (
+            <button
+              key={f.clave}
+              onClick={() => cargar(f.clave)}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-[13px] font-medium transition",
+                filtro === f.clave
+                  ? "bg-card text-foreground shadow-panel"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
             >
-              {e.charAt(0).toUpperCase() + e.slice(1)}s
-            </Button>
+              {f.etiqueta}
+            </button>
           ))}
         </div>
+      }
+    >
+      {error && (
+        <div className="mb-5">
+          <Aviso titulo="No se pudo completar" onCerrar={() => setError("")}>
+            {error}
+          </Aviso>
+        </div>
+      )}
 
-        {loading ? (
-          <p className="text-gray-500">Cargando...</p>
-        ) : solicitudes.length === 0 ? (
-          <p className="text-gray-500">
-            No hay solicitudes con estado &quot;{filtro}&quot;.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Lista */}
-            <div className="space-y-3">
-              {solicitudes.map((sol) => (
-                <Card
-                  key={sol.id}
-                  className={`cursor-pointer transition-colors ${
-                    seleccionada?.id === sol.id
-                      ? "border-blue-400 bg-blue-50"
-                      : "hover:border-gray-300"
-                  }`}
-                  onClick={() => {
-                    setSeleccionada(sol);
-                    setMotivo("");
-                  }}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-mono text-sm font-medium">
-                        {sol.codigo}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {new Date(sol.created_at).toLocaleString("es-PE")}
-                      </span>
-                    </div>
-                    <p className="text-sm font-medium">
-                      {sol.perfiles_cliente?.nombres}{" "}
-                      {sol.perfiles_cliente?.apellidos}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {sol.tarjetas?.banco} •••• {sol.tarjetas?.ultimos_4}
-                    </p>
-                    {sol.nota_cliente && (
-                      <p className="text-xs text-gray-400 mt-1 italic truncate">
-                        {sol.nota_cliente}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
+      {/* Filtros en móvil */}
+      <div className="mb-4 flex items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 sm:hidden">
+        {FILTROS.map((f) => (
+          <button
+            key={f.clave}
+            onClick={() => cargar(f.clave)}
+            className={cn(
+              "flex-1 rounded-md px-2 py-1.5 text-[13px] font-medium transition",
+              filtro === f.clave
+                ? "bg-card text-foreground shadow-panel"
+                : "text-muted-foreground",
+            )}
+          >
+            {f.etiqueta}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+        {/* ══════════ Cola ══════════ */}
+        <section className="flex min-w-0 flex-col">
+          <div className="relative mb-3">
+            <Lupa className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Código, nombre, DNI o banco"
+              className="w-full rounded-lg border border-input bg-card py-2.5 pl-9 pr-3 text-sm outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
+            />
+          </div>
+
+          {loading ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-[92px] animate-pulse rounded-xl bg-muted"
+                />
               ))}
             </div>
-
-            {/* Detalle */}
-            {seleccionada && (
-              <div className="space-y-4">
-                {/* Comprobante */}
-                <Card>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold mb-3">Comprobante</h3>
-                    {seleccionada.comprobante_url ? (
-                      <img
-                        src={seleccionada.comprobante_url}
-                        alt="Comprobante"
-                        className="w-full rounded-lg border max-h-96 object-contain bg-gray-100 cursor-pointer hover:opacity-80 transition"
-                        onClick={() =>
-                          setFotoModal(seleccionada.comprobante_url)
-                        }
-                      />
-                    ) : (
-                      <div className="h-40 rounded border bg-gray-100 flex items-center justify-center text-gray-400">
-                        Sin comprobante
-                      </div>
+          ) : visibles.length === 0 ? (
+            <Vacio
+              icono={<Documento className="h-5 w-5" />}
+              titulo={busqueda ? "Sin coincidencias" : "Cola vacía"}
+              detalle={
+                busqueda
+                  ? "Ninguna solicitud de esta lista coincide con lo que buscas."
+                  : filtro === "pendiente"
+                    ? "No queda ningún comprobante por revisar. Buen trabajo."
+                    : "Todavía no hay solicitudes con este estado."
+              }
+            />
+          ) : (
+            <div className="scroll-fino -mx-1 max-h-[calc(100vh-260px)] space-y-2 overflow-y-auto px-1">
+              {visibles.map((sol) => {
+                const activa = seleccionada?.id === sol.id;
+                const e = espera(sol.created_at);
+                return (
+                  <button
+                    key={sol.id}
+                    onClick={() => abrir(sol)}
+                    className={cn(
+                      "w-full rounded-xl border bg-card p-3.5 text-left transition",
+                      activa
+                        ? "border-marca-600 shadow-alzado ring-1 ring-marca-600"
+                        : "border-border hover:border-marca-200 hover:shadow-panel",
                     )}
-                  </CardContent>
-                </Card>
-
-                {/* Datos del cliente */}
-                <Card>
-                  <CardContent className="p-4 space-y-2 text-sm">
-                    <h3 className="font-semibold mb-2">
-                      Datos de la solicitud
-                    </h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <span className="text-gray-500">Código</span>
-                        <p className="font-mono font-medium">
-                          {seleccionada.codigo}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Cliente</span>
-                        <p className="font-medium">
-                          {seleccionada.perfiles_cliente?.nombres}{" "}
-                          {seleccionada.perfiles_cliente?.apellidos}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">DNI</span>
-                        <p className="font-medium">
-                          {seleccionada.perfiles_cliente?.dni || "—"}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Teléfono</span>
-                        <p className="font-medium">
-                          {seleccionada.perfiles_cliente?.telefono || "—"}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Tarjeta</span>
-                        <p className="font-medium">
-                          {seleccionada.tarjetas?.banco} ••••{" "}
-                          {seleccionada.tarjetas?.ultimos_4}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Fecha</span>
-                        <p className="font-medium">
-                          {new Date(seleccionada.created_at).toLocaleString(
-                            "es-PE",
-                          )}
-                        </p>
-                      </div>
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="cifras font-mono text-[12px] font-semibold text-marca-700">
+                        {sol.codigo}
+                      </span>
+                      <span
+                        className={cn(
+                          "ml-auto shrink-0 text-[11px]",
+                          filtro === "pendiente" && e.urgente
+                            ? "font-semibold text-oro-700"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {filtro === "pendiente"
+                          ? e.texto
+                          : fechaCorta(sol.created_at)}
+                      </span>
                     </div>
-                    {seleccionada.nota_cliente && (
-                      <div className="mt-2 pt-2 border-t">
-                        <span className="text-gray-500">Nota del cliente</span>
-                        <p className="font-medium italic">
-                          {seleccionada.nota_cliente}
-                        </p>
-                      </div>
+                    <p className="mt-1.5 truncate text-sm font-semibold text-foreground">
+                      {sol.perfiles_cliente
+                        ? `${sol.perfiles_cliente.nombres} ${sol.perfiles_cliente.apellidos}`
+                        : "Cliente sin perfil"}
+                    </p>
+                    <div className="mt-1 flex items-center gap-2 text-[12px] text-muted-foreground">
+                      <span className="font-medium text-foreground/70">
+                        {sol.tarjetas?.banco || sol.banco}
+                      </span>
+                      <span className="cifras font-mono">
+                        ···· {sol.tarjetas?.ultimos_4 || "····"}
+                      </span>
+                      {!sol.comprobante && (
+                        <span className="ml-auto text-red-600">
+                          sin imagen
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* ══════════ Detalle ══════════ */}
+        <section className="min-w-0">
+          {!seleccionada ? (
+            <Vacio
+              icono={<Documento className="h-5 w-5" />}
+              titulo="Elige una solicitud"
+              detalle="Selecciona un elemento de la cola para ver el comprobante y resolverlo."
+            />
+          ) : (
+            <div className="space-y-4 animate-aparecer">
+              {/* Encabezado */}
+              <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-card p-4 shadow-panel">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="cifras font-mono text-[15px] font-bold text-marca-700">
+                      {seleccionada.codigo}
+                    </h2>
+                    <Estado valor={seleccionada.estado} />
+                  </div>
+                  <p className="mt-1 text-[13px] text-muted-foreground">
+                    Enviada el {fechaLarga(seleccionada.created_at)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+                {/* Comprobante */}
+                <div className="min-w-0">
+                  <Visor
+                    url={seleccionada.comprobante}
+                    error={seleccionada.comprobante_error}
+                    path={seleccionada.comprobante_path}
+                    titulo="Comprobante de la operación"
+                    alto="h-[460px]"
+                  />
+                  {seleccionada.nota_cliente && (
+                    <div className="mt-3 rounded-lg border-l-[3px] border-marca-600 bg-marca-50 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-marca-600">
+                        Nota del cliente
+                      </p>
+                      <p className="mt-1 text-sm text-foreground">
+                        {seleccionada.nota_cliente}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Datos y acciones */}
+                <div className="min-w-0 space-y-4">
+                  <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
+                    <h3 className="mb-3 text-[13px] font-semibold text-foreground">
+                      Titular
+                    </h3>
+                    <p className="text-base font-semibold text-foreground">
+                      {nombre}
+                    </p>
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+                      <Dato etiqueta="DNI" mono>
+                        {cliente?.dni}
+                      </Dato>
+                      <Dato etiqueta="Teléfono" mono>
+                        {cliente?.telefono}
+                      </Dato>
+                      <Dato etiqueta="Tarjeta usada">
+                        {seleccionada.tarjetas?.banco || seleccionada.banco}
+                      </Dato>
+                      <Dato etiqueta="Terminación" mono>
+                        ···· {seleccionada.tarjetas?.ultimos_4}
+                      </Dato>
+                    </dl>
+                  </div>
+
+                  {/* Cuentas para depositar */}
+                  <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
+                    <h3 className="mb-3 text-[13px] font-semibold text-foreground">
+                      Cuentas para depositar
+                    </h3>
+                    {cargandoCuentas ? (
+                      <div className="h-12 animate-pulse rounded-lg bg-muted" />
+                    ) : cuentas.length === 0 ? (
+                      <p className="rounded-lg bg-oro-50 px-3 py-2.5 text-[13px] text-oro-700">
+                        Este cliente no registró ninguna cuenta bancaria.
+                      </p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {cuentas.map((c) => (
+                          <li
+                            key={c.id}
+                            className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-[13px] font-semibold text-foreground">
+                                {c.banco}
+                              </p>
+                              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                                {c.tipo === "interbancaria"
+                                  ? "Interbancaria CCI"
+                                  : "Cuenta de ahorros"}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() =>
+                                navigator.clipboard?.writeText(c.numero_cuenta)
+                              }
+                              title="Copiar número"
+                              className="cifras shrink-0 rounded-md px-2 py-1 font-mono text-[13px] font-semibold text-marca-700 transition hover:bg-marca-50"
+                            >
+                              {c.numero_cuenta}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                    {seleccionada.estado === "rechazado" &&
-                      seleccionada.motivo_rechazo && (
-                        <div className="mt-2 pt-2 border-t bg-red-50 p-3 rounded">
-                          <span className="text-red-500 font-medium">
-                            Motivo del rechazo
-                          </span>
-                          <p className="text-red-700">
+                  </div>
+
+                  {/* Resolución */}
+                  {seleccionada.estado === "pendiente" ? (
+                    <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
+                      {!modoRechazo ? (
+                        <div className="space-y-2">
+                          <button
+                            onClick={() => aprobar(seleccionada)}
+                            disabled={accion !== null}
+                            className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            <Check className="h-4 w-4" />
+                            {accion === "aprobando"
+                              ? "Aprobando..."
+                              : "Aprobar solicitud"}
+                          </button>
+                          <button
+                            onClick={() => setModoRechazo(true)}
+                            disabled={accion !== null}
+                            className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                          >
+                            <Cruz className="h-4 w-4" />
+                            Rechazar
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-[13px] font-semibold text-foreground">
+                              Motivo del rechazo
+                            </label>
+                            <p className="mt-0.5 text-[12px] text-muted-foreground">
+                              El cliente lee este texto en su app. Dile qué
+                              tiene que corregir.
+                            </p>
+                          </div>
+                          <textarea
+                            autoFocus
+                            value={motivo}
+                            onChange={(e) => setMotivo(e.target.value)}
+                            rows={4}
+                            placeholder="Ej: El voucher está borroso y no se distingue el número de operación."
+                            className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2.5 text-sm outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
+                          />
+                          <div className="flex items-center justify-between text-[12px]">
+                            <span
+                              className={cn(
+                                motivo.trim().length >= MIN_MOTIVO
+                                  ? "text-emerald-600"
+                                  : "text-muted-foreground",
+                              )}
+                            >
+                              {motivo.trim().length} / {MIN_MOTIVO} mínimo
+                            </span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setModoRechazo(false);
+                                setMotivo("");
+                              }}
+                              disabled={accion !== null}
+                              className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:bg-muted"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => rechazar(seleccionada)}
+                              disabled={
+                                accion !== null ||
+                                motivo.trim().length < MIN_MOTIVO
+                              }
+                              className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-40"
+                            >
+                              {accion === "rechazando"
+                                ? "Rechazando..."
+                                : "Confirmar rechazo"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
+                      <h3 className="mb-3 text-[13px] font-semibold text-foreground">
+                        Resolución
+                      </h3>
+                      <dl className="space-y-3">
+                        <Dato etiqueta="Resuelta el">
+                          {seleccionada.fecha_revision
+                            ? fechaLarga(seleccionada.fecha_revision)
+                            : null}
+                        </Dato>
+                      </dl>
+                      {seleccionada.motivo_rechazo && (
+                        <div className="mt-3 rounded-lg border-l-[3px] border-red-500 bg-red-50 px-3 py-2.5">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-red-600">
+                            Motivo comunicado al cliente
+                          </p>
+                          <p className="mt-1 text-sm text-red-900">
                             {seleccionada.motivo_rechazo}
                           </p>
                         </div>
                       )}
-                  </CardContent>
-                </Card>
-
-                {/* Acciones */}
-                {filtro === "pendiente" && (
-                  <Card>
-                    <CardContent className="p-4 space-y-3">
-                      <Button
-                        onClick={() => aprobarSolicitud(seleccionada)}
-                        disabled={accion !== null}
-                        className="w-full bg-green-600 hover:bg-green-700"
-                      >
-                        {accion === "aprobando"
-                          ? "Aprobando..."
-                          : "Aprobar solicitud"}
-                      </Button>
-
-                      <div className="border-t pt-3 space-y-2">
-                        <Textarea
-                          placeholder="Motivo del rechazo..."
-                          value={motivo}
-                          onChange={(e) => setMotivo(e.target.value)}
-                        />
-                        <Button
-                          onClick={() => rechazarSolicitud(seleccionada)}
-                          disabled={accion !== null}
-                          variant="outline"
-                          className="w-full border-red-300 text-red-600 hover:bg-red-50"
-                        >
-                          {accion === "rechazando"
-                            ? "Rechazando..."
-                            : "Rechazar solicitud"}
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-        )}
-      </main>
-
-      {/* Modal foto pantalla completa */}
-      {fotoModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center cursor-pointer"
-          style={{ backgroundColor: "rgba(0,0,0,0.9)" }}
-          onClick={() => setFotoModal(null)}
-        >
-          <button
-            className="absolute top-4 right-4 text-white text-3xl font-bold hover:text-gray-300"
-            onClick={() => setFotoModal(null)}
-          >
-            ✕
-          </button>
-          <img
-            src={fotoModal}
-            alt="Comprobante ampliado"
-            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      )}
-    </div>
+            </div>
+          )}
+        </section>
+      </div>
+    </Shell>
   );
 }
