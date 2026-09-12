@@ -12,6 +12,8 @@ import { supabase } from "../../src/lib/supabase";
 import Header from "../../src/components/Header";
 import MenuLateral from "../../src/components/MenuLateral";
 import COLORS from "../../src/theme/colors";
+import TIPO from "../../src/theme/tipografia";
+import { Aparece } from "../../src/components/Cargando";
 import { confirmar, mensajeError, alerta } from "../../src/lib/ui";
 import { limpiarCache } from "../../src/lib/cache";
 
@@ -102,7 +104,8 @@ export default function PerfilScreen() {
 
       <ScrollView contentContainerStyle={s.content}>
         {/* Avatar */}
-        <View style={s.avatarSection}>
+        <Aparece>
+          <View style={s.avatarSection}>
           <View style={s.avatar}>
             <Text style={s.avatarText}>
               {iniciales}
@@ -134,7 +137,8 @@ export default function PerfilScreen() {
               {perfil?.validado_por ? "Cuenta verificada" : "En revisión"}
             </Text>
           </View>
-        </View>
+          </View>
+        </Aparece>
 
         {/* Datos */}
         <View style={s.datosCard}>

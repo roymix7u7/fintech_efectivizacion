@@ -13,6 +13,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
+import TIPO from "../src/theme/tipografia";
 import { alerta, mensajeError } from "../src/lib/ui";
 import { validarEmail } from "../src/lib/validaciones";
 import { hayConexion } from "../src/lib/conexion";
@@ -232,13 +233,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 28,
     paddingTop: 32,
   },
-  title: { fontSize: 24, fontWeight: "700", color: COLORS.text },
-  subtitle: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    marginTop: 4,
-    marginBottom: 28,
-  },
+  title: { ...TIPO.titulo },
+  subtitle: { ...TIPO.apoyo, marginTop: 4, marginBottom: 28 },
   form: { gap: 16 },
   inputContainer: {
     flexDirection: "row",

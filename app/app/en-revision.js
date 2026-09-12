@@ -11,6 +11,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
+import TIPO from "../src/theme/tipografia";
 import { alerta, confirmar, mensajeError } from "../src/lib/ui";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
 import { limpiarCache } from "../src/lib/cache";
@@ -263,25 +264,15 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.borderLight,
   },
-  titulo: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: COLORS.text,
-    textAlign: "center",
-  },
+  titulo: { ...TIPO.titulo, fontSize: 22, textAlign: "center" },
   mensaje: {
-    fontSize: 15,
+    ...TIPO.cuerpo,
     color: COLORS.textSecondary,
     textAlign: "center",
     lineHeight: 22,
     marginTop: 10,
   },
-  sub: {
-    fontSize: 13,
-    color: COLORS.textLight,
-    textAlign: "center",
-    marginTop: 6,
-  },
+  sub: { ...TIPO.micro, textAlign: "center", marginTop: 6 },
   motivoBox: {
     backgroundColor: COLORS.warningLight,
     borderLeftWidth: 4,

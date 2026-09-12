@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Image } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { supabase } from "../../src/lib/supabase";
+import COLORS from "../../src/theme/colors";
+import TIPO from "../../src/theme/tipografia";
+import { Aparece } from "../../src/components/Cargando";
 
 export default function GuiaBancoScreen() {
   const { banco } = useLocalSearchParams();
@@ -68,8 +71,9 @@ export default function GuiaBancoScreen() {
       ) : (
         pasos
           .sort((a, b) => a.orden - b.orden)
-          .map((paso) => (
-            <View key={paso.orden} style={styles.pasoCard}>
+          .map((paso, i) => (
+            <Aparece key={paso.orden} retraso={Math.min(i, 8) * 80}>
+            <View style={styles.pasoCard}>
               <View style={styles.pasoHeader}>
                 <View style={styles.pasoNumero}>
                   <Text style={styles.pasoNumeroText}>{paso.orden}</Text>
@@ -85,6 +89,7 @@ export default function GuiaBancoScreen() {
                 />
               )}
             </View>
+            </Aparece>
           ))
       )}
     </ScrollView>

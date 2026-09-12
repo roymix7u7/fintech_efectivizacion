@@ -9,6 +9,7 @@ import {
 import { useRouter } from "expo-router";
 import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
+import TIPO from "../src/theme/tipografia";
 import { alerta, mensajeError } from "../src/lib/ui";
 import {
   validarEmail,

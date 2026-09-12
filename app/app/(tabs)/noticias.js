@@ -12,6 +12,8 @@ import { supabase } from "../../src/lib/supabase";
 import Header from "../../src/components/Header";
 import MenuLateral from "../../src/components/MenuLateral";
 import COLORS from "../../src/theme/colors";
+import TIPO from "../../src/theme/tipografia";
+import { EsqueletoLista, Aparece } from "../../src/components/Cargando";
 
 export default function NoticiasScreen() {
   const [alertas, setAlertas] = useState([]);
@@ -89,7 +91,7 @@ export default function NoticiasScreen() {
         <Text style={s.subtitulo}>Mantente al día con las novedades</Text>
 
         {loading ? (
-          <Text style={s.empty}>Cargando...</Text>
+          <EsqueletoLista filas={3} alto={104} />
         ) : alertas.length === 0 ? (
           <View style={s.emptyContainer}>
             <Ionicons
@@ -101,11 +103,11 @@ export default function NoticiasScreen() {
             <Text style={s.empty}>No hay noticias por el momento</Text>
           </View>
         ) : (
-          alertas.map((alerta) => {
+          alertas.map((alerta, i) => {
             const c = colores[alerta.tipo] || colores.info;
             return (
+              <Aparece key={alerta.id} retraso={Math.min(i, 8) * 60}>
               <View
-                key={alerta.id}
                 style={[s.card, { borderLeftColor: c.border }]}
               >
                 <View style={s.cardHeader}>
@@ -131,6 +133,7 @@ export default function NoticiasScreen() {
                   </Text>
                 )}
               </View>
+              </Aparece>
             );
           })
         )}
