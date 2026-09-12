@@ -20,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { alerta, confirmar, mensajeError } from "../../src/lib/ui";
 import { subirImagen, borrarImagenes, urlsFirmadas, extraerPath } from "../../src/lib/storage";
 import { validarUltimos4, validarCuenta } from "../../src/lib/validaciones";
+import { EsqueletoLista } from "../../src/components/Cargando";
 
 const BUCKET_TARJETAS = "tarjetas-fotos";
 
@@ -299,8 +300,11 @@ export default function TarjetasScreen() {
 
   if (loading)
     return (
-      <View style={[s.container, s.centrado]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={s.container}>
+        <Header onMenuPress={() => setMenuVisible(true)} titulo="Tarjetas" />
+        <View style={s.content}>
+          <EsqueletoLista filas={3} alto={100} />
+        </View>
       </View>
     );
 

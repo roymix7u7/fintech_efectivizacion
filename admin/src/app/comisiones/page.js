@@ -9,6 +9,7 @@ import { estadoCola, contadoresDe } from "@/lib/cola";
 import { cn } from "@/lib/utils";
 import Shell, { Lupa, Check } from "@/components/shell";
 import { Vacio, Aviso, Estado } from "@/components/marca";
+import { EsqueletoTarjetas, EsqueletoFilas } from "@/components/carga";
 
 /**
  * Las comisiones viven en dos niveles. Cada banco tiene una tarifa
@@ -284,10 +285,9 @@ export default function ComisionesPage() {
       )}
 
       {loading ? (
-        <div className="space-y-3">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-xl bg-muted" />
-          ))}
+        <div className="space-y-4">
+          <EsqueletoTarjetas cuantas={4} />
+          <EsqueletoFilas filas={5} />
         </div>
       ) : bancos.length === 0 ? (
         <Vacio

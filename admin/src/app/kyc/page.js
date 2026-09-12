@@ -1,13 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { explicarError } from "@/lib/acciones";
+import { estadoCola, contadoresDe } from "@/lib/cola";
+import { useRetraso } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import Shell, { Lupa, Persona, Flecha } from "@/components/shell";
+import Paginador from "@/components/paginador";
+import { EsqueletoFilas, BarraCarga, Esqueleto } from "@/components/carga";
 import { Estado, Vacio, Aviso } from "@/components/marca";
+
+const POR_PAGINA = 25;
 
 const FILTROS = [
   { clave: "pendiente", etiqueta: "Por revisar" },
@@ -30,43 +37,86 @@ export default function KYCPage() {
   const [clientes, setClientes] = useState([]);
   const [filtro, setFiltro] = useState("pendiente");
   const [busqueda, setBusqueda] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [pagina, setPagina] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [primeraCarga, setPrimeraCarga] = useState(true);
+  const [refrescando, setRefrescando] = useState(false);
   const [error, setError] = useState("");
   const [contadores, setContadores] = useState({});
   const router = useRouter();
 
-  const cargar = useCallback(async (estado) => {
-    setLoading(true);
-    setError("");
-    setFiltro(estado);
+  const termino = useRetraso(busqueda, 350);
+  const peticion = useRef(0);
 
-    const { data: usuarios, error: consultaError } = await supabase
+  const cargar = useCallback(async (estado, pag, buscar, silencioso) => {
+    const mia = ++peticion.current;
+    if (silencioso) setRefrescando(true);
+    else setPrimeraCarga(true);
+    setError("");
+
+    // La busqueda va al servidor. Con treinta mil clientes, traer la
+    // lista entera para filtrarla en el navegador no es viable.
+    let ids = null;
+    const t = (buscar || "").trim();
+    if (t.length >= 2) {
+      const patron = `%${t}%`;
+      const { data: perfiles } = await supabase
+        .from("perfiles_cliente")
+        .select("user_id")
+        .or(
+          `nombres.ilike.${patron},apellidos.ilike.${patron},dni.ilike.${patron},telefono.ilike.${patron}`,
+        )
+        .limit(150);
+      ids = (perfiles || []).map((p) => p.user_id);
+    }
+
+    let q = supabase
       .from("users")
-      .select("id, email, estado, created_at")
+      .select("id, email, estado, created_at", { count: "exact" })
       .eq("rol", "cliente")
-      .eq("estado", estado)
-      .order("created_at", { ascending: estado === "pendiente" });
+      .eq("estado", estado);
+
+    if (t.length >= 2) {
+      const patron = `%${t}%`;
+      const partes = [`email.ilike.${patron}`];
+      if (ids && ids.length > 0) partes.push(`id.in.(${ids.join(",")})`);
+      q = q.or(partes.join(","));
+    }
+
+    const { data: usuarios, count, error: consultaError } = await q
+      .order("created_at", { ascending: estado === "pendiente" })
+      .range(pag * POR_PAGINA, pag * POR_PAGINA + POR_PAGINA - 1);
+
+    if (mia !== peticion.current) return;
 
     if (consultaError) {
-      setError("No se pudieron cargar los clientes: " + consultaError.message);
+      setError(explicarError(consultaError, "No se pudieron cargar los clientes."));
       setClientes([]);
-      setLoading(false);
+      setTotal(0);
+      setPrimeraCarga(false);
+      setRefrescando(false);
       return;
     }
+
+    setTotal(count || 0);
 
     if (!usuarios || usuarios.length === 0) {
       setClientes([]);
-      setLoading(false);
+      setPrimeraCarga(false);
+      setRefrescando(false);
       return;
     }
 
+    // Solo se piden los perfiles de la pagina visible, no de todos.
     const { data: perfiles } = await supabase
       .from("perfiles_cliente")
-      .select("*")
+      .select("user_id, nombres, apellidos, dni, telefono")
       .in(
         "user_id",
         usuarios.map((u) => u.id),
       );
+
+    if (mia !== peticion.current) return;
 
     setClientes(
       usuarios.map((u) => ({
@@ -74,7 +124,8 @@ export default function KYCPage() {
         perfil: perfiles?.find((p) => p.user_id === u.id) || null,
       })),
     );
-    setLoading(false);
+    setPrimeraCarga(false);
+    setRefrescando(false);
   }, []);
 
   useEffect(() => {
@@ -83,36 +134,20 @@ export default function KYCPage() {
       if (!["gestor", "supervisor", "admin"].includes(s.rol))
         return router.push("/dashboard");
       setSession(s);
-      cargar("pendiente");
-      contarPendientes();
+      cargar("pendiente", 0, "", false);
+      estadoCola().then(({ colas }) => setContadores(contadoresDe(colas)));
     });
   }, [router, cargar]);
 
-  async function contarPendientes() {
-    const cuenta = async (tabla, filtros) => {
-      let q = supabase.from(tabla).select("*", { count: "exact", head: true });
-      for (const [k, v] of Object.entries(filtros)) q = q.eq(k, v);
-      const { count } = await q;
-      return count || 0;
-    };
-    setContadores({
-      solicitudesPendientes: await cuenta("solicitudes", { estado: "pendiente" }),
-      kycPendientes: await cuenta("users", { rol: "cliente", estado: "pendiente" }),
-      tarjetasPendientes: await cuenta("tarjetas", { estado: "pendiente", activa: true }),
-    });
-  }
+  useEffect(() => {
+    if (!session) return;
+    cargar(filtro, pagina, termino, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [termino, pagina, filtro]);
 
-  const visibles = useMemo(() => {
-    const t = busqueda.trim().toLowerCase();
-    if (!t) return clientes;
-    return clientes.filter((c) =>
-      [c.email, c.perfil?.nombres, c.perfil?.apellidos, c.perfil?.dni, c.perfil?.telefono]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(t),
-    );
-  }, [clientes, busqueda]);
+  useEffect(() => {
+    setPagina(0);
+  }, [termino, filtro]);
 
   if (!session) return null;
 
@@ -122,20 +157,20 @@ export default function KYCPage() {
       contadores={contadores}
       titulo="Verificación de clientes"
       descripcion={
-        loading
+        primeraCarga
           ? "Cargando..."
           : filtro === "pendiente"
-            ? `${clientes.length} ${clientes.length === 1 ? "cliente espera" : "clientes esperan"} revisión`
-            : `${clientes.length} en esta lista`
+            ? `${total} ${total === 1 ? "cliente espera" : "clientes esperan"} revisión`
+            : `${total} en esta lista`
       }
       acciones={
         <div className="hidden items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 lg:flex">
           {FILTROS.map((f) => (
             <button
               key={f.clave}
-              onClick={() => cargar(f.clave)}
+              onClick={() => setFiltro(f.clave)}
               className={cn(
-                "rounded-md px-3 py-1.5 text-[13px] font-medium transition",
+                "pulsable rounded-md px-3 py-1.5 text-[0.8667rem] font-medium",
                 filtro === f.clave
                   ? "bg-card text-foreground shadow-panel"
                   : "text-muted-foreground hover:text-foreground",
@@ -147,8 +182,10 @@ export default function KYCPage() {
         </div>
       }
     >
+      <BarraCarga activa={refrescando} />
+
       {error && (
-        <div className="mb-5">
+        <div className="mb-5 animate-aparecer">
           <Aviso onCerrar={() => setError("")}>{error}</Aviso>
         </div>
       )}
@@ -157,9 +194,9 @@ export default function KYCPage() {
         {FILTROS.map((f) => (
           <button
             key={f.clave}
-            onClick={() => cargar(f.clave)}
+            onClick={() => setFiltro(f.clave)}
             className={cn(
-              "rounded-lg border px-3 py-1.5 text-[13px] font-medium transition",
+              "pulsable rounded-lg border px-3 py-1.5 text-[0.8667rem] font-medium",
               filtro === f.clave
                 ? "border-marca-600 bg-marca-50 text-marca-700"
                 : "border-border text-muted-foreground",
@@ -177,22 +214,23 @@ export default function KYCPage() {
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           placeholder="Nombre, DNI, correo o teléfono"
-          className="w-full rounded-lg border border-input bg-card py-2.5 pl-9 pr-3 text-sm outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
+          className="w-full rounded-lg border border-input bg-card py-2.5 pl-9 pr-9 text-[0.9333rem] outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
         />
+        {busqueda !== termino && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2">
+            <Esqueleto className="h-3 w-3 rounded-full" />
+          </span>
+        )}
       </div>
 
-      {loading ? (
-        <div className="space-y-2">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-[72px] animate-pulse rounded-xl bg-muted" />
-          ))}
-        </div>
-      ) : visibles.length === 0 ? (
+      {primeraCarga ? (
+        <EsqueletoFilas filas={8} alto="h-[68px]" />
+      ) : clientes.length === 0 ? (
         <Vacio
           icono={<Persona className="h-5 w-5" />}
-          titulo={busqueda ? "Sin coincidencias" : "Nada por aquí"}
+          titulo={termino ? "Sin coincidencias" : "Nada por aquí"}
           detalle={
-            busqueda
+            termino
               ? "Ningún cliente de esta lista coincide con lo que buscas."
               : filtro === "pendiente"
                 ? "No queda ningún cliente por verificar."
@@ -200,62 +238,80 @@ export default function KYCPage() {
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-panel">
-          <ul className="divide-y divide-border">
-            {visibles.map((c) => {
-              const sinPerfil = !c.perfil;
-              return (
-                <li key={c.id}>
-                  <Link
-                    href={`/kyc/${c.id}`}
-                    className="flex items-center gap-4 px-4 py-3.5 transition hover:bg-muted/40"
+        <>
+          <div
+            className={cn(
+              "overflow-hidden rounded-xl border border-border bg-card shadow-panel transition-opacity",
+              refrescando && "opacity-60",
+            )}
+          >
+            <ul className="divide-y divide-border">
+              {clientes.map((c, i) => {
+                const sinPerfil = !c.perfil;
+                return (
+                  <li
+                    key={c.id}
+                    className="entra"
+                    style={{ "--retraso": `${Math.min(i, 14) * 25}ms` }}
                   >
-                    <span
-                      className={cn(
-                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[13px] font-bold",
-                        sinPerfil
-                          ? "bg-muted text-muted-foreground"
-                          : "bg-marca-50 text-marca-700",
-                      )}
+                    <Link
+                      href={`/kyc/${c.id}`}
+                      className="flex items-center gap-4 px-4 py-3.5 transition hover:bg-muted/40"
                     >
-                      {sinPerfil
-                        ? "?"
-                        : (c.perfil.nombres?.[0] || "") +
-                          (c.perfil.apellidos?.[0] || "")}
-                    </span>
-
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-foreground">
+                      <span
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[0.8667rem] font-bold",
+                          sinPerfil
+                            ? "bg-muted text-muted-foreground"
+                            : "bg-marca-50 text-marca-700",
+                        )}
+                      >
                         {sinPerfil
-                          ? "Registro sin completar"
-                          : `${c.perfil.nombres} ${c.perfil.apellidos}`}
-                      </p>
-                      <p className="truncate text-[13px] text-muted-foreground">
-                        {c.email}
-                      </p>
-                    </div>
+                          ? "?"
+                          : (c.perfil.nombres?.[0] || "") +
+                            (c.perfil.apellidos?.[0] || "")}
+                      </span>
 
-                    <div className="hidden min-w-0 shrink-0 text-right sm:block">
-                      {c.perfil?.dni && (
-                        <p className="cifras font-mono text-[13px] text-foreground">
-                          {c.perfil.dni}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[0.9333rem] font-semibold">
+                          {sinPerfil
+                            ? "Registro sin completar"
+                            : `${c.perfil.nombres} ${c.perfil.apellidos}`}
                         </p>
-                      )}
-                      {filtro === "pendiente" && (
-                        <p className="text-[12px] text-muted-foreground">
-                          {espera(c.created_at)}
-                        </p>
-                      )}
-                    </div>
+                        <p className="t-micro truncate">{c.email}</p>
+                      </div>
 
-                    <Estado valor={c.estado} className="hidden shrink-0 md:inline-flex" />
-                    <Flecha className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+                      <div className="hidden min-w-0 shrink-0 text-right sm:block">
+                        {c.perfil?.dni && (
+                          <p className="cifras font-mono text-[0.8667rem]">
+                            {c.perfil.dni}
+                          </p>
+                        )}
+                        {filtro === "pendiente" && (
+                          <p className="t-micro">{espera(c.created_at)}</p>
+                        )}
+                      </div>
+
+                      <Estado
+                        valor={c.estado}
+                        className="hidden shrink-0 md:inline-flex"
+                      />
+                      <Flecha className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <Paginador
+            pagina={pagina}
+            porPagina={POR_PAGINA}
+            total={total}
+            cargando={refrescando}
+            onCambio={setPagina}
+          />
+        </>
       )}
     </Shell>
   );

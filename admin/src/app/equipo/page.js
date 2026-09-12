@@ -9,6 +9,7 @@ import { estadoCola, contadoresDe } from "@/lib/cola";
 import { cn } from "@/lib/utils";
 import Shell, { Lupa, Personas } from "@/components/shell";
 import { Vacio, Aviso, Estado } from "@/components/marca";
+import { EsqueletoFilas, BarraCarga } from "@/components/carga";
 
 const ROLES = [
   {
@@ -402,11 +403,7 @@ export default function EquipoPage() {
       </div>
 
       {loading ? (
-        <div className="space-y-2">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-16 animate-pulse rounded-xl bg-muted" />
-          ))}
-        </div>
+        <EsqueletoFilas filas={6} />
       ) : visibles.length === 0 ? (
         <Vacio
           icono={<Personas className="h-5 w-5" />}

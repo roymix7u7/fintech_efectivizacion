@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import Shell, { SECCIONES, Flecha } from "@/components/shell";
 import { Aviso, Estado } from "@/components/marca";
+import { EsqueletoTarjetas, Rueda } from "@/components/carga";
 
 export default function DashboardPage() {
   const [session, setSession] = useState(null);
@@ -79,8 +80,9 @@ export default function DashboardPage() {
 
   if (loading)
     return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-        Cargando...
+      <div className="flex min-h-screen items-center justify-center gap-3 text-[0.8667rem] text-muted-foreground">
+        <Rueda />
+        Cargando el panel...
       </div>
     );
   if (!session) return null;

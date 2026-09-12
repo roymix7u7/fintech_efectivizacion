@@ -10,6 +10,7 @@ import { estadoCola, contadoresDe } from "@/lib/cola";
 import { cn } from "@/lib/utils";
 import Shell, { Edificio, Flecha, Check } from "@/components/shell";
 import { Vacio, Aviso, Dato } from "@/components/marca";
+import { Esqueleto } from "@/components/carga";
 
 const VACIA = { nombre: "", ciudad: "", direccion: "", telefono: "" };
 
@@ -217,9 +218,9 @@ export default function SedesPage() {
       )}
 
       {loading ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          {[0, 1].map((i) => (
-            <div key={i} className="h-40 animate-pulse rounded-xl bg-muted" />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <Esqueleto key={i} className="h-44 rounded-xl" />
           ))}
         </div>
       ) : sedes.length === 0 ? (

@@ -1,11 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { firmarCampo } from "@/lib/storage";
-import { cambiarEstado, registrarAuditoria, notificar } from "@/lib/acciones";
+import {
+  cambiarEstado,
+  registrarAuditoria,
+  notificar,
+  explicarError,
+} from "@/lib/acciones";
 import {
   tomarSiguiente,
   soltarCaso,
@@ -13,18 +18,34 @@ import {
   contadoresDe,
   minutosRestantes,
 } from "@/lib/cola";
+import { useRetraso, idsDeClientes } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import Shell, { Lupa, Documento, Check, Cruz, Manos } from "@/components/shell";
 import Visor from "@/components/visor";
+import Paginador from "@/components/paginador";
+import {
+  EsqueletoCola,
+  BarraCarga,
+  BotonAccion,
+  Esqueleto,
+} from "@/components/carga";
 import { Estado, Dato, Vacio, Aviso } from "@/components/marca";
 
 const BUCKET = "comprobantes";
+const POR_PAGINA = 25;
+const MIN_MOTIVO = 10;
+
 const FILTROS = [
   { clave: "pendiente", etiqueta: "Por revisar" },
   { clave: "aprobado", etiqueta: "Aprobadas" },
   { clave: "rechazado", etiqueta: "Rechazadas" },
 ];
-const MIN_MOTIVO = 10;
+
+const CAMPOS = `id, codigo, banco, estado, nota_cliente, motivo_rechazo,
+   comprobante_url, created_at, fecha_revision, cliente_id,
+   asignado_a, asignado_en,
+   tarjetas (banco, ultimos_4),
+   perfiles_cliente (nombres, apellidos, telefono, dni, user_id)`;
 
 function fechaCorta(iso) {
   return new Date(iso).toLocaleDateString("es-PE", {
@@ -43,7 +64,7 @@ function fechaLarga(iso) {
   });
 }
 
-/** Cuanto lleva esperando. Una cola se gestiona por antigüedad. */
+/** Cuánto lleva esperando. Una cola se gestiona por antigüedad. */
 function espera(iso) {
   const horas = Math.floor((Date.now() - new Date(iso).getTime()) / 3600000);
   if (horas < 1) return { texto: "Recién llegada", urgente: false };
@@ -62,7 +83,10 @@ export default function SolicitudesPage() {
   const [motivo, setMotivo] = useState("");
   const [modoRechazo, setModoRechazo] = useState(false);
   const [busqueda, setBusqueda] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [pagina, setPagina] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [primeraCarga, setPrimeraCarga] = useState(true);
+  const [refrescando, setRefrescando] = useState(false);
   const [accion, setAccion] = useState(null);
   const [error, setError] = useState("");
   const [contadores, setContadores] = useState({});
@@ -71,50 +95,86 @@ export default function SolicitudesPage() {
   const [soloMias, setSoloMias] = useState(true);
   const router = useRouter();
 
-  const cargar = useCallback(async (estado, idPreferido = null) => {
-    setLoading(true);
-    setError("");
-    setFiltro(estado);
-    setSeleccionada(null);
-    setModoRechazo(false);
-    setMotivo("");
+  const termino = useRetraso(busqueda, 350);
+  const esCola = filtro === "pendiente";
 
-    const { data, error: consultaError } = await supabase
+  // Evita que una respuesta lenta pise a otra mas reciente cuando el
+  // usuario cambia de pestana o sigue escribiendo.
+  const peticion = useRef(0);
+
+  const cargar = useCallback(async (estado, opciones = {}) => {
+    const {
+      idPreferido = null,
+      pag = 0,
+      buscar = "",
+      silencioso = false,
+    } = opciones;
+    const mia = ++peticion.current;
+
+    if (silencioso) setRefrescando(true);
+    else setPrimeraCarga(true);
+    setError("");
+
+    let q = supabase
       .from("solicitudes")
-      .select(
-        `id, codigo, banco, estado, nota_cliente, motivo_rechazo,
-         comprobante_url, created_at, fecha_revision, cliente_id,
-         asignado_a, asignado_en,
-         tarjetas (banco, ultimos_4),
-         perfiles_cliente (nombres, apellidos, telefono, dni, user_id)`,
-      )
-      .eq("estado", estado)
-      .order("created_at", { ascending: true });
+      .select(CAMPOS, { count: "exact" })
+      .eq("estado", estado);
+
+    const t = buscar.trim();
+    if (t) {
+      // La busqueda va al servidor. Filtrar en el navegador solo
+      // encontraria lo que ya esta cargado, que con el historial
+      // paginado es una fraccion del total.
+      const ids = await idsDeClientes(supabase, t);
+      const patron = `%${t}%`;
+      const partes = [`codigo.ilike.${patron}`, `banco.ilike.${patron}`];
+      if (ids.length > 0) partes.push(`cliente_id.in.(${ids.join(",")})`);
+      q = q.or(partes.join(","));
+    }
+
+    if (estado === "pendiente") {
+      // La cola es corta por definicion: solo lo que falta atender.
+      q = q.order("created_at", { ascending: true }).limit(200);
+    } else {
+      // El historial crece para siempre, asi que se pide de a poco.
+      q = q
+        .order("fecha_revision", { ascending: false, nullsFirst: false })
+        .range(pag * POR_PAGINA, pag * POR_PAGINA + POR_PAGINA - 1);
+    }
+
+    const { data, count, error: consultaError } = await q;
+    if (mia !== peticion.current) return; // llego tarde, ya hay otra
 
     if (consultaError) {
-      setError("No se pudieron cargar las solicitudes: " + consultaError.message);
+      setError(
+        explicarError(consultaError, "No se pudieron cargar las solicitudes."),
+      );
       setSolicitudes([]);
-      setLoading(false);
+      setTotal(0);
+      setPrimeraCarga(false);
+      setRefrescando(false);
       return;
     }
 
-    // Las URLs se firman al leer. La columna guarda el path del objeto.
+    // Las URLs se firman al leer. La columna guarda el path.
     const firmadas = await firmarCampo(
       BUCKET,
       data || [],
       "comprobante_url",
       "comprobante",
     );
-    setSolicitudes(firmadas);
-    setLoading(false);
+    if (mia !== peticion.current) return;
 
-    // Se abre el caso recien tomado si lo hay; si no, el primero de
-    // la lista. Revisar es un trabajo en serie y no tiene sentido
-    // pedir un clic extra para empezar.
+    setSolicitudes(firmadas);
+    setTotal(count || 0);
+    setPrimeraCarga(false);
+    setRefrescando(false);
+
     const elegida = idPreferido
       ? firmadas.find((f) => f.id === idPreferido)
       : firmadas[0];
     if (elegida) abrir(elegida);
+    else setSeleccionada(null);
     // abrir solo usa setters de estado, que React garantiza estables.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -129,6 +189,28 @@ export default function SolicitudesPage() {
       contarPendientes();
     });
   }, [router, cargar]);
+
+  // Al cambiar la busqueda o la pagina, se vuelve a pedir al servidor.
+  useEffect(() => {
+    if (!session) return;
+    cargar(filtro, { pag: pagina, buscar: termino, silencioso: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [termino, pagina]);
+
+  // Al escribir algo nuevo se vuelve a la primera pagina: quedarse en
+  // la cinco de un resultado distinto no tiene sentido.
+  useEffect(() => {
+    setPagina(0);
+  }, [termino, filtro]);
+
+  function cambiarFiltro(clave) {
+    setFiltro(clave);
+    setPagina(0);
+    setSeleccionada(null);
+    setModoRechazo(false);
+    setMotivo("");
+    cargar(clave, { buscar: termino });
+  }
 
   async function contarPendientes() {
     const { colas } = await estadoCola();
@@ -151,15 +233,14 @@ export default function SolicitudesPage() {
       await contarPendientes();
       return;
     }
-    await cargar("pendiente", id);
+    await cargar("pendiente", { idPreferido: id, silencioso: true });
     await contarPendientes();
   }
 
-  /** Devuelve el caso a la bolsa para que lo tome otra persona. */
   async function soltar(sol) {
     const { ok, error: e } = await soltarCaso("solicitud", sol.id);
     if (!ok) return setError("No se pudo soltar el caso: " + e);
-    await cargar(filtro);
+    await cargar(filtro, { silencioso: true });
     await contarPendientes();
   }
 
@@ -193,8 +274,6 @@ export default function SolicitudesPage() {
     setAccion("aprobando");
     setError("");
 
-    // Solo escribe si la fila sigue pendiente, para que dos revisores
-    // no resuelvan la misma solicitud a la vez.
     const r = await cambiarEstado({
       tabla: "solicitudes",
       id: sol.id,
@@ -208,7 +287,7 @@ export default function SolicitudesPage() {
     if (!r.ok) {
       setAccion(null);
       setError(r.error);
-      cargar(filtro);
+      cargar(filtro, { silencioso: true });
       return;
     }
 
@@ -228,7 +307,7 @@ export default function SolicitudesPage() {
     });
 
     setAccion(null);
-    cargar(filtro);
+    cargar(filtro, { silencioso: true });
     contarPendientes();
   }
 
@@ -257,7 +336,7 @@ export default function SolicitudesPage() {
     if (!r.ok) {
       setAccion(null);
       setError(r.error);
-      cargar(filtro);
+      cargar(filtro, { silencioso: true });
       return;
     }
 
@@ -277,40 +356,23 @@ export default function SolicitudesPage() {
     });
 
     setAccion(null);
-    cargar(filtro);
+    cargar(filtro, { silencioso: true });
     contarPendientes();
   }
 
-  const visibles = useMemo(() => {
-    // En la cola de pendientes, por defecto cada quien ve solo lo que
-    // tiene tomado. Ese es el punto de la asignación: que quince
-    // personas no revisen el mismo caso.
-    let base = solicitudes;
-    if (filtro === "pendiente" && soloMias) {
-      base = solicitudes.filter(
-        (s) =>
-          s.asignado_a === session?.user.id && minutosRestantes(s.asignado_en) > 0,
-      );
-    }
-    const t = busqueda.trim().toLowerCase();
-    if (!t) return base;
-    return base.filter((s) =>
-      [
-        s.codigo,
-        s.banco,
-        s.perfiles_cliente?.nombres,
-        s.perfiles_cliente?.apellidos,
-        s.perfiles_cliente?.dni,
-        s.tarjetas?.ultimos_4,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(t),
-    );
-  }, [solicitudes, busqueda, filtro, soloMias, session]);
-
   if (!session) return null;
+
+  // En la cola, cada quien ve por defecto solo lo que tiene tomado.
+  // Ese es el punto de la asignacion: que quince personas no revisen
+  // el mismo caso.
+  const visibles =
+    esCola && soloMias
+      ? solicitudes.filter(
+          (s) =>
+            s.asignado_a === session.user.id &&
+            minutosRestantes(s.asignado_en) > 0,
+        )
+      : solicitudes;
 
   const cliente = seleccionada?.perfiles_cliente;
   const nombre = cliente
@@ -323,11 +385,11 @@ export default function SolicitudesPage() {
       contadores={contadores}
       titulo="Solicitudes"
       descripcion={
-        loading
-          ? "Cargando la cola..."
-          : filtro === "pendiente"
+        primeraCarga
+          ? "Cargando..."
+          : esCola
             ? `${solicitudes.length} ${solicitudes.length === 1 ? "comprobante espera" : "comprobantes esperan"} revisión`
-            : `${solicitudes.length} en el historial`
+            : `${total} en el historial`
       }
       acciones={
         <>
@@ -335,9 +397,9 @@ export default function SolicitudesPage() {
             {FILTROS.map((f) => (
               <button
                 key={f.clave}
-                onClick={() => cargar(f.clave)}
+                onClick={() => cambiarFiltro(f.clave)}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-[13px] font-medium transition",
+                  "pulsable rounded-md px-3 py-1.5 text-[0.8667rem] font-medium",
                   filtro === f.clave
                     ? "bg-card text-foreground shadow-panel"
                     : "text-muted-foreground hover:text-foreground",
@@ -347,38 +409,42 @@ export default function SolicitudesPage() {
               </button>
             ))}
           </div>
-          <button
-            onClick={atenderSiguiente}
-            disabled={pidiendo || (cola && cola.libres === 0)}
-            className="flex items-center gap-2 rounded-lg bg-marca-700 px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-marca-600 disabled:opacity-40"
-          >
-            <Manos className="h-4 w-4" />
-            {pidiendo ? "Tomando..." : "Atender siguiente"}
-            {cola && cola.libres > 0 && (
-              <span className="cifras rounded-full bg-white/20 px-1.5 text-[11px]">
-                {cola.libres}
-              </span>
-            )}
-          </button>
+          {esCola && (
+            <BotonAccion
+              onClick={atenderSiguiente}
+              cargando={pidiendo}
+              disabled={Boolean(cola && cola.libres === 0)}
+              icono={<Manos className="h-4 w-4" />}
+            >
+              {pidiendo ? "Tomando..." : "Atender siguiente"}
+              {!pidiendo && cola && cola.libres > 0 && (
+                <span className="cifras rounded-full bg-white/20 px-1.5 text-[0.7333rem]">
+                  {cola.libres}
+                </span>
+              )}
+            </BotonAccion>
+          )}
         </>
       }
     >
+      <BarraCarga activa={refrescando} />
+
       {error && (
-        <div className="mb-5">
+        <div className="mb-5 animate-aparecer">
           <Aviso titulo="No se pudo completar" onCerrar={() => setError("")}>
             {error}
           </Aviso>
         </div>
       )}
 
-      {/* Filtros en móvil */}
+      {/* Filtros en movil */}
       <div className="mb-4 flex items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 sm:hidden">
         {FILTROS.map((f) => (
           <button
             key={f.clave}
-            onClick={() => cargar(f.clave)}
+            onClick={() => cambiarFiltro(f.clave)}
             className={cn(
-              "flex-1 rounded-md px-2 py-1.5 text-[13px] font-medium transition",
+              "pulsable flex-1 rounded-md px-2 py-1.5 text-[0.8667rem] font-medium",
               filtro === f.clave
                 ? "bg-card text-foreground shadow-panel"
                 : "text-muted-foreground",
@@ -390,31 +456,25 @@ export default function SolicitudesPage() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-        {/* ══════════ Cola ══════════ */}
+        {/* ══════════ Cola o historial ══════════ */}
         <section className="flex min-w-0 flex-col">
-          {filtro === "pendiente" && cola && (
+          {esCola && cola && (
             <div className="mb-3 rounded-lg border border-border bg-card p-3 shadow-panel">
-              <div className="flex items-center gap-3 text-[12px]">
-                <span className="text-muted-foreground">
-                  <span className="cifras font-semibold text-foreground">
-                    {cola.mios}
-                  </span>{" "}
-                  tuyas
-                </span>
-                <span className="text-muted-foreground">
-                  <span className="cifras font-semibold text-foreground">
-                    {cola.libres}
-                  </span>{" "}
-                  libres
-                </span>
-                <span className="text-muted-foreground">
-                  <span className="cifras font-semibold text-foreground">
-                    {cola.tomados}
-                  </span>{" "}
-                  en curso
-                </span>
+              <div className="flex items-center gap-4">
+                {[
+                  { n: cola.mios, l: "tuyas" },
+                  { n: cola.libres, l: "libres" },
+                  { n: cola.tomados, l: "en curso" },
+                ].map((x) => (
+                  <span key={x.l} className="t-micro">
+                    <span className="cifras font-semibold text-foreground">
+                      {x.n}
+                    </span>{" "}
+                    {x.l}
+                  </span>
+                ))}
               </div>
-              <label className="mt-2 flex cursor-pointer items-center gap-2 text-[12px] text-muted-foreground">
+              <label className="t-micro mt-2 flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={soloMias}
@@ -433,142 +493,175 @@ export default function SolicitudesPage() {
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               placeholder="Código, nombre, DNI o banco"
-              className="w-full rounded-lg border border-input bg-card py-2.5 pl-9 pr-3 text-sm outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
+              className="w-full rounded-lg border border-input bg-card py-2.5 pl-9 pr-9 text-[0.9333rem] outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
             />
+            {busqueda !== termino && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                <Esqueleto className="h-3 w-3 rounded-full" />
+              </span>
+            )}
           </div>
 
-          {loading ? (
-            <div className="space-y-2">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="h-[92px] animate-pulse rounded-xl bg-muted"
-                />
-              ))}
-            </div>
+          {primeraCarga ? (
+            <EsqueletoCola filas={5} />
           ) : visibles.length === 0 ? (
             <Vacio
               icono={<Documento className="h-5 w-5" />}
-              titulo={busqueda ? "Sin coincidencias" : "Cola vacía"}
+              titulo={termino ? "Sin coincidencias" : "Cola vacía"}
               detalle={
-                busqueda
-                  ? "Ninguna solicitud de esta lista coincide con lo que buscas."
-                  : filtro === "pendiente" && soloMias
+                termino
+                  ? "Ninguna solicitud coincide con lo que buscas."
+                  : esCola && soloMias
                     ? cola && cola.libres > 0
-                      ? `Hay ${cola.libres} caso${cola.libres === 1 ? "" : "s"} libre${cola.libres === 1 ? "" : "s"} en la cola. Pulsa Atender siguiente para tomar uno.`
+                      ? `Hay ${cola.libres} caso${cola.libres === 1 ? "" : "s"} libre${cola.libres === 1 ? "" : "s"}. Pulsa Atender siguiente para tomar uno.`
                       : "No tienes casos asignados y la cola está vacía."
-                    : filtro === "pendiente"
+                    : esCola
                       ? "No queda ningún comprobante por revisar. Buen trabajo."
                       : "Todavía no hay solicitudes con este estado."
               }
             />
           ) : (
-            <div className="scroll-fino -mx-1 max-h-[calc(100vh-260px)] space-y-2 overflow-y-auto px-1">
-              {visibles.map((sol) => {
-                const activa = seleccionada?.id === sol.id;
-                const e = espera(sol.created_at);
-                return (
-                  <button
-                    key={sol.id}
-                    onClick={() => abrir(sol)}
-                    className={cn(
-                      "w-full rounded-xl border bg-card p-3.5 text-left transition",
-                      activa
-                        ? "border-marca-600 shadow-alzado ring-1 ring-marca-600"
-                        : "border-border hover:border-marca-200 hover:shadow-panel",
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="cifras font-mono text-[12px] font-semibold text-marca-700">
-                        {sol.codigo}
-                      </span>
-                      <span
-                        className={cn(
-                          "ml-auto shrink-0 text-[11px]",
-                          filtro === "pendiente" && e.urgente
-                            ? "font-semibold text-oro-700"
-                            : "text-muted-foreground",
-                        )}
-                      >
-                        {filtro === "pendiente"
-                          ? e.texto
-                          : fechaCorta(sol.created_at)}
-                      </span>
-                    </div>
-                    <p className="mt-1.5 truncate text-sm font-semibold text-foreground">
-                      {sol.perfiles_cliente
-                        ? `${sol.perfiles_cliente.nombres} ${sol.perfiles_cliente.apellidos}`
-                        : "Cliente sin perfil"}
-                    </p>
-                    <div className="mt-1 flex items-center gap-2 text-[12px] text-muted-foreground">
-                      <span className="font-medium text-foreground/70">
-                        {sol.tarjetas?.banco || sol.banco}
-                      </span>
-                      <span className="cifras font-mono">
-                        ···· {sol.tarjetas?.ultimos_4 || "····"}
-                      </span>
-                      {!sol.comprobante && (
-                        <span className="ml-auto text-red-600">sin imagen</span>
+            <>
+              <div
+                className={cn(
+                  "scroll-fino -mx-1 space-y-2 overflow-y-auto px-1 transition-opacity",
+                  esCola
+                    ? "max-h-[calc(100vh-320px)]"
+                    : "max-h-[calc(100vh-300px)]",
+                  refrescando && "opacity-60",
+                )}
+              >
+                {visibles.map((sol, i) => {
+                  const activa = seleccionada?.id === sol.id;
+                  const e = espera(sol.created_at);
+                  return (
+                    <button
+                      key={sol.id}
+                      onClick={() => abrir(sol)}
+                      style={{ "--retraso": `${Math.min(i, 12) * 28}ms` }}
+                      className={cn(
+                        "entra pulsable w-full rounded-xl border bg-card p-3.5 text-left",
+                        activa
+                          ? "border-marca-600 shadow-alzado ring-1 ring-marca-600"
+                          : "border-border hover:border-marca-200 hover:shadow-panel",
                       )}
-                      {filtro === "pendiente" &&
-                        !soloMias &&
-                        sol.asignado_a &&
-                        minutosRestantes(sol.asignado_en) > 0 && (
-                          <span
-                            className={cn(
-                              "ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
-                              sol.asignado_a === session?.user.id
-                                ? "bg-marca-50 text-marca-700"
-                                : "bg-muted text-muted-foreground",
-                            )}
-                          >
-                            {sol.asignado_a === session?.user.id
-                              ? "tuya"
-                              : "en curso"}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="cifras font-mono text-[0.8rem] font-semibold text-marca-700">
+                          {sol.codigo}
+                        </span>
+                        <span
+                          className={cn(
+                            "ml-auto shrink-0 text-[0.7333rem]",
+                            esCola && e.urgente
+                              ? "font-semibold text-oro-700"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {esCola
+                            ? e.texto
+                            : fechaCorta(sol.fecha_revision || sol.created_at)}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 truncate text-[0.9333rem] font-semibold">
+                        {sol.perfiles_cliente
+                          ? `${sol.perfiles_cliente.nombres} ${sol.perfiles_cliente.apellidos}`
+                          : "Cliente sin perfil"}
+                      </p>
+                      <div className="t-micro mt-1 flex items-center gap-2">
+                        <span className="font-medium text-foreground/70">
+                          {sol.tarjetas?.banco || sol.banco}
+                        </span>
+                        <span className="cifras font-mono">
+                          ···· {sol.tarjetas?.ultimos_4 || "····"}
+                        </span>
+                        {!sol.comprobante && (
+                          <span className="ml-auto text-red-600">
+                            sin imagen
                           </span>
                         )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                        {esCola &&
+                          !soloMias &&
+                          sol.asignado_a &&
+                          minutosRestantes(sol.asignado_en) > 0 && (
+                            <span
+                              className={cn(
+                                "ml-auto shrink-0 rounded px-1.5 py-0.5 text-[0.6667rem] font-semibold uppercase",
+                                sol.asignado_a === session.user.id
+                                  ? "bg-marca-50 text-marca-700"
+                                  : "bg-muted text-muted-foreground",
+                              )}
+                            >
+                              {sol.asignado_a === session.user.id
+                                ? "tuya"
+                                : "en curso"}
+                            </span>
+                          )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {!esCola && (
+                <Paginador
+                  pagina={pagina}
+                  porPagina={POR_PAGINA}
+                  total={total}
+                  cargando={refrescando}
+                  onCambio={setPagina}
+                />
+              )}
+            </>
           )}
         </section>
 
         {/* ══════════ Detalle ══════════ */}
         <section className="min-w-0">
-          {!seleccionada ? (
+          {primeraCarga ? (
+            <div className="space-y-4">
+              <Esqueleto className="h-20 w-full rounded-xl" />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Esqueleto className="h-[460px] rounded-xl" />
+                <div className="space-y-4">
+                  <Esqueleto className="h-40 rounded-xl" />
+                  <Esqueleto className="h-32 rounded-xl" />
+                </div>
+              </div>
+            </div>
+          ) : !seleccionada ? (
             <Vacio
               icono={<Documento className="h-5 w-5" />}
               titulo="Elige una solicitud"
-              detalle="Selecciona un elemento de la cola para ver el comprobante y resolverlo."
+              detalle="Selecciona un elemento de la lista para ver el comprobante."
             />
           ) : (
-            <div className="space-y-4 animate-aparecer">
+            <div key={seleccionada.id} className="animate-aparecer space-y-4">
               {/* Encabezado */}
               <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-card p-4 shadow-panel">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="cifras font-mono text-[15px] font-bold text-marca-700">
+                    <h2 className="cifras font-mono text-[0.9333rem] font-bold text-marca-700">
                       {seleccionada.codigo}
                     </h2>
                     <Estado valor={seleccionada.estado} />
                   </div>
-                  <p className="mt-1 text-[13px] text-muted-foreground">
+                  <p className="t-micro mt-1">
                     Enviada el {fechaLarga(seleccionada.created_at)}
                   </p>
                 </div>
 
                 {seleccionada.estado === "pendiente" &&
-                  seleccionada.asignado_a === session?.user.id &&
+                  seleccionada.asignado_a === session.user.id &&
                   minutosRestantes(seleccionada.asignado_en) > 0 && (
                     <div className="flex shrink-0 items-center gap-2">
-                      <span className="rounded-md bg-oro-50 px-2 py-1 text-[11px] font-semibold text-oro-700">
-                        Reservada {minutosRestantes(seleccionada.asignado_en)} min
+                      <span className="rounded-md bg-oro-50 px-2 py-1 text-[0.7333rem] font-semibold text-oro-700">
+                        Reservada {minutosRestantes(seleccionada.asignado_en)}{" "}
+                        min
                       </span>
                       <button
                         onClick={() => soltar(seleccionada)}
-                        className="rounded-lg border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground transition hover:bg-muted"
+                        className="pulsable rounded-lg border border-border px-3 py-1.5 text-[0.8rem] font-medium text-muted-foreground hover:bg-muted"
                       >
                         Soltar
                       </button>
@@ -588,10 +681,10 @@ export default function SolicitudesPage() {
                   />
                   {seleccionada.nota_cliente && (
                     <div className="mt-3 rounded-lg border-l-[3px] border-marca-600 bg-marca-50 px-4 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-marca-600">
+                      <p className="t-etiqueta text-marca-600">
                         Nota del cliente
                       </p>
-                      <p className="mt-1 text-sm text-foreground">
+                      <p className="mt-1 text-[0.9333rem]">
                         {seleccionada.nota_cliente}
                       </p>
                     </div>
@@ -601,12 +694,8 @@ export default function SolicitudesPage() {
                 {/* Datos y acciones */}
                 <div className="min-w-0 space-y-4">
                   <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-                    <h3 className="mb-3 text-[13px] font-semibold text-foreground">
-                      Titular
-                    </h3>
-                    <p className="text-base font-semibold text-foreground">
-                      {nombre}
-                    </p>
+                    <h3 className="t-seccion mb-3">Titular</h3>
+                    <p className="text-[1rem] font-semibold">{nombre}</p>
                     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
                       <Dato etiqueta="DNI" mono>
                         {cliente?.dni}
@@ -625,27 +714,29 @@ export default function SolicitudesPage() {
 
                   {/* Cuentas para depositar */}
                   <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-                    <h3 className="mb-3 text-[13px] font-semibold text-foreground">
-                      Cuentas para depositar
-                    </h3>
+                    <h3 className="t-seccion mb-3">Cuentas para depositar</h3>
                     {cargandoCuentas ? (
-                      <div className="h-12 animate-pulse rounded-lg bg-muted" />
+                      <div className="space-y-2">
+                        <Esqueleto className="h-12 w-full" />
+                        <Esqueleto className="h-12 w-full" />
+                      </div>
                     ) : cuentas.length === 0 ? (
-                      <p className="rounded-lg bg-oro-50 px-3 py-2.5 text-[13px] text-oro-700">
+                      <p className="t-cuerpo rounded-lg bg-oro-50 px-3 py-2.5 text-oro-700">
                         Este cliente no registró ninguna cuenta bancaria.
                       </p>
                     ) : (
                       <ul className="space-y-2">
-                        {cuentas.map((c) => (
+                        {cuentas.map((c, i) => (
                           <li
                             key={c.id}
-                            className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
+                            style={{ "--retraso": `${i * 50}ms` }}
+                            className="entra flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
                           >
                             <div className="min-w-0">
-                              <p className="truncate text-[13px] font-semibold text-foreground">
+                              <p className="truncate text-[0.8667rem] font-semibold">
                                 {c.banco}
                               </p>
-                              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                              <p className="t-etiqueta mt-0.5">
                                 {c.tipo === "interbancaria"
                                   ? "Interbancaria CCI"
                                   : "Cuenta de ahorros"}
@@ -656,7 +747,7 @@ export default function SolicitudesPage() {
                                 navigator.clipboard?.writeText(c.numero_cuenta)
                               }
                               title="Copiar número"
-                              className="cifras shrink-0 rounded-md px-2 py-1 font-mono text-[13px] font-semibold text-marca-700 transition hover:bg-marca-50"
+                              className="pulsable cifras shrink-0 rounded-md px-2 py-1 font-mono text-[0.8667rem] font-semibold text-marca-700 hover:bg-marca-50"
                             >
                               {c.numero_cuenta}
                             </button>
@@ -671,32 +762,35 @@ export default function SolicitudesPage() {
                     <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
                       {!modoRechazo ? (
                         <div className="space-y-2">
-                          <button
+                          <BotonAccion
                             onClick={() => aprobar(seleccionada)}
+                            cargando={accion === "aprobando"}
                             disabled={accion !== null}
-                            className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                            tono="exito"
+                            icono={<Check className="h-4 w-4" />}
+                            className="w-full py-3"
                           >
-                            <Check className="h-4 w-4" />
                             {accion === "aprobando"
                               ? "Aprobando..."
                               : "Aprobar solicitud"}
-                          </button>
-                          <button
+                          </BotonAccion>
+                          <BotonAccion
                             onClick={() => setModoRechazo(true)}
                             disabled={accion !== null}
-                            className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                            tono="neutro"
+                            icono={<Cruz className="h-4 w-4" />}
+                            className="w-full hover:border-red-300 hover:bg-red-50 hover:text-red-700"
                           >
-                            <Cruz className="h-4 w-4" />
                             Rechazar
-                          </button>
+                          </BotonAccion>
                         </div>
                       ) : (
-                        <div className="space-y-3">
+                        <div className="animate-aparecer space-y-3">
                           <div>
-                            <label className="text-[13px] font-semibold text-foreground">
+                            <label className="t-seccion">
                               Motivo del rechazo
                             </label>
-                            <p className="mt-0.5 text-[12px] text-muted-foreground">
+                            <p className="t-micro mt-0.5">
                               El cliente lee este texto en su app. Dile qué
                               tiene que corregir.
                             </p>
@@ -707,64 +801,62 @@ export default function SolicitudesPage() {
                             onChange={(e) => setMotivo(e.target.value)}
                             rows={4}
                             placeholder="Ej: El voucher está borroso y no se distingue el número de operación."
-                            className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2.5 text-sm outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
+                            className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2.5 text-[0.9333rem] outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
                           />
-                          <div className="flex items-center justify-between text-[12px]">
-                            <span
-                              className={cn(
-                                motivo.trim().length >= MIN_MOTIVO
-                                  ? "text-emerald-600"
-                                  : "text-muted-foreground",
-                              )}
-                            >
-                              {motivo.trim().length} / {MIN_MOTIVO} mínimo
-                            </span>
-                          </div>
+                          <span
+                            className={cn(
+                              "block text-[0.8rem]",
+                              motivo.trim().length >= MIN_MOTIVO
+                                ? "text-emerald-600"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            {motivo.trim().length} / {MIN_MOTIVO} mínimo
+                          </span>
                           <div className="flex gap-2">
-                            <button
+                            <BotonAccion
                               onClick={() => {
                                 setModoRechazo(false);
                                 setMotivo("");
                               }}
                               disabled={accion !== null}
-                              className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:bg-muted"
+                              tono="neutro"
+                              className="flex-1"
                             >
                               Cancelar
-                            </button>
-                            <button
+                            </BotonAccion>
+                            <BotonAccion
                               onClick={() => rechazar(seleccionada)}
+                              cargando={accion === "rechazando"}
                               disabled={
                                 accion !== null ||
                                 motivo.trim().length < MIN_MOTIVO
                               }
-                              className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-40"
+                              tono="peligro"
+                              className="flex-1"
                             >
                               {accion === "rechazando"
                                 ? "Rechazando..."
                                 : "Confirmar rechazo"}
-                            </button>
+                            </BotonAccion>
                           </div>
                         </div>
                       )}
                     </div>
                   ) : (
                     <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-                      <h3 className="mb-3 text-[13px] font-semibold text-foreground">
-                        Resolución
-                      </h3>
-                      <dl className="space-y-3">
-                        <Dato etiqueta="Resuelta el">
-                          {seleccionada.fecha_revision
-                            ? fechaLarga(seleccionada.fecha_revision)
-                            : null}
-                        </Dato>
-                      </dl>
+                      <h3 className="t-seccion mb-3">Resolución</h3>
+                      <Dato etiqueta="Resuelta el">
+                        {seleccionada.fecha_revision
+                          ? fechaLarga(seleccionada.fecha_revision)
+                          : null}
+                      </Dato>
                       {seleccionada.motivo_rechazo && (
                         <div className="mt-3 rounded-lg border-l-[3px] border-red-500 bg-red-50 px-3 py-2.5">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-red-600">
+                          <p className="t-etiqueta text-red-600">
                             Motivo comunicado al cliente
                           </p>
-                          <p className="mt-1 text-sm text-red-900">
+                          <p className="mt-1 text-[0.9333rem] text-red-900">
                             {seleccionada.motivo_rechazo}
                           </p>
                         </div>

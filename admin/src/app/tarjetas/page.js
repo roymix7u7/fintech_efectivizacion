@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import Shell, { Lupa, Tarjeta as IconoTarjeta, Check, Cruz } from "@/components/shell";
 import Visor from "@/components/visor";
 import { Estado, Dato, Vacio, Aviso } from "@/components/marca";
+import { EsqueletoCola, BarraCarga, Esqueleto } from "@/components/carga";
 
 const BUCKET = "tarjetas-fotos";
 const FILTROS = [
@@ -281,11 +282,7 @@ export default function TarjetasPage() {
           </div>
 
           {loading ? (
-            <div className="space-y-2">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-[84px] animate-pulse rounded-xl bg-muted" />
-              ))}
-            </div>
+            <EsqueletoCola filas={4} />
           ) : visibles.length === 0 ? (
             <Vacio
               icono={<IconoTarjeta className="h-5 w-5" />}

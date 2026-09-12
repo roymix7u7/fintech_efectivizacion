@@ -15,6 +15,7 @@ import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
 import { alerta, mensajeError } from "../src/lib/ui";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
+import { Esqueleto } from "../src/components/Cargando";
 
 const BUCKET = "comprobantes";
 const MAX_NOTA = 300;
@@ -184,8 +185,17 @@ export default function NuevaSolicitudScreen() {
 
   if (cargando) {
     return (
-      <View style={[s.container, s.centrado]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={s.container}>
+        <View style={s.content}>
+          <Esqueleto alto={18} ancho="70%" />
+          <Esqueleto alto={13} ancho="50%" estilo={{ marginTop: 10 }} />
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
+            <Esqueleto alto={86} ancho={140} radio={14} />
+            <Esqueleto alto={86} ancho={140} radio={14} />
+          </View>
+          <Esqueleto alto={18} ancho="60%" estilo={{ marginTop: 28 }} />
+          <Esqueleto alto={200} radio={14} estilo={{ marginTop: 14 }} />
+        </View>
       </View>
     );
   }

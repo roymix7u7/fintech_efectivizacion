@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
 import { alerta, mensajeError } from "../src/lib/ui";
+import { EsqueletoLista, Aparece } from "../src/components/Cargando";
 
 /** Icono y color segun el tipo de aviso que manda el panel. */
 const ESTILOS = {
@@ -91,8 +92,10 @@ export default function NotificacionesScreen() {
 
   if (cargando) {
     return (
-      <View style={[s.container, s.centrado]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={s.container}>
+        <View style={s.content}>
+          <EsqueletoLista filas={5} alto={86} />
+        </View>
       </View>
     );
   }
@@ -127,10 +130,11 @@ export default function NotificacionesScreen() {
           </Text>
         </View>
       ) : (
-        avisos.map((a) => {
+        avisos.map((a, i) => {
           const est = estiloDe(a.tipo);
           return (
-            <View key={a.id} style={[s.card, !a.leida && s.cardSinLeer]}>
+            <Aparece key={a.id} retraso={Math.min(i, 8) * 45}>
+              <View style={[s.card, !a.leida && s.cardSinLeer]}>
               <View style={[s.iconoBg, { backgroundColor: est.color + "1A" }]}>
                 <Ionicons name={est.icon} size={20} color={est.color} />
               </View>
@@ -142,7 +146,8 @@ export default function NotificacionesScreen() {
                 <Text style={s.cuerpo}>{a.cuerpo}</Text>
                 <Text style={s.fecha}>{fechaRelativa(a.created_at)}</Text>
               </View>
-            </View>
+              </View>
+            </Aparece>
           );
         })
       )}

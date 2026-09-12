@@ -16,6 +16,8 @@ import { supabase } from "../../src/lib/supabase";
 import Header from "../../src/components/Header";
 import MenuLateral from "../../src/components/MenuLateral";
 import COLORS from "../../src/theme/colors";
+import TIPO, { CIFRAS } from "../../src/theme/tipografia";
+import { EsqueletoLista, Aparece } from "../../src/components/Cargando";
 import { urlsFirmadas, extraerPath } from "../../src/lib/storage";
 
 const BUCKET = "comprobantes";
@@ -131,7 +133,7 @@ export default function SolicitudesScreen() {
         )}
 
         {loading ? (
-          <Text style={s.empty}>Cargando...</Text>
+          <EsqueletoLista filas={4} alto={120} />
         ) : solicitudes.length === 0 ? (
           <View style={s.emptyContainer}>
             <Ionicons
@@ -145,10 +147,11 @@ export default function SolicitudesScreen() {
             </Text>
           </View>
         ) : (
-          solicitudes.map((sol) => {
+          solicitudes.map((sol, i) => {
             const est = estadoConfig[sol.estado] || estadoConfig.pendiente;
             return (
-              <View key={sol.id} style={s.card}>
+              <Aparece key={sol.id} retraso={Math.min(i, 8) * 40}>
+                <View style={s.card}>
                 <View style={s.cardHeader}>
                   <Text style={s.codigo}>{sol.codigo}</Text>
                   <View style={[s.badge, { backgroundColor: est.bg }]}>
@@ -193,7 +196,8 @@ export default function SolicitudesScreen() {
                     minute: "2-digit",
                   })}
                 </Text>
-              </View>
+                </View>
+              </Aparece>
             );
           })
         )}
@@ -277,8 +281,9 @@ const s = StyleSheet.create({
   codigo: {
     fontFamily: "monospace",
     fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.text,
+    fontWeight: "700",
+    color: COLORS.primary,
+    ...CIFRAS,
   },
   badge: {
     flexDirection: "row",
@@ -288,8 +293,8 @@ const s = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 99,
   },
-  badgeText: { fontSize: 12, fontWeight: "600" },
-  banco: { fontSize: 14, color: COLORS.textSecondary, marginBottom: 4 },
+  badgeText: { fontSize: 11, fontWeight: "700", letterSpacing: 0.3 },
+  banco: { ...TIPO.apoyo, marginBottom: 4 },
   nota: {
     fontSize: 13,
     color: COLORS.textSecondary,
@@ -309,14 +314,8 @@ const s = StyleSheet.create({
     marginBottom: 2,
   },
   rechazoTexto: { fontSize: 13, color: COLORS.error },
-  fecha: { fontSize: 12, color: COLORS.textLight, marginTop: 6 },
+  fecha: { ...TIPO.micro, marginTop: 6 },
   emptyContainer: { alignItems: "center", marginTop: 60 },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  empty: { fontSize: 14, color: COLORS.textLight, textAlign: "center" },
+  emptyTitle: { ...TIPO.seccion, marginTop: 12, marginBottom: 4 },
+  empty: { ...TIPO.apoyo, textAlign: "center" },
 });

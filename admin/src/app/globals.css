@@ -7,15 +7,14 @@
     /* Lienzo gris muy claro, tarjetas blancas. El contraste justo
        para que la informacion respire sin parecer un formulario. */
     --background: 220 26% 97%;
-    --foreground: 219 47% 20%;
+    --foreground: 219 47% 17%;
 
     --card: 0 0% 100%;
-    --card-foreground: 219 47% 20%;
+    --card-foreground: 219 47% 17%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 219 47% 20%;
+    --popover-foreground: 219 47% 17%;
 
-    /* Azul marino de la marca */
     --primary: 219 47% 20%;
     --primary-foreground: 0 0% 100%;
 
@@ -23,7 +22,7 @@
     --secondary-foreground: 219 47% 20%;
 
     --muted: 220 26% 95%;
-    --muted-foreground: 218 20% 45%;
+    --muted-foreground: 218 17% 47%;
 
     --accent: 220 33% 94%;
     --accent-foreground: 219 47% 20%;
@@ -31,8 +30,8 @@
     --destructive: 4 70% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 218 27% 89%;
-    --input: 218 27% 86%;
+    --border: 218 27% 90%;
+    --input: 218 25% 85%;
     --ring: 219 47% 35%;
 
     --radius: 0.625rem;
@@ -42,21 +41,98 @@
     border-color: hsl(var(--border));
   }
 
+  html {
+    /* Un punto menos que el estandar del navegador: el panel es denso
+       y 15px deja ver mas filas sin que el texto se sienta apretado. */
+    font-size: 15px;
+    text-size-adjust: 100%;
+  }
+
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+    font-size: 0.9333rem; /* 14px */
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Ligaduras y espaciado optico de Geist. Sin esto el texto se ve
+       mas suelto y menos definido de lo que la fuente permite. */
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+    font-optical-sizing: auto;
   }
 
-  /* Los codigos y numeros de cuenta se leen mejor con cifras de ancho
-     fijo: las columnas quedan alineadas de una fila a otra. */
-  .cifras {
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.01em;
+  /* Los titulos piden un poco menos de espacio entre letras: a tamano
+     grande, el tracking normal de la fuente se ve suelto. */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+
+  /* Los parrafos no deben terminar con una palabra sola en su linea. */
+  p {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    background: hsl(219 47% 20% / 0.12);
+  }
+
+  /* Foco visible y consistente, que el navegador por defecto dibuja
+     distinto en cada control. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }
 
+/* ─────────────────────── Tipografia ───────────────────────
+   Escala nombrada por funcion, no por tamano. Asi una pantalla
+   nueva usa el mismo lenguaje sin tener que recordar pixeles. */
 @layer components {
+  .t-pagina {
+    font-size: 1.133rem; /* 17px */
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+  }
+
+  .t-seccion {
+    font-size: 0.9333rem; /* 14px */
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.35;
+  }
+
+  .t-etiqueta {
+    font-size: 0.7333rem; /* 11px */
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .t-cuerpo {
+    font-size: 0.8667rem; /* 13px */
+    line-height: 1.55;
+  }
+
+  .t-micro {
+    font-size: 0.8rem; /* 12px */
+    line-height: 1.45;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Codigos, DNI, numeros de cuenta e importes. Cifras de ancho fijo
+     para que las columnas queden alineadas de una fila a otra, y cero
+     con barra para no confundirlo con la letra O. */
+  .cifras {
+    font-feature-settings: "tnum" 1, "zero" 1, "ss01" 1;
+    font-variant-numeric: tabular-nums slashed-zero;
+    letter-spacing: 0.005em;
+  }
+
   /* Tablero de fondo para ver documentos escaneados. El damero deja
      claro donde termina el papel cuando la foto tiene bordes claros. */
   .lienzo-documento {
@@ -81,10 +157,44 @@
       rgba(232, 184, 0, 0) 100%
     );
   }
+
+  /* ── Esqueletos de carga ──
+     Un bloque gris quieto parece un error. El brillo que lo recorre
+     dice que algo esta pasando y que vale la pena esperar. */
+  .esqueleto {
+    position: relative;
+    overflow: hidden;
+    background-color: hsl(220 20% 93%);
+    border-radius: 0.5rem;
+  }
+  .esqueleto::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(0 0% 100% / 0.65),
+      transparent
+    );
+    animation: brillo 1.4s ease-in-out infinite;
+  }
+
+  /* Botones: hundirse un pelo al pulsar da la sensacion de que el
+     clic se registro, incluso antes de que lleguen los datos. */
+  .pulsable {
+    transition:
+      transform 120ms ease,
+      background-color 140ms ease,
+      border-color 140ms ease,
+      box-shadow 140ms ease;
+  }
+  .pulsable:active:not(:disabled) {
+    transform: scale(0.985);
+  }
 }
 
-/* Scrollbars discretas, para que las colas largas no ensucien la
-   pantalla con barras gruesas del sistema. */
 @layer utilities {
   .scroll-fino {
     scrollbar-width: thin;
@@ -100,5 +210,66 @@
   }
   .scroll-fino::-webkit-scrollbar-track {
     background: transparent;
+  }
+
+  /* Entrada escalonada de listas. El retraso se pone por fila con una
+     variable, para que aparezcan una tras otra y el ojo siga el orden
+     en vez de recibir el bloque entero de golpe. */
+  .entra {
+    animation: entra 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--retraso, 0ms);
+  }
+}
+
+@keyframes brillo {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes entra {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes avance {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Quien pidió menos movimiento en su sistema no debería recibir
+   ninguno. Los esqueletos se quedan quietos y las entradas son
+   instantáneas, pero todo sigue funcionando igual. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
