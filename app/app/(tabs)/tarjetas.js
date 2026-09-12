@@ -20,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { alerta, confirmar, mensajeError } from "../../src/lib/ui";
 import { pedirPermiso } from "../../src/lib/permisos";
 import { prepararImagen } from "../../src/lib/imagen";
+import { useAlturaTeclado } from "../../src/lib/teclado";
 import { subirImagen, borrarImagenes, urlsFirmadas, extraerPath } from "../../src/lib/storage";
 import { validarUltimos4, validarCuenta } from "../../src/lib/validaciones";
 import { EsqueletoLista } from "../../src/components/Cargando";
@@ -76,6 +77,7 @@ export default function TarjetasScreen() {
   const [nuevaCuenta, setNuevaCuenta] = useState(CUENTA_VACIA);
   const [guardando, setGuardando] = useState(false);
   const [guardandoCuenta, setGuardandoCuenta] = useState(false);
+  const altoTeclado = useAlturaTeclado();
 
   useFocusEffect(
     useCallback(() => {
@@ -307,8 +309,9 @@ export default function TarjetasScreen() {
 
       <ScrollView
         style={s.container}
-        contentContainerStyle={s.content}
+        contentContainerStyle={[s.content, { paddingBottom: 40 + altoTeclado }]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

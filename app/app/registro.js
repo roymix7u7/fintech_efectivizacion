@@ -16,6 +16,7 @@ import { supabase } from "../src/lib/supabase";
 import PERU_DATA from "../src/data/peru";
 import COLORS from "../src/theme/colors";
 import { alerta, mensajeError } from "../src/lib/ui";
+import { useAlturaTeclado } from "../src/lib/teclado";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
 import SubidaDocumentos, {
   DOCUMENTOS,
@@ -191,6 +192,11 @@ export default function RegistroScreen() {
    * enfocarlo se lleva cerca del borde superior. Asi queda siempre a la
    * vista, sin importar cuanto ocupe el teclado en ese telefono.
    */
+  // Espacio en blanco al final igual al alto del teclado. Sin el, la
+  // pantalla solo se desplaza hasta donde termina el contenido, y el
+  // ultimo campo queda atrapado debajo del teclado.
+  const altoTeclado = useAlturaTeclado();
+
   const scrollRef = useRef(null);
   const posiciones = useRef({});
   const inicioForm = useRef(0);
@@ -515,7 +521,7 @@ export default function RegistroScreen() {
       <ScrollView
         ref={scrollRef}
         style={s.scrollView}
-        contentContainerStyle={s.content}
+        contentContainerStyle={[s.content, { paddingBottom: 40 + altoTeclado }]}
         keyboardShouldPersistTaps="handled"
         // Arrastrar la lista cierra el teclado: es el gesto natural
         // para volver a ver el formulario completo.

@@ -19,6 +19,7 @@ import { prepararImagen } from "../src/lib/imagen";
 import { esFalloDeRed } from "../src/lib/conexion";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
 import { Esqueleto } from "../src/components/Cargando";
+import { useAlturaTeclado } from "../src/lib/teclado";
 
 const BUCKET = "comprobantes";
 const MAX_NOTA = 300;
@@ -56,6 +57,7 @@ export default function NuevaSolicitudScreen() {
   const [nota, setNota] = useState("");
   const [cargando, setCargando] = useState(true);
   const [enviando, setEnviando] = useState(false);
+  const altoTeclado = useAlturaTeclado();
   const router = useRouter();
 
   useFocusEffect(
@@ -209,8 +211,9 @@ export default function NuevaSolicitudScreen() {
   return (
     <ScrollView
       style={s.container}
-      contentContainerStyle={s.content}
+      contentContainerStyle={[s.content, { paddingBottom: 60 + altoTeclado }]}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     >
       {/* Paso 1: Seleccionar tarjeta */}
       <Text style={s.stepTitle}>

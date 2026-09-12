@@ -5,12 +5,14 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
 import TIPO from "../src/theme/tipografia";
 import { alerta, mensajeError } from "../src/lib/ui";
+import { useAlturaTeclado } from "../src/lib/teclado";
 import {
   validarEmail,
   validarPassword,
@@ -25,6 +27,7 @@ export default function RecuperarScreen() {
   const [confirmarPassword, setConfirmarPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [reenviando, setReenviando] = useState(false);
+  const altoTeclado = useAlturaTeclado();
   const router = useRouter();
 
   function handleBack() {
@@ -98,7 +101,13 @@ export default function RecuperarScreen() {
   }
 
   return (
-    <View style={s.container}>
+    <ScrollView
+      style={s.pantalla}
+      contentContainerStyle={[s.container, { paddingBottom: 32 + altoTeclado }]}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      showsVerticalScrollIndicator={false}
+    >
       {paso === 1 && (
         <>
           <View style={s.iconCard}>
@@ -231,14 +240,14 @@ export default function RecuperarScreen() {
           </TouchableOpacity>
         </>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
 const s = StyleSheet.create({
+  pantalla: { flex: 1, backgroundColor: COLORS.background },
   container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
+    flexGrow: 1,
     padding: 32,
     justifyContent: "center",
   },
