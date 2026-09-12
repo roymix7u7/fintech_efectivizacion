@@ -507,10 +507,17 @@ export default function EquipoPage() {
                     {p.rol === "cliente" && (
                       <option value="cliente">Sin rol asignado</option>
                     )}
-                    {ROLES.filter(
-                      (r) => esAdmin || r.clave === "gestor",
-                    ).map((r) => (
-                      <option key={r.clave} value={r.clave}>
+                    {/* Se muestran todos los roles, y se desactivan los que
+                        este usuario no puede asignar. Si se filtraran, el
+                        valor real no tendria opcion que lo represente y el
+                        navegador mostraria el primero de la lista, haciendo
+                        pasar a un supervisor por gestor. */}
+                    {ROLES.map((r) => (
+                      <option
+                        key={r.clave}
+                        value={r.clave}
+                        disabled={!esAdmin && r.clave !== "gestor"}
+                      >
                         {r.etiqueta}
                       </option>
                     ))}
