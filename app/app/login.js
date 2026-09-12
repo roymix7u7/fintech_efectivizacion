@@ -15,6 +15,7 @@ import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
 import { alerta, mensajeError } from "../src/lib/ui";
 import { validarEmail } from "../src/lib/validaciones";
+import { hayConexion } from "../src/lib/conexion";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -30,6 +31,14 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
+      // Sin esto, un telefono sin internet recibe "correo o contrasena
+      // incorrectos", que manda a la persona a dudar de sus datos.
+      if (!(await hayConexion())) {
+        return alerta(
+          "No hay conexion con el servidor. Revisa tu internet e intentalo de nuevo.",
+        );
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password,

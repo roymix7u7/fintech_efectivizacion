@@ -18,6 +18,7 @@ import Header from "../../src/components/Header";
 import MenuLateral from "../../src/components/MenuLateral";
 import { Ionicons } from "@expo/vector-icons";
 import { alerta, confirmar, mensajeError } from "../../src/lib/ui";
+import { pedirPermiso } from "../../src/lib/permisos";
 import { subirImagen, borrarImagenes, urlsFirmadas, extraerPath } from "../../src/lib/storage";
 import { validarUltimos4, validarCuenta } from "../../src/lib/validaciones";
 import { EsqueletoLista } from "../../src/components/Cargando";
@@ -142,17 +143,7 @@ export default function TarjetasScreen() {
   }
 
   async function elegirFoto(desdeCamara) {
-    const permiso = desdeCamara
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (permiso.status !== "granted") {
-      alerta(
-        desdeCamara
-          ? "Necesitamos permiso para usar la camara."
-          : "Necesitamos permiso para acceder a tus fotos.",
-      );
-      return;
-    }
+    if (!(await pedirPermiso(desdeCamara ? "camara" : "galeria"))) return;
     const r = desdeCamara
       ? await ImagePicker.launchCameraAsync(OPCIONES_FOTO)
       : await ImagePicker.launchImageLibraryAsync(OPCIONES_FOTO);

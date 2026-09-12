@@ -14,6 +14,8 @@ import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
 import { alerta, mensajeError } from "../src/lib/ui";
+import { pedirPermiso } from "../src/lib/permisos";
+import { esFalloDeRed } from "../src/lib/conexion";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
 import { Esqueleto } from "../src/components/Cargando";
 
@@ -105,17 +107,13 @@ export default function NuevaSolicitudScreen() {
   }
 
   async function tomarFoto() {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted")
-      return alerta("Necesitamos permiso para usar la camara.");
+    if (!(await pedirPermiso("camara"))) return;
     const r = await ImagePicker.launchCameraAsync(OPCIONES_FOTO);
     if (!r.canceled && r.assets?.[0]) guardarComprobante(r.assets[0]);
   }
 
   async function seleccionarDeGaleria() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted")
-      return alerta("Necesitamos permiso para acceder a tus fotos.");
+    if (!(await pedirPermiso("galeria"))) return;
     const r = await ImagePicker.launchImageLibraryAsync(OPCIONES_FOTO);
     if (!r.canceled && r.assets?.[0]) guardarComprobante(r.assets[0]);
   }
@@ -177,7 +175,11 @@ export default function NuevaSolicitudScreen() {
     } catch (err) {
       // Sin esto la imagen quedaba huerfana en Storage.
       await borrarImagenes(BUCKET, [pathSubido]);
-      alerta(mensajeError(err));
+      alerta(
+        esFalloDeRed(err)
+          ? "Se cortó la conexión al enviar. Tu comprobante sigue aquí: revisa tu internet y vuelve a pulsar Enviar."
+          : mensajeError(err),
+      );
     } finally {
       setEnviando(false);
     }

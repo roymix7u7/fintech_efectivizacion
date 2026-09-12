@@ -30,6 +30,7 @@ import {
   reglasPassword,
   primerError,
 } from "../src/lib/validaciones";
+import { hayConexion } from "../src/lib/conexion";
 
 const BUCKET_KYC = "kyc-documentos";
 
@@ -222,6 +223,12 @@ export default function RegistroScreen() {
 
     setLoading(true);
     try {
+      if (!(await hayConexion())) {
+        return alerta(
+          "No hay conexion con el servidor. Revisa tu internet e intentalo de nuevo.",
+        );
+      }
+
       const { data, error: authError } = await supabase.auth.signUp({
         email: form.email.trim().toLowerCase(),
         password: form.password,

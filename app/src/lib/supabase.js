@@ -18,7 +18,8 @@ if (Platform.OS === "web") {
   };
 }
 
-const supabaseUrl = "https://zsrjctabxqrgunlzvzru.supabase.co";
+export const SUPABASE_URL = "https://zsrjctabxqrgunlzvzru.supabase.co";
+const supabaseUrl = SUPABASE_URL;
 const supabaseAnonKey =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzcmpjdGFieHFyZ3VubHp2enJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMTQxODgsImV4cCI6MjA5NTU5MDE4OH0.TH2wZO7fmQbsufCtmGBYDVo-XOLdVUlyreIzJ2PnaHU";
 

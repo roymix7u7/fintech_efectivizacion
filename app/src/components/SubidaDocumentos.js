@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import COLORS from "../theme/colors";
 import { alerta } from "../lib/ui";
+import { pedirPermiso } from "../lib/permisos";
 
 export const DOCUMENTOS = [
   {
@@ -50,21 +51,15 @@ function opciones(aspecto) {
 
 export default function SubidaDocumentos({ fotos, onChange, deshabilitado }) {
   async function usarCamara(doc) {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      alerta("Necesitamos permiso para usar la camara.");
-      return;
-    }
+    // pedirPermiso se encarga del caso dificil: cuando el sistema ya no
+    // vuelve a preguntar, ofrece abrir los ajustes del telefono.
+    if (!(await pedirPermiso("camara"))) return;
     const r = await ImagePicker.launchCameraAsync(opciones(doc.aspecto));
     if (!r.canceled && r.assets?.[0]) guardar(doc.key, r.assets[0]);
   }
 
   async function usarGaleria(doc) {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      alerta("Necesitamos permiso para acceder a tus fotos.");
-      return;
-    }
+    if (!(await pedirPermiso("galeria"))) return;
     const r = await ImagePicker.launchImageLibraryAsync(opciones(doc.aspecto));
     if (!r.canceled && r.assets?.[0]) guardar(doc.key, r.assets[0]);
   }

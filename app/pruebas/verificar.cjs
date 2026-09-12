@@ -27,6 +27,9 @@ const GLOBALES = new Set([
   "fetch", "window", "document", "localStorage", "navigator", "atob",
   "btoa", "URL", "FormData", "Blob", "React", "undefined", "NaN",
   "Infinity", "__DEV__", "alert", "confirm",
+  // React Native los trae en su entorno desde la version 0.60.
+  "AbortController", "AbortSignal", "TextEncoder", "TextDecoder",
+  "Headers", "Request", "Response", "WebSocket", "performance",
 ]);
 
 const archivos = [];
