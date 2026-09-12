@@ -47,7 +47,7 @@ export const SECCIONES = [
   {
     ruta: "/equipo",
     titulo: "Equipo",
-    detalle: "Personal, roles y sedes",
+    detalle: "Personal, roles y rendimiento",
     roles: ["admin", "supervisor"],
     icono: Personas,
   },

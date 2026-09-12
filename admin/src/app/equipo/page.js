@@ -15,17 +15,20 @@ const ROLES = [
   {
     clave: "gestor",
     etiqueta: "Gestor",
-    detalle: "Atiende la cola que se le asigna",
+    detalle:
+      "Atiende la cola que se le asigna. No ve el trabajo de los demás ni los totales de la empresa.",
   },
   {
     clave: "supervisor",
     etiqueta: "Supervisor",
-    detalle: "Ve todas las colas, reasigna y mide a su sede",
+    detalle:
+      "Ve todas las colas, reasigna casos, verifica tarjetas, y crea o bloquea gestores de su sede.",
   },
   {
     clave: "admin",
     etiqueta: "Administrador",
-    detalle: "Además configura comisiones, sedes y auditoría",
+    detalle:
+      "Además configura comisiones, sedes, noticias y guías, nombra supervisores y ve la auditoría.",
   },
 ];
 
@@ -248,6 +251,10 @@ export default function EquipoPage() {
   if (!session) return null;
 
   const esAdmin = session.rol === "admin";
+  const esSupervisor = session.rol === "supervisor";
+  // Un supervisor crea siempre para su propia sede, asi que se
+  // preselecciona y el campo queda bloqueado.
+  const miSede = equipo.find((p) => p.id === session.user.id)?.sede_id || "";
   const metricasDe = (id) => rendimiento.find((r) => r.usuario_id === id);
 
   return (
@@ -314,13 +321,15 @@ export default function EquipoPage() {
       )}
 
       {/* Alta de personal */}
-      {esAdmin && (
+      {(esAdmin || esSupervisor) && (
         <div className="mb-5 rounded-xl border border-border bg-card p-4 shadow-panel">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-[14px] font-semibold">Agregar a alguien</h2>
-              <p className="text-[13px] text-muted-foreground">
-                Se crea la cuenta y se te entrega una contraseña temporal.
+              <h2 className="t-seccion">Agregar a alguien</h2>
+              <p className="t-cuerpo text-muted-foreground">
+                {esAdmin
+                  ? "Se crea la cuenta y se te entrega una contraseña temporal."
+                  : "Creas gestores para tu sede. Se te entrega una contraseña temporal."}
               </p>
             </div>
             <button
@@ -352,13 +361,16 @@ export default function EquipoPage() {
                 <select
                   value={nuevo.rol}
                   onChange={(e) => setNuevo({ ...nuevo, rol: e.target.value })}
-                  className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-marca-500"
+                  disabled={!esAdmin}
+                  className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-marca-500 disabled:opacity-50"
                 >
-                  {ROLES.map((r) => (
-                    <option key={r.clave} value={r.clave}>
-                      {r.etiqueta}
-                    </option>
-                  ))}
+                  {ROLES.filter((r) => esAdmin || r.clave === "gestor").map(
+                    (r) => (
+                      <option key={r.clave} value={r.clave}>
+                        {r.etiqueta}
+                      </option>
+                    ),
+                  )}
                 </select>
               </div>
               <div>
@@ -370,14 +382,20 @@ export default function EquipoPage() {
                   onChange={(e) =>
                     setNuevo({ ...nuevo, sede_id: e.target.value })
                   }
-                  className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-marca-500"
+                  disabled={!esAdmin}
+                  title={
+                    esAdmin ? undefined : "Un supervisor solo crea para su sede"
+                  }
+                  className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-marca-500 disabled:opacity-50"
                 >
-                  <option value="">Sin sede</option>
-                  {sedes.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nombre}
-                    </option>
-                  ))}
+                  {esAdmin && <option value="">Sin sede</option>}
+                  {sedes
+                    .filter((s) => esAdmin || s.id === miSede)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nombre}
+                      </option>
+                    ))}
                 </select>
               </div>
               <div className="flex items-end">
@@ -500,8 +518,18 @@ export default function EquipoPage() {
                   <select
                     value={p.rol}
                     onChange={(e) => cambiarRol(p, e.target.value)}
-                    disabled={guardando === p.id || yo}
-                    title={yo ? "No puedes cambiarte el rol a ti mismo" : undefined}
+                    disabled={
+                      guardando === p.id ||
+                      yo ||
+                      (!esAdmin && (p.rol !== "gestor" || p.sede_id !== miSede))
+                    }
+                    title={
+                      yo
+                        ? "No puedes cambiarte el rol a ti mismo"
+                        : !esAdmin && (p.rol !== "gestor" || p.sede_id !== miSede)
+                          ? "Solo puedes gestionar gestores de tu sede"
+                          : undefined
+                    }
                     className="shrink-0 rounded-lg border border-input bg-card px-2 py-1.5 text-[13px] outline-none focus:border-marca-500 disabled:opacity-40"
                   >
                     {p.rol === "cliente" && (
@@ -525,7 +553,16 @@ export default function EquipoPage() {
 
                   <button
                     onClick={() => alternarBloqueo(p)}
-                    disabled={guardando === p.id || yo}
+                    disabled={
+                      guardando === p.id ||
+                      yo ||
+                      (!esAdmin && (p.rol !== "gestor" || p.sede_id !== miSede))
+                    }
+                    title={
+                      !esAdmin && (p.rol !== "gestor" || p.sede_id !== miSede)
+                        ? "Solo puedes bloquear gestores de tu sede"
+                        : undefined
+                    }
                     className={cn(
                       "shrink-0 rounded-lg border px-3 py-1.5 text-[12px] font-medium transition disabled:opacity-40",
                       bloqueado

@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
   // descartaba y cualquier fallo acababa en el mismo mensaje.
   const { data: perfil, error: errorPerfil } = await admin
     .from("users")
-    .select("rol, estado")
+    .select("rol, estado, sede_id")
     .eq("id", quienLlama.id)
     .maybeSingle();
 
@@ -138,13 +138,13 @@ Deno.serve(async (req) => {
       403,
     );
   }
-  if (perfil.rol !== "admin") {
+  if (perfil.rol !== "admin" && perfil.rol !== "supervisor") {
     return responder(
       {
         error:
           "Tu cuenta figura con el rol " +
           perfil.rol +
-          ", y crear personal es solo del administrador.",
+          ", y crear personal es de supervisores y administradores.",
         detalle: "rol_insuficiente",
         rol_detectado: perfil.rol,
         usuario_id: quienLlama.id,
@@ -171,6 +171,44 @@ Deno.serve(async (req) => {
   if (!ROLES_VALIDOS.includes(rol)) {
     return responder({ error: `Rol no válido: ${rol}` }, 400);
   }
+
+  // Un supervisor da de alta a su propia gente, y nada mas. Si pudiera
+  // nombrar supervisores, dos podrian ascenderse mutuamente y el rol
+  // dejaria de significar algo. Y si pudiera elegir sede, metería
+  // personal en equipos que no dirige.
+  if (perfil.rol === "supervisor") {
+    if (rol !== "gestor") {
+      return responder(
+        {
+          error: "Un supervisor solo puede crear cuentas de gestor.",
+          detalle: "rol_no_permitido",
+        },
+        403,
+      );
+    }
+    if (!perfil.sede_id) {
+      return responder(
+        {
+          error:
+            "Tu cuenta no tiene sede asignada, así que no se sabe a qué equipo pertenecería la cuenta nueva.",
+          detalle: "sin_sede",
+        },
+        403,
+      );
+    }
+    if (sedeId && sedeId !== perfil.sede_id) {
+      return responder(
+        {
+          error: "Solo puedes crear cuentas para tu propia sede.",
+          detalle: "sede_ajena",
+        },
+        403,
+      );
+    }
+  }
+
+  // La sede de un gestor creado por un supervisor es siempre la suya.
+  const sedeFinal = perfil.rol === "supervisor" ? perfil.sede_id : sedeId;
 
   // ── Crear la cuenta de acceso ──
   const clave = claveTemporal();
@@ -202,7 +240,7 @@ Deno.serve(async (req) => {
   const { error: errorAlta } = await admin
     .from("users")
     .upsert(
-      { id, email, rol, estado: "activo", sede_id: sedeId },
+      { id, email, rol, estado: "activo", sede_id: sedeFinal },
       { onConflict: "id" },
     );
 
@@ -224,7 +262,7 @@ Deno.serve(async (req) => {
     accion: "CREAR_STAFF",
     entidad: "users",
     entidad_id: id,
-    datos_despues: { email, rol, sede_id: sedeId },
+    datos_despues: { email, rol, sede_id: sedeFinal },
   });
 
   return responder({

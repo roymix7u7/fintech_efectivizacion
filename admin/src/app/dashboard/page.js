@@ -16,6 +16,7 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [stats, setStats] = useState({});
   const [recientes, setRecientes] = useState([]);
+  const [mias, setMias] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -25,13 +26,25 @@ export default function DashboardPage() {
         if (!vivo) return;
         if (!s) return router.push("/login");
         setSession(s);
-        await Promise.all([cargarStats(), cargarRecientes()]);
+        // Un gestor no necesita el volumen de la empresa, y tampoco
+        // deberia verlo. Se le piden solo sus propios numeros.
+        if (s.rol === "gestor") await cargarMias();
+        else await Promise.all([cargarStats(), cargarRecientes()]);
       })
       .finally(() => vivo && setLoading(false));
     return () => {
       vivo = false;
     };
   }, [router]);
+
+  async function cargarMias() {
+    const { data, error } = await supabase.rpc("mis_metricas");
+    if (error) {
+      setError("No se pudieron cargar tus indicadores: " + error.message);
+      return;
+    }
+    setMias(Array.isArray(data) ? data[0] : data);
+  }
 
   async function cargarStats() {
     const contar = async (tabla, filtros) => {
@@ -87,6 +100,7 @@ export default function DashboardPage() {
     );
   if (!session) return null;
 
+  const esGestor = session.rol === "gestor";
   const hora = new Date().getHours();
   const saludo = hora < 12 ? "Buenos días" : hora < 19 ? "Buenas tardes" : "Buenas noches";
 
@@ -95,35 +109,66 @@ export default function DashboardPage() {
     (stats.kycPendientes || 0) +
     (stats.tarjetasPendientes || 0);
 
-  const tarjetas = [
-    {
-      etiqueta: "Comprobantes por revisar",
-      valor: stats.solicitudesPendientes,
-      ruta: "/solicitudes",
-      urgente: true,
-    },
-    {
-      etiqueta: "Clientes por verificar",
-      valor: stats.kycPendientes,
-      ruta: "/kyc",
-      urgente: true,
-    },
-    {
-      etiqueta: "Tarjetas por aprobar",
-      valor: stats.tarjetasPendientes,
-      ruta: ["admin", "supervisor"].includes(session.rol) ? "/tarjetas" : null,
-      urgente: true,
-    },
-    {
-      etiqueta: "Clientes activos",
-      valor: stats.clientesActivos,
-      ruta: null,
-      urgente: false,
-    },
-  ];
+  // Lo que ve un gestor: su cola y lo que lleva resuelto. Lo que ve
+  // un supervisor o un administrador: el volumen de la operacion.
+  const tarjetas = esGestor
+    ? [
+        {
+          etiqueta: "Casos que tienes tomados",
+          valor: mias?.asignadas,
+          ruta: "/solicitudes",
+          urgente: true,
+        },
+        {
+          etiqueta: "Resueltos hoy",
+          valor: mias?.resueltas_hoy,
+          ruta: null,
+          urgente: false,
+        },
+        {
+          etiqueta: "Aprobados hoy",
+          valor: mias?.aprobadas_hoy,
+          ruta: null,
+          urgente: false,
+        },
+        {
+          etiqueta: "Resueltos esta semana",
+          valor: mias?.resueltas_semana,
+          ruta: null,
+          urgente: false,
+        },
+      ]
+    : [
+        {
+          etiqueta: "Comprobantes por revisar",
+          valor: stats.solicitudesPendientes,
+          ruta: "/solicitudes",
+          urgente: true,
+        },
+        {
+          etiqueta: "Clientes por verificar",
+          valor: stats.kycPendientes,
+          ruta: "/kyc",
+          urgente: true,
+        },
+        {
+          etiqueta: "Tarjetas por aprobar",
+          valor: stats.tarjetasPendientes,
+          ruta: ["admin", "supervisor"].includes(session.rol)
+            ? "/tarjetas"
+            : null,
+          urgente: true,
+        },
+        {
+          etiqueta: "Clientes activos",
+          valor: stats.clientesActivos,
+          ruta: null,
+          urgente: false,
+        },
+      ];
 
   const accesos = SECCIONES.filter(
-    (s) => s.roles.includes(session.rol) && s.ruta !== "/dashboard",
+    (x) => x.roles.includes(session.rol) && x.ruta !== "/dashboard",
   );
 
   return (
@@ -147,22 +192,30 @@ export default function DashboardPage() {
       <div className="mb-6 overflow-hidden rounded-xl bg-marca-900 p-6 text-white shadow-alzado">
         <p className="text-[13px] text-white/50">{saludo}</p>
         <h2 className="mt-1 text-[22px] font-semibold leading-tight">
-          {pendientes > 0
-            ? `Tienes ${pendientes} ${pendientes === 1 ? "asunto" : "asuntos"} esperando`
-            : "No queda nada pendiente"}
+          {esGestor
+            ? mias?.asignadas > 0
+              ? `Tienes ${mias.asignadas} ${mias.asignadas === 1 ? "caso tomado" : "casos tomados"}`
+              : "No tienes casos tomados"
+            : pendientes > 0
+              ? `Tienes ${pendientes} ${pendientes === 1 ? "asunto" : "asuntos"} esperando`
+              : "No queda nada pendiente"}
         </h2>
-        {pendientes > 0 && (
+        {(esGestor || pendientes > 0) && (
           <Link
             href={
-              stats.solicitudesPendientes > 0
+              esGestor
                 ? "/solicitudes"
-                : stats.kycPendientes > 0
-                  ? "/kyc"
-                  : "/tarjetas"
+                : stats.solicitudesPendientes > 0
+                  ? "/solicitudes"
+                  : stats.kycPendientes > 0
+                    ? "/kyc"
+                    : "/tarjetas"
             }
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-oro-500 px-4 py-2.5 text-[13px] font-semibold text-marca-900 transition hover:bg-oro-300"
+            className="pulsable mt-4 inline-flex items-center gap-2 rounded-lg bg-oro-500 px-4 py-2.5 text-[0.8667rem] font-semibold text-marca-900 hover:bg-oro-300"
           >
-            Empezar a revisar
+            {esGestor && !mias?.asignadas
+              ? "Atender el siguiente caso"
+              : "Empezar a revisar"}
             <Flecha className="h-4 w-4" />
           </Link>
         )}
@@ -208,8 +261,13 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-        {/* Últimas solicitudes */}
-        <div className="rounded-xl border border-border bg-card shadow-panel">
+        {/* Últimas solicitudes. Un gestor no ve el trabajo de los demás. */}
+        <div
+          className={cn(
+            "rounded-xl border border-border bg-card shadow-panel",
+            esGestor && "hidden",
+          )}
+        >
           <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
             <h3 className="text-[14px] font-semibold">Últimas solicitudes</h3>
             <Link
