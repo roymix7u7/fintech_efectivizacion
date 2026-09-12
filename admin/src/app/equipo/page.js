@@ -40,6 +40,9 @@ export default function EquipoPage() {
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [contadores, setContadores] = useState({});
+  const [creando, setCreando] = useState(false);
+  const [nuevo, setNuevo] = useState({ email: "", rol: "gestor", sede_id: "" });
+  const [credencial, setCredencial] = useState(null);
   const router = useRouter();
 
   const cargar = useCallback(async () => {
@@ -80,6 +83,56 @@ export default function EquipoPage() {
       cargar();
     });
   }, [router, cargar]);
+
+  /**
+   * Crea la cuenta llamando a la función crear-staff.
+   *
+   * No se puede hacer directamente desde aquí porque crear usuarios
+   * exige la clave service_role, que nunca debe llegar al navegador.
+   * La función vive en Supabase y comprueba por su cuenta que quien
+   * llama sea administrador.
+   */
+  async function crearStaff() {
+    const email = nuevo.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email)) {
+      setError("Escribe un correo válido.");
+      return;
+    }
+
+    setGuardando("nuevo");
+    setError("");
+    setCredencial(null);
+
+    const { data, error: e } = await supabase.functions.invoke("crear-staff", {
+      body: { email, rol: nuevo.rol, sede_id: nuevo.sede_id || null },
+    });
+    setGuardando(null);
+
+    if (e) {
+      // El cuerpo del error trae el motivo real; el mensaje de arriba
+      // solo dice que la función devolvió un código distinto de 200.
+      let detalle = e.message;
+      try {
+        const cuerpo = await e.context?.json?.();
+        if (cuerpo?.error) detalle = cuerpo.error;
+      } catch {}
+      setError(
+        detalle.includes("Failed to send") || detalle.includes("not found")
+          ? "La función crear-staff no está desplegada. Ejecuta: npx supabase functions deploy crear-staff"
+          : detalle,
+      );
+      return;
+    }
+    if (data?.error) {
+      setError(data.error);
+      return;
+    }
+
+    setCredencial({ email: data.email, clave: data.clave_temporal });
+    setNuevo({ email: "", rol: "gestor", sede_id: "" });
+    setCreando(false);
+    cargar();
+  }
 
   async function cambiarRol(persona, rol) {
     if (persona.id === session.user.id) {
@@ -195,33 +248,129 @@ export default function EquipoPage() {
         </div>
       )}
 
-      {/* Cómo dar de alta a alguien nuevo */}
-      <details className="mb-5 rounded-xl border border-border bg-card p-4 shadow-panel">
-        <summary className="cursor-pointer text-[14px] font-semibold">
-          Cómo agregar a alguien nuevo
-        </summary>
-        <ol className="mt-3 space-y-2 text-[13px] text-muted-foreground">
-          <li>
-            <span className="font-semibold text-foreground">1.</span> En
-            Supabase, entra a Authentication, Users, y pulsa Add user. Escribe
-            su correo y una contraseña temporal.
-          </li>
-          <li>
-            <span className="font-semibold text-foreground">2.</span> Pídele que
-            entre una vez al panel con esa contraseña. Su cuenta aparecerá
-            automáticamente en esta lista como cliente.
-          </li>
-          <li>
-            <span className="font-semibold text-foreground">3.</span> Asígnale
-            aquí su rol y su sede.
-          </li>
-        </ol>
-        <p className="mt-3 text-[12px] text-muted-foreground">
-          El paso de Supabase es necesario porque crear cuentas desde el
-          navegador exigiría la clave de servicio, que nunca debe viajar al
-          cliente.
-        </p>
-      </details>
+      {/* Credencial recién creada. Se muestra una sola vez. */}
+      {credencial && (
+        <div className="mb-5 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[14px] font-semibold text-emerald-900">
+                Cuenta creada
+              </p>
+              <p className="mt-0.5 text-[13px] text-emerald-800">
+                Entrégale estos datos. La contraseña no se vuelve a mostrar.
+              </p>
+            </div>
+            <button
+              onClick={() => setCredencial(null)}
+              className="shrink-0 text-emerald-700 opacity-60 hover:opacity-100"
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {[
+              { l: "Correo", v: credencial.email },
+              { l: "Contraseña temporal", v: credencial.clave },
+            ].map((c) => (
+              <button
+                key={c.l}
+                onClick={() => navigator.clipboard?.writeText(c.v)}
+                title="Copiar"
+                className="rounded-lg border border-emerald-200 bg-card px-3 py-2 text-left transition hover:bg-emerald-50"
+              >
+                <span className="block text-[11px] font-medium uppercase tracking-wide text-emerald-700">
+                  {c.l}
+                </span>
+                <span className="cifras block truncate font-mono text-[14px] font-semibold text-foreground">
+                  {c.v}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Alta de personal */}
+      {esAdmin && (
+        <div className="mb-5 rounded-xl border border-border bg-card p-4 shadow-panel">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-[14px] font-semibold">Agregar a alguien</h2>
+              <p className="text-[13px] text-muted-foreground">
+                Se crea la cuenta y se te entrega una contraseña temporal.
+              </p>
+            </div>
+            <button
+              onClick={() => setCreando((c) => !c)}
+              className="shrink-0 rounded-lg bg-marca-700 px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-marca-600"
+            >
+              {creando ? "Cancelar" : "Nueva cuenta"}
+            </button>
+          </div>
+
+          {creando && (
+            <div className="mt-4 grid gap-3 border-t border-border pt-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+              <div>
+                <label className="mb-1 block text-[12px] font-medium">
+                  Correo
+                </label>
+                <input
+                  type="email"
+                  autoFocus
+                  value={nuevo.email}
+                  onChange={(e) => setNuevo({ ...nuevo, email: e.target.value })}
+                  onKeyDown={(e) => e.key === "Enter" && crearStaff()}
+                  placeholder="nombre@altoqueperu.com"
+                  className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none transition focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[12px] font-medium">Rol</label>
+                <select
+                  value={nuevo.rol}
+                  onChange={(e) => setNuevo({ ...nuevo, rol: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-marca-500"
+                >
+                  {ROLES.map((r) => (
+                    <option key={r.clave} value={r.clave}>
+                      {r.etiqueta}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[12px] font-medium">
+                  Sede
+                </label>
+                <select
+                  value={nuevo.sede_id}
+                  onChange={(e) =>
+                    setNuevo({ ...nuevo, sede_id: e.target.value })
+                  }
+                  className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-marca-500"
+                >
+                  <option value="">Sin sede</option>
+                  {sedes.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={crearStaff}
+                  disabled={guardando === "nuevo" || !nuevo.email.trim()}
+                  className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40 sm:w-auto"
+                >
+                  {guardando === "nuevo" ? "Creando..." : "Crear"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="mb-4 flex flex-wrap items-center gap-2">

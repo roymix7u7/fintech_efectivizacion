@@ -5,3 +5,7 @@ google-credentials.json
 .expo/
 dist/
 .next/
+
+# Supabase CLI
+supabase/.temp/
+supabase/.branches/
