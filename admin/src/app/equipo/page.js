@@ -514,42 +514,39 @@ export default function EquipoPage() {
                     </select>
                   )}
 
-                  {/* Rol */}
-                  <select
-                    value={p.rol}
-                    onChange={(e) => cambiarRol(p, e.target.value)}
-                    disabled={
-                      guardando === p.id ||
-                      yo ||
-                      (!esAdmin && (p.rol !== "gestor" || p.sede_id !== miSede))
-                    }
-                    title={
-                      yo
-                        ? "No puedes cambiarte el rol a ti mismo"
-                        : !esAdmin && (p.rol !== "gestor" || p.sede_id !== miSede)
-                          ? "Solo puedes gestionar gestores de tu sede"
-                          : undefined
-                    }
-                    className="shrink-0 rounded-lg border border-input bg-card px-2 py-1.5 text-[13px] outline-none focus:border-marca-500 disabled:opacity-40"
-                  >
-                    {p.rol === "cliente" && (
-                      <option value="cliente">Sin rol asignado</option>
-                    )}
-                    {/* Se muestran todos los roles, y se desactivan los que
-                        este usuario no puede asignar. Si se filtraran, el
-                        valor real no tendria opcion que lo represente y el
-                        navegador mostraria el primero de la lista, haciendo
-                        pasar a un supervisor por gestor. */}
-                    {ROLES.map((r) => (
-                      <option
-                        key={r.clave}
-                        value={r.clave}
-                        disabled={!esAdmin && r.clave !== "gestor"}
-                      >
-                        {r.etiqueta}
-                      </option>
-                    ))}
-                  </select>
+                  {/* Rol.
+                      Cambiar roles es solo del administrador, así que a
+                      los demás se les muestra como texto. Un desplegable
+                      donde la única opción válida es la que ya está
+                      puesto promete una acción que no existe. */}
+                  {esAdmin ? (
+                    <select
+                      value={p.rol}
+                      onChange={(e) => cambiarRol(p, e.target.value)}
+                      disabled={guardando === p.id || yo}
+                      title={
+                        yo ? "No puedes cambiarte el rol a ti mismo" : undefined
+                      }
+                      className="shrink-0 rounded-lg border border-input bg-card px-2 py-1.5 text-[0.8667rem] outline-none focus:border-marca-500 disabled:opacity-40"
+                    >
+                      {p.rol === "cliente" && (
+                        <option value="cliente">Sin rol asignado</option>
+                      )}
+                      {ROLES.map((r) => (
+                        <option key={r.clave} value={r.clave}>
+                          {r.etiqueta}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span
+                      className="shrink-0 rounded-lg border border-transparent bg-muted px-2.5 py-1.5 text-[0.8667rem] font-medium text-muted-foreground"
+                      title="Cambiar roles es del administrador"
+                    >
+                      {ROLES.find((r) => r.clave === p.rol)?.etiqueta ||
+                        "Sin rol asignado"}
+                    </span>
+                  )}
 
                   <button
                     onClick={() => alternarBloqueo(p)}
@@ -581,7 +578,12 @@ export default function EquipoPage() {
 
       {/* Qué puede hacer cada rol */}
       <div className="mt-5 rounded-xl border border-border bg-card p-4 shadow-panel">
-        <h3 className="mb-3 text-[13px] font-semibold">Qué puede hacer cada rol</h3>
+        <h3 className="t-seccion mb-1">Qué puede hacer cada rol</h3>
+        <p className="t-micro mb-3">
+          {esAdmin
+            ? "Como administrador puedes cambiar roles y sedes desde esta lista."
+            : "Cambiar roles y mover gente entre sedes es del administrador. Tú creas gestores para tu sede y puedes bloquearlos."}
+        </p>
         <dl className="space-y-2.5">
           {ROLES.map((r) => (
             <div key={r.clave} className="flex gap-3">
