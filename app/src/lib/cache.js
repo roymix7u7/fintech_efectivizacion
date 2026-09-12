@@ -4,6 +4,19 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const PREFIJO = "atk:";
 
 /**
+ * Cronometro de desarrollo. Solo escribe en la consola cuando la app
+ * corre en modo desarrollo, asi que no cuesta nada en produccion.
+ *
+ * Sirve para responder la pregunta concreta: cuando la pantalla tarda,
+ * el tiempo se va leyendo el telefono o esperando al servidor?
+ */
+function medir(etiqueta) {
+  if (!__DEV__) return () => {};
+  const inicio = Date.now();
+  return () => console.log("[cache] " + etiqueta + ": " + (Date.now() - inicio) + " ms");
+}
+
+/**
  * Guarda la ultima respuesta en el telefono y la muestra de inmediato
  * la proxima vez, mientras consulta en segundo plano.
  *
@@ -17,7 +30,9 @@ const PREFIJO = "atk:";
 
 export async function leerCache(clave) {
   try {
+    const fin = medir(`leer ${clave}`);
     const crudo = await AsyncStorage.getItem(PREFIJO + clave);
+    fin();
     if (!crudo) return null;
     const { datos, guardadoEn } = JSON.parse(crudo);
     return { datos, guardadoEn };
@@ -90,7 +105,9 @@ export function useDatos(clave, consultar, { activo = true } = {}) {
     async (mostrarRefresco) => {
       if (mostrarRefresco && vivo.current) setRefrescando(true);
       try {
+        const fin = medir(`servidor ${clave}`);
         const frescos = await consultarRef.current();
+        fin();
         if (!vivo.current) return;
         setDatos(frescos);
         setDesactualizado(false);
