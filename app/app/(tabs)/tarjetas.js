@@ -19,6 +19,7 @@ import MenuLateral from "../../src/components/MenuLateral";
 import { Ionicons } from "@expo/vector-icons";
 import { alerta, confirmar, mensajeError } from "../../src/lib/ui";
 import { pedirPermiso } from "../../src/lib/permisos";
+import { prepararImagen } from "../../src/lib/imagen";
 import { subirImagen, borrarImagenes, urlsFirmadas, extraerPath } from "../../src/lib/storage";
 import { validarUltimos4, validarCuenta } from "../../src/lib/validaciones";
 import { EsqueletoLista } from "../../src/components/Cargando";
@@ -52,10 +53,10 @@ function getBancoColor(banco) {
 
 const OPCIONES_FOTO = {
   mediaTypes: ["images"],
-  quality: 0.6,
+  quality: 1,
   allowsEditing: true,
   aspect: [4, 3],
-  base64: true,
+  // El base64 lo entrega prepararImagen, ya achicada.
 };
 
 const TARJETA_VACIA = { banco: "BCP", ultimos_4: "", foto: null };
@@ -148,9 +149,10 @@ export default function TarjetasScreen() {
       ? await ImagePicker.launchCameraAsync(OPCIONES_FOTO)
       : await ImagePicker.launchImageLibraryAsync(OPCIONES_FOTO);
     if (r.canceled || !r.assets?.[0]) return;
-    if (!r.assets[0].base64)
+    const lista = await prepararImagen(r.assets[0]);
+    if (!lista.base64)
       return alerta("No pudimos leer la imagen. Intentalo otra vez.");
-    setNuevaTarjeta((p) => ({ ...p, foto: r.assets[0] }));
+    setNuevaTarjeta((p) => ({ ...p, foto: lista }));
   }
 
   async function agregarTarjeta() {

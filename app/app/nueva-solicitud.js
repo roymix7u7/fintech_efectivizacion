@@ -15,6 +15,7 @@ import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
 import { alerta, mensajeError } from "../src/lib/ui";
 import { pedirPermiso } from "../src/lib/permisos";
+import { prepararImagen } from "../src/lib/imagen";
 import { esFalloDeRed } from "../src/lib/conexion";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
 import { Esqueleto } from "../src/components/Cargando";
@@ -25,9 +26,9 @@ const MAX_NOTA = 300;
 /** Opciones del selector. base64 es obligatorio para que la subida no llegue vacia. */
 const OPCIONES_FOTO = {
   mediaTypes: ["images"],
-  quality: 0.6,
+  quality: 1,
   allowsEditing: true,
-  base64: true,
+  // El base64 lo entrega prepararImagen, ya achicada.
 };
 
 /**
@@ -118,10 +119,11 @@ export default function NuevaSolicitudScreen() {
     if (!r.canceled && r.assets?.[0]) guardarComprobante(r.assets[0]);
   }
 
-  function guardarComprobante(asset) {
-    if (!asset.base64)
+  async function guardarComprobante(asset) {
+    const lista = await prepararImagen(asset);
+    if (!lista.base64)
       return alerta("No pudimos leer la imagen. Intentalo otra vez.");
-    setComprobante(asset);
+    setComprobante(lista);
   }
 
   async function enviarSolicitud() {

@@ -4,6 +4,7 @@ import * as ImagePicker from "expo-image-picker";
 import COLORS from "../theme/colors";
 import { alerta } from "../lib/ui";
 import { pedirPermiso } from "../lib/permisos";
+import { prepararImagen } from "../lib/imagen";
 
 export const DOCUMENTOS = [
   {
@@ -42,10 +43,11 @@ export function documentosCompletos(fotos) {
 function opciones(aspecto) {
   return {
     mediaTypes: ["images"],
-    quality: 0.6,
+    quality: 1,
     allowsEditing: true,
     aspect: aspecto,
-    base64: true,
+    // Sin base64 aquí: lo entrega prepararImagen ya achicada, y así no
+    // se carga dos veces la imagen completa en memoria.
   };
 }
 
@@ -58,18 +60,20 @@ export default function SubidaDocumentos({ fotos, onChange, deshabilitado }) {
     if (!r.canceled && r.assets?.[0]) guardar(doc.key, r.assets[0]);
   }
 
+
   async function usarGaleria(doc) {
     if (!(await pedirPermiso("galeria"))) return;
     const r = await ImagePicker.launchImageLibraryAsync(opciones(doc.aspecto));
     if (!r.canceled && r.assets?.[0]) guardar(doc.key, r.assets[0]);
   }
 
-  function guardar(key, asset) {
-    if (!asset.base64) {
+  async function guardar(key, asset) {
+    const lista = await prepararImagen(asset);
+    if (!lista.base64) {
       alerta("No pudimos leer la imagen. Intentalo otra vez.");
       return;
     }
-    onChange({ ...fotos, [key]: asset });
+    onChange({ ...fotos, [key]: lista });
   }
 
   return (

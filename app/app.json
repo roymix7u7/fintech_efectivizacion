@@ -45,7 +45,8 @@
         {
           "photosPermission": "Accedemos a tus fotos para que puedas adjuntar comprobantes ya guardados en tu galería."
         }
-      ]
+      ],
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true
