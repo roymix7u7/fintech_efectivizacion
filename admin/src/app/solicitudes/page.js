@@ -6,8 +6,15 @@ import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { firmarCampo } from "@/lib/storage";
 import { cambiarEstado, registrarAuditoria, notificar } from "@/lib/acciones";
+import {
+  tomarSiguiente,
+  soltarCaso,
+  estadoCola,
+  contadoresDe,
+  minutosRestantes,
+} from "@/lib/cola";
 import { cn } from "@/lib/utils";
-import Shell, { Lupa, Documento, Check, Cruz } from "@/components/shell";
+import Shell, { Lupa, Documento, Check, Cruz, Manos } from "@/components/shell";
 import Visor from "@/components/visor";
 import { Estado, Dato, Vacio, Aviso } from "@/components/marca";
 
@@ -59,9 +66,12 @@ export default function SolicitudesPage() {
   const [accion, setAccion] = useState(null);
   const [error, setError] = useState("");
   const [contadores, setContadores] = useState({});
+  const [cola, setCola] = useState(null);
+  const [pidiendo, setPidiendo] = useState(false);
+  const [soloMias, setSoloMias] = useState(true);
   const router = useRouter();
 
-  const cargar = useCallback(async (estado) => {
+  const cargar = useCallback(async (estado, idPreferido = null) => {
     setLoading(true);
     setError("");
     setFiltro(estado);
@@ -74,6 +84,7 @@ export default function SolicitudesPage() {
       .select(
         `id, codigo, banco, estado, nota_cliente, motivo_rechazo,
          comprobante_url, created_at, fecha_revision, cliente_id,
+         asignado_a, asignado_en,
          tarjetas (banco, ultimos_4),
          perfiles_cliente (nombres, apellidos, telefono, dni, user_id)`,
       )
@@ -97,9 +108,13 @@ export default function SolicitudesPage() {
     setSolicitudes(firmadas);
     setLoading(false);
 
-    // Primera de la cola preseleccionada: revisar es un trabajo en
-    // serie, no hace falta un clic extra para empezar.
-    if (firmadas.length > 0) abrir(firmadas[0]);
+    // Se abre el caso recien tomado si lo hay; si no, el primero de
+    // la lista. Revisar es un trabajo en serie y no tiene sentido
+    // pedir un clic extra para empezar.
+    const elegida = idPreferido
+      ? firmadas.find((f) => f.id === idPreferido)
+      : firmadas[0];
+    if (elegida) abrir(elegida);
     // abrir solo usa setters de estado, que React garantiza estables.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -115,17 +130,36 @@ export default function SolicitudesPage() {
   }, [router, cargar]);
 
   async function contarPendientes() {
-    const cuenta = async (tabla, filtros) => {
-      let q = supabase.from(tabla).select("*", { count: "exact", head: true });
-      for (const [k, v] of Object.entries(filtros)) q = q.eq(k, v);
-      const { count } = await q;
-      return count || 0;
-    };
-    setContadores({
-      solicitudesPendientes: await cuenta("solicitudes", { estado: "pendiente" }),
-      kycPendientes: await cuenta("users", { rol: "cliente", estado: "pendiente" }),
-      tarjetasPendientes: await cuenta("tarjetas", { estado: "pendiente", activa: true }),
-    });
+    const { colas } = await estadoCola();
+    setContadores(contadoresDe(colas));
+    setCola(colas.solicitud || null);
+  }
+
+  /**
+   * Pide el siguiente caso libre. El reparto lo hace Postgres, asi que
+   * dos revisores nunca reciben el mismo aunque pulsen a la vez.
+   */
+  async function atenderSiguiente() {
+    setPidiendo(true);
+    setError("");
+    const { id, vacia, error: e } = await tomarSiguiente("solicitud");
+    setPidiendo(false);
+    if (e) return setError("No se pudo tomar el siguiente caso: " + e);
+    if (vacia) {
+      setError("No queda ningún caso libre en la cola por ahora.");
+      await contarPendientes();
+      return;
+    }
+    await cargar("pendiente", id);
+    await contarPendientes();
+  }
+
+  /** Devuelve el caso a la bolsa para que lo tome otra persona. */
+  async function soltar(sol) {
+    const { ok, error: e } = await soltarCaso("solicitud", sol.id);
+    if (!ok) return setError("No se pudo soltar el caso: " + e);
+    await cargar(filtro);
+    await contarPendientes();
   }
 
   function abrir(sol) {
@@ -247,9 +281,19 @@ export default function SolicitudesPage() {
   }
 
   const visibles = useMemo(() => {
+    // En la cola de pendientes, por defecto cada quien ve solo lo que
+    // tiene tomado. Ese es el punto de la asignación: que quince
+    // personas no revisen el mismo caso.
+    let base = solicitudes;
+    if (filtro === "pendiente" && soloMias) {
+      base = solicitudes.filter(
+        (s) =>
+          s.asignado_a === session?.user.id && minutosRestantes(s.asignado_en) > 0,
+      );
+    }
     const t = busqueda.trim().toLowerCase();
-    if (!t) return solicitudes;
-    return solicitudes.filter((s) =>
+    if (!t) return base;
+    return base.filter((s) =>
       [
         s.codigo,
         s.banco,
@@ -263,7 +307,7 @@ export default function SolicitudesPage() {
         .toLowerCase()
         .includes(t),
     );
-  }, [solicitudes, busqueda]);
+  }, [solicitudes, busqueda, filtro, soloMias, session]);
 
   if (!session) return null;
 
@@ -285,22 +329,37 @@ export default function SolicitudesPage() {
             : `${solicitudes.length} en el historial`
       }
       acciones={
-        <div className="hidden items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 sm:flex">
-          {FILTROS.map((f) => (
-            <button
-              key={f.clave}
-              onClick={() => cargar(f.clave)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-[13px] font-medium transition",
-                filtro === f.clave
-                  ? "bg-card text-foreground shadow-panel"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {f.etiqueta}
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="hidden items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 sm:flex">
+            {FILTROS.map((f) => (
+              <button
+                key={f.clave}
+                onClick={() => cargar(f.clave)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-[13px] font-medium transition",
+                  filtro === f.clave
+                    ? "bg-card text-foreground shadow-panel"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {f.etiqueta}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={atenderSiguiente}
+            disabled={pidiendo || (cola && cola.libres === 0)}
+            className="flex items-center gap-2 rounded-lg bg-marca-700 px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-marca-600 disabled:opacity-40"
+          >
+            <Manos className="h-4 w-4" />
+            {pidiendo ? "Tomando..." : "Atender siguiente"}
+            {cola && cola.libres > 0 && (
+              <span className="cifras rounded-full bg-white/20 px-1.5 text-[11px]">
+                {cola.libres}
+              </span>
+            )}
+          </button>
+        </>
       }
     >
       {error && (
@@ -332,6 +391,40 @@ export default function SolicitudesPage() {
       <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
         {/* ══════════ Cola ══════════ */}
         <section className="flex min-w-0 flex-col">
+          {filtro === "pendiente" && cola && (
+            <div className="mb-3 rounded-lg border border-border bg-card p-3 shadow-panel">
+              <div className="flex items-center gap-3 text-[12px]">
+                <span className="text-muted-foreground">
+                  <span className="cifras font-semibold text-foreground">
+                    {cola.mios}
+                  </span>{" "}
+                  tuyas
+                </span>
+                <span className="text-muted-foreground">
+                  <span className="cifras font-semibold text-foreground">
+                    {cola.libres}
+                  </span>{" "}
+                  libres
+                </span>
+                <span className="text-muted-foreground">
+                  <span className="cifras font-semibold text-foreground">
+                    {cola.tomados}
+                  </span>{" "}
+                  en curso
+                </span>
+              </div>
+              <label className="mt-2 flex cursor-pointer items-center gap-2 text-[12px] text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={soloMias}
+                  onChange={(e) => setSoloMias(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-marca-700"
+                />
+                Ver solo las que tengo asignadas
+              </label>
+            </div>
+          )}
+
           <div className="relative mb-3">
             <Lupa className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -359,9 +452,13 @@ export default function SolicitudesPage() {
               detalle={
                 busqueda
                   ? "Ninguna solicitud de esta lista coincide con lo que buscas."
-                  : filtro === "pendiente"
-                    ? "No queda ningún comprobante por revisar. Buen trabajo."
-                    : "Todavía no hay solicitudes con este estado."
+                  : filtro === "pendiente" && soloMias
+                    ? cola && cola.libres > 0
+                      ? `Hay ${cola.libres} caso${cola.libres === 1 ? "" : "s"} libre${cola.libres === 1 ? "" : "s"} en la cola. Pulsa Atender siguiente para tomar uno.`
+                      : "No tienes casos asignados y la cola está vacía."
+                    : filtro === "pendiente"
+                      ? "No queda ningún comprobante por revisar. Buen trabajo."
+                      : "Todavía no hay solicitudes con este estado."
               }
             />
           ) : (
@@ -410,10 +507,25 @@ export default function SolicitudesPage() {
                         ···· {sol.tarjetas?.ultimos_4 || "····"}
                       </span>
                       {!sol.comprobante && (
-                        <span className="ml-auto text-red-600">
-                          sin imagen
-                        </span>
+                        <span className="ml-auto text-red-600">sin imagen</span>
                       )}
+                      {filtro === "pendiente" &&
+                        !soloMias &&
+                        sol.asignado_a &&
+                        minutosRestantes(sol.asignado_en) > 0 && (
+                          <span
+                            className={cn(
+                              "ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                              sol.asignado_a === session?.user.id
+                                ? "bg-marca-50 text-marca-700"
+                                : "bg-muted text-muted-foreground",
+                            )}
+                          >
+                            {sol.asignado_a === session?.user.id
+                              ? "tuya"
+                              : "en curso"}
+                          </span>
+                        )}
                     </div>
                   </button>
                 );
@@ -445,6 +557,22 @@ export default function SolicitudesPage() {
                     Enviada el {fechaLarga(seleccionada.created_at)}
                   </p>
                 </div>
+
+                {seleccionada.estado === "pendiente" &&
+                  seleccionada.asignado_a === session?.user.id &&
+                  minutosRestantes(seleccionada.asignado_en) > 0 && (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="rounded-md bg-oro-50 px-2 py-1 text-[11px] font-semibold text-oro-700">
+                        Reservada {minutosRestantes(seleccionada.asignado_en)} min
+                      </span>
+                      <button
+                        onClick={() => soltar(seleccionada)}
+                        className="rounded-lg border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground transition hover:bg-muted"
+                      >
+                        Soltar
+                      </button>
+                    </div>
+                  )}
               </div>
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">

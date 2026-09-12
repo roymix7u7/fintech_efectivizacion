@@ -45,6 +45,13 @@ export const SECCIONES = [
     contador: "tarjetasPendientes",
   },
   {
+    ruta: "/comisiones",
+    titulo: "Comisiones",
+    detalle: "Tarifas por banco y cliente",
+    roles: ["admin"],
+    icono: Porcentaje,
+  },
+  {
     ruta: "/alertas",
     titulo: "Noticias",
     detalle: "Avisos para clientes",
@@ -304,6 +311,26 @@ export function Menu(p) {
   return (
     <svg {...base(p)}>
       <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+
+export function Porcentaje(p) {
+  return (
+    <svg {...base(p)}>
+      <path d="M19 5 5 19" />
+      <circle cx="7.5" cy="7.5" r="2.5" />
+      <circle cx="16.5" cy="16.5" r="2.5" />
+    </svg>
+  );
+}
+
+export function Manos(p) {
+  return (
+    <svg {...base(p)}>
+      <path d="M12 3v6" />
+      <path d="m8 7 4-4 4 4" />
+      <path d="M4 13v4a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4v-4" />
     </svg>
   );
 }

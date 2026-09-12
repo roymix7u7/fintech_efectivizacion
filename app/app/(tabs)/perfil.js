@@ -18,6 +18,7 @@ export default function PerfilScreen() {
   const [usuario, setUsuario] = useState(null);
   const [perfil, setPerfil] = useState(null);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [comisiones, setComisiones] = useState([]);
   const router = useRouter();
 
   useFocusEffect(
@@ -38,6 +39,36 @@ export default function PerfilScreen() {
       .eq("user_id", user.id)
       .maybeSingle();
     setPerfil(data);
+    if (data) cargarComisiones(data);
+  }
+
+  /**
+   * Comision que aplica en cada banco. Lo especial gana sobre lo
+   * general, igual que en el panel.
+   */
+  async function cargarComisiones(perfilData) {
+    const [{ data: generales }, { data: especiales }] = await Promise.all([
+      supabase
+        .from("comisiones_banco")
+        .select("banco, porcentaje")
+        .eq("activa", true)
+        .order("banco"),
+      supabase
+        .from("comisiones_cliente")
+        .select("banco, porcentaje")
+        .eq("cliente_id", perfilData.id),
+    ]);
+
+    setComisiones(
+      (generales || []).map((g) => {
+        const especial = (especiales || []).find((e) => e.banco === g.banco);
+        return {
+          banco: g.banco,
+          porcentaje: especial ? especial.porcentaje : g.porcentaje,
+          especial: Boolean(especial),
+        };
+      }),
+    );
   }
 
   // window.confirm no existe en React Native: con el codigo anterior el
@@ -60,11 +91,7 @@ export default function PerfilScreen() {
     { label: "DNI", valor: perfil?.dni, icon: "id-card-outline" },
     { label: "Teléfono", valor: perfil?.telefono, icon: "call-outline" },
     { label: "Dirección", valor: perfil?.direccion, icon: "location-outline" },
-    {
-      label: "Comisión",
-      valor: perfil?.tasa_comision ? `${perfil.tasa_comision}%` : null,
-      icon: "cash-outline",
-    },
+
   ];
 
   return (
@@ -133,6 +160,28 @@ export default function PerfilScreen() {
           <Ionicons name="log-out-outline" size={20} color={COLORS.error} />
           <Text style={s.logoutText}>Cerrar sesión</Text>
         </TouchableOpacity>
+        {comisiones.length > 0 && (
+          <View style={s.comisionesCard}>
+            <View style={s.comisionesHeader}>
+              <Ionicons name="cash-outline" size={18} color={COLORS.primary} />
+              <Text style={s.comisionesTitulo}>Mis comisiones</Text>
+            </View>
+            <Text style={s.comisionesSub}>
+              Porcentaje que se aplica según el banco de tu tarjeta
+            </Text>
+            {comisiones.map((c) => (
+              <View key={c.banco} style={s.comisionRow}>
+                <Text style={s.comisionBanco}>{c.banco}</Text>
+                {c.especial && (
+                  <View style={s.comisionTag}>
+                    <Text style={s.comisionTagTexto}>Especial</Text>
+                  </View>
+                )}
+                <Text style={s.comisionValor}>{c.porcentaje} %</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       <MenuLateral
@@ -174,6 +223,49 @@ const s = StyleSheet.create({
   estadoPendiente: { backgroundColor: COLORS.warningLight },
   estadoTexto: { fontSize: 12, fontWeight: "600" },
   // Datos
+  comisionesCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  comisionesHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  comisionesTitulo: { fontSize: 15, fontWeight: "700", color: COLORS.text },
+  comisionesSub: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  comisionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  comisionBanco: { fontSize: 14, color: COLORS.text, fontWeight: "500" },
+  comisionTag: {
+    backgroundColor: COLORS.secondaryLight,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  comisionTagTexto: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.secondaryDark,
+    textTransform: "uppercase",
+  },
+  comisionValor: {
+    marginLeft: "auto",
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.primary,
+  },
   datosCard: {
     backgroundColor: COLORS.white,
     borderRadius: 16,

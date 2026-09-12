@@ -12,7 +12,7 @@
 --  con activa = true, asi que el indice la contaba y el segundo
 --  intento fallaba con violacion de clave unica.
 --
---  El indice ahora ignora las rechazadas, igual que la app.
+--  El indice ahora ignora las rechazadas, igual que la aapp.
 -- ------------------------------------------------------------
 
 drop index if exists public.tarjetas_cliente_banco_ultimos4_unico;
