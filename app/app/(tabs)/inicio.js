@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../src/lib/supabase";
+import { useDatos } from "../../src/lib/cache";
+import { EsqueletoResumen } from "../../src/components/Cargando";
 import Header from "../../src/components/Header";
 import MenuLateral from "../../src/components/MenuLateral";
 import COLORS from "../../src/theme/colors";
@@ -24,97 +26,50 @@ const BANCO_COLORS = {
 };
 
 export default function InicioScreen() {
-  const [perfil, setPerfil] = useState(null);
-  const [alertas, setAlertas] = useState([]);
-  const [guias, setGuias] = useState([]);
-  const [bancosTarjetas, setBancosTarjetas] = useState([]);
-  const [stats, setStats] = useState({
-    pendientes: 0,
-    aprobadas: 0,
-    tarjetas: 0,
-  });
   const [menuVisible, setMenuVisible] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
-  // useFocusEffect y no useEffect: al volver de crear una solicitud los
-  // contadores quedaban desactualizados.
-  useFocusEffect(
-    useCallback(() => {
-      cargarDatos();
-    }, []),
+  /**
+   * Una sola consulta para toda la pantalla.
+   *
+   * Antes se hacian siete viajes al servidor, uno detras de otro, y el
+   * tiempo total era la suma de los siete. Ahora el servidor arma el
+   * resumen completo y lo devuelve de una vez.
+   *
+   * Ademas useDatos pinta lo ultimo que se guardo en el telefono antes
+   * de consultar, asi que al abrir la app ya hay algo que leer.
+   */
+  const { datos, cargando, refrescando, recargar } = useDatos(
+    "inicio",
+    async () => {
+      const { data, error } = await supabase.rpc("resumen_inicio");
+      if (error) throw error;
+      return data;
+    },
   );
 
-  async function cargarDatos() {
-    // El finally garantiza que el spinner se apague incluso cuando la
-    // funcion sale temprano por falta de sesion o de perfil.
-    try {
-      await cargarDatosInterno();
-    } finally {
-      setRefreshing(false);
-    }
-  }
+  const perfil = datos?.perfil || null;
+  const stats = datos?.stats || { pendientes: 0, aprobadas: 0, tarjetas: 0 };
+  const alertas = datos?.alertas || [];
+  const guias = datos?.guias || [];
+  const hayGuias = Boolean(datos?.hay_guias);
 
-  async function cargarDatosInterno() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+  // Al volver de crear una solicitud, los contadores deben reflejarla.
+  // La primera vez no se repite: useDatos ya consulto al montar.
+  const primeraVisita = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (primeraVisita.current) {
+        primeraVisita.current = false;
+        return;
+      }
+      recargar();
+    }, [recargar]),
+  );
 
-    const { data: perfilData } = await supabase
-      .from("perfiles_cliente")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    setPerfil(perfilData);
-
-    if (perfilData) {
-      const { count: pend } = await supabase
-        .from("solicitudes")
-        .select("*", { count: "exact", head: true })
-        .eq("cliente_id", perfilData.id)
-        .eq("estado", "pendiente");
-      const { count: apr } = await supabase
-        .from("solicitudes")
-        .select("*", { count: "exact", head: true })
-        .eq("cliente_id", perfilData.id)
-        .eq("estado", "aprobado");
-
-      const { data: tarjetasData } = await supabase
-        .from("tarjetas")
-        .select("banco")
-        .eq("cliente_id", perfilData.id)
-        .eq("activa", true)
-        .eq("estado", "aprobado");
-
-      const bancosUnicos = [
-        ...new Set((tarjetasData || []).map((t) => t.banco)),
-      ];
-      setBancosTarjetas(bancosUnicos);
-      setStats({
-        pendientes: pend || 0,
-        aprobadas: apr || 0,
-        tarjetas: bancosUnicos.length,
-      });
-    }
-
-    const { data: alertasData } = await supabase
-      .from("alertas_sistema")
-      .select("*")
-      .eq("activa", true)
-      .order("created_at", { ascending: false })
-      .limit(3);
-    setAlertas(alertasData || []);
-
-    const { data: guiasData } = await supabase
-      .from("guias_banco")
-      .select("id, banco, activa")
-      .eq("activa", true)
-      .order("banco");
-    setGuias(guiasData || []);
-  }
-
-  const guiasFiltradas = guias.filter((g) => bancosTarjetas.includes(g.banco));
+  // El servidor ya devuelve solo las guias de los bancos donde el
+  // cliente tiene tarjeta verificada.
+  const guiasFiltradas = guias;
 
   const alertaStyles = {
     info: { bg: "#E8F0FE", border: "#4285F4", accent: "#1A73E8" },
@@ -138,16 +93,15 @@ export default function InicioScreen() {
         contentContainerStyle={s.content}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              cargarDatos();
-            }}
+            refreshing={refrescando}
+            onRefresh={recargar}
             tintColor={COLORS.primary}
             colors={[COLORS.primary]}
           />
         }
       >
+        {cargando && <EsqueletoResumen />}
+
         {/* Saludo */}
         <View style={s.saludoRow}>
           <View>
@@ -336,7 +290,7 @@ export default function InicioScreen() {
         )}
 
         {/* Info cuando no tiene tarjetas */}
-        {perfil?.validado_por && stats.tarjetas === 0 && guias.length > 0 && (
+        {perfil?.validado_por && stats.tarjetas === 0 && hayGuias && (
           <View style={s.infoBox}>
             <Ionicons
               name="information-circle-outline"

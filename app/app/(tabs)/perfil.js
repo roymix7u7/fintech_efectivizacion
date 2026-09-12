@@ -13,6 +13,7 @@ import Header from "../../src/components/Header";
 import MenuLateral from "../../src/components/MenuLateral";
 import COLORS from "../../src/theme/colors";
 import { confirmar, mensajeError, alerta } from "../../src/lib/ui";
+import { limpiarCache } from "../../src/lib/cache";
 
 export default function PerfilScreen() {
   const [usuario, setUsuario] = useState(null);
@@ -77,6 +78,7 @@ export default function PerfilScreen() {
     if (!(await confirmar("Seguro que quieres cerrar sesion?"))) return;
     const { error } = await supabase.auth.signOut();
     if (error) return alerta(mensajeError(error));
+    await limpiarCache();
     router.replace("/");
   }
 

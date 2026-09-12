@@ -13,6 +13,7 @@ import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
 import { alerta, confirmar, mensajeError } from "../src/lib/ui";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
+import { limpiarCache } from "../src/lib/cache";
 import SubidaDocumentos, {
   DOCUMENTOS,
   documentosCompletos,
@@ -155,6 +156,7 @@ export default function EnRevisionScreen() {
   async function cerrarSesion() {
     if (!(await confirmar("Seguro que quieres cerrar sesion?"))) return;
     await supabase.auth.signOut();
+    await limpiarCache();
     router.replace("/login");
   }
 
