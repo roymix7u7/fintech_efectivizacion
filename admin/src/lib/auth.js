@@ -1,7 +1,10 @@
 import { supabase } from "./supabase";
 
 /** Roles que tienen panel propio. */
-export const ROLES_STAFF = ["admin", "gestor"];
+export const ROLES_STAFF = ["admin", "supervisor", "gestor"];
+
+/** Roles que pueden ver todas las colas y medir al equipo. */
+export const ROLES_SUPERVISION = ["admin", "supervisor"];
 
 export async function login(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({

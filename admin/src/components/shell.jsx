@@ -17,14 +17,14 @@ export const SECCIONES = [
     ruta: "/dashboard",
     titulo: "Resumen",
     detalle: "Vista general del día",
-    roles: ["admin", "gestor"],
+    roles: ["admin", "supervisor", "gestor"],
     icono: Cuadricula,
   },
   {
     ruta: "/solicitudes",
     titulo: "Solicitudes",
     detalle: "Comprobantes por revisar",
-    roles: ["admin", "gestor"],
+    roles: ["admin", "supervisor", "gestor"],
     icono: Documento,
     contador: "solicitudesPendientes",
   },
@@ -32,7 +32,7 @@ export const SECCIONES = [
     ruta: "/kyc",
     titulo: "Verificación de clientes",
     detalle: "Documentos de identidad",
-    roles: ["admin", "gestor"],
+    roles: ["admin", "supervisor", "gestor"],
     icono: Persona,
     contador: "kycPendientes",
   },
@@ -40,9 +40,23 @@ export const SECCIONES = [
     ruta: "/tarjetas",
     titulo: "Tarjetas",
     detalle: "Altas por verificar",
-    roles: ["admin"],
+    roles: ["admin", "supervisor"],
     icono: Tarjeta,
     contador: "tarjetasPendientes",
+  },
+  {
+    ruta: "/equipo",
+    titulo: "Equipo",
+    detalle: "Personal, roles y sedes",
+    roles: ["admin", "supervisor"],
+    icono: Personas,
+  },
+  {
+    ruta: "/sedes",
+    titulo: "Sedes",
+    detalle: "Oficinas y su supervisor",
+    roles: ["admin"],
+    icono: Edificio,
   },
   {
     ruta: "/comisiones",
@@ -311,6 +325,28 @@ export function Menu(p) {
   return (
     <svg {...base(p)}>
       <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+
+export function Personas(p) {
+  return (
+    <svg {...base(p)}>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5" />
+      <path d="M16.5 5.2a3.5 3.5 0 0 1 0 6.6" />
+      <path d="M18.5 14.8c1.9.7 3 2.2 3 4.2" />
+    </svg>
+  );
+}
+
+export function Edificio(p) {
+  return (
+    <svg {...base(p)}>
+      <path d="M4 21V6a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15" />
+      <path d="M14 10h5a1 1 0 0 1 1 1v10" />
+      <path d="M7 9h4M7 13h4M7 17h4M17 14h1M17 18h1" />
+      <path d="M2.5 21h19" />
     </svg>
   );
 }

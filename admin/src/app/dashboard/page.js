@@ -109,7 +109,7 @@ export default function DashboardPage() {
     {
       etiqueta: "Tarjetas por aprobar",
       valor: stats.tarjetasPendientes,
-      ruta: session.rol === "admin" ? "/tarjetas" : null,
+      ruta: ["admin", "supervisor"].includes(session.rol) ? "/tarjetas" : null,
       urgente: true,
     },
     {

@@ -122,7 +122,8 @@ export default function SolicitudesPage() {
   useEffect(() => {
     getSession().then((s) => {
       if (!s) return router.push("/login");
-      if (!["gestor", "admin"].includes(s.rol)) return router.push("/dashboard");
+      if (!["gestor", "supervisor", "admin"].includes(s.rol))
+        return router.push("/dashboard");
       setSession(s);
       cargar("pendiente");
       contarPendientes();

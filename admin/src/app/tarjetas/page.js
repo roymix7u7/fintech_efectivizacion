@@ -78,7 +78,8 @@ export default function TarjetasPage() {
   useEffect(() => {
     getSession().then((s) => {
       if (!s) return router.push("/login");
-      if (s.rol !== "admin") return router.push("/dashboard");
+      if (!["supervisor", "admin"].includes(s.rol))
+        return router.push("/dashboard");
       setSession(s);
       cargar("pendiente");
       contarPendientes();
