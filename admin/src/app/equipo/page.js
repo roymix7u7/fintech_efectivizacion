@@ -110,18 +110,39 @@ export default function EquipoPage() {
     setGuardando(null);
 
     if (e) {
-      // El cuerpo del error trae el motivo real; el mensaje de arriba
-      // solo dice que la función devolvió un código distinto de 200.
-      let detalle = e.message;
+      // El mensaje de arriba solo dice que la función devolvió un
+      // código distinto de 200. El motivo real viene en el cuerpo.
+      let mensaje = e.message;
+      let motivo = null;
       try {
         const cuerpo = await e.context?.json?.();
-        if (cuerpo?.error) detalle = cuerpo.error;
+        if (cuerpo?.error) mensaje = cuerpo.error;
+        motivo = cuerpo?.detalle || null;
       } catch {}
-      setError(
-        detalle.includes("Failed to send") || detalle.includes("not found")
-          ? "La función crear-staff no está desplegada. Ejecuta: npx supabase functions deploy crear-staff"
-          : detalle,
-      );
+
+      // Cada motivo tiene un arreglo distinto, así que se dice cuál.
+      const ayudas = {
+        sesion_invalida:
+          "Tu sesión caducó. Cierra sesión y vuelve a entrar.",
+        sin_fila:
+          "Tu cuenta de acceso no tiene fila en la tabla de usuarios. Escríbeme el identificador que aparece arriba.",
+        rol_insuficiente:
+          "Entra con la cuenta de administrador, o pide que te asignen ese rol.",
+        sin_variables:
+          "La función quedó sin sus variables de entorno. Vuelve a desplegarla.",
+        fallo_consulta:
+          "La función no pudo leer la tabla de usuarios. Es un problema de permisos en la base, no de tu cuenta.",
+        correo_repetido:
+          "Busca ese correo en la lista de abajo y asígnale el rol desde ahí.",
+      };
+
+      if (mensaje.includes("Failed to send") || mensaje.includes("not found")) {
+        setError(
+          "La función crear-staff no está desplegada. Ejecuta: npx supabase functions deploy crear-staff",
+        );
+      } else {
+        setError(ayudas[motivo] ? `${mensaje} ${ayudas[motivo]}` : mensaje);
+      }
       return;
     }
     if (data?.error) {
