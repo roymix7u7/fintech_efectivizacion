@@ -31,6 +31,7 @@ export default function RootLayout() {
           name="nueva-solicitud"
           options={{ title: "Nueva solicitud" }}
         />
+        <Stack.Screen name="notificaciones" options={{ title: "Avisos" }} />
       </Stack>
     </>
   );

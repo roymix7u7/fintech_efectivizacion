@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -7,11 +7,42 @@ import {
   StyleSheet,
   ScrollView,
   Image,
+  ActivityIndicator,
 } from "react-native";
-import { useRouter } from "expo-router";
-import { supabase } from "../src/lib/supabase";
+import { useRouter, useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
+import { alerta, mensajeError } from "../src/lib/ui";
+import { subirImagen, borrarImagenes } from "../src/lib/storage";
+
+const BUCKET = "comprobantes";
+const MAX_NOTA = 300;
+
+/** Opciones del selector. base64 es obligatorio para que la subida no llegue vacia. */
+const OPCIONES_FOTO = {
+  mediaTypes: ["images"],
+  quality: 0.6,
+  allowsEditing: true,
+  base64: true,
+};
+
+/**
+ * Codigo legible para el cliente. El sufijo aleatorio evita las
+ * colisiones que tenia la version basada solo en la hora.
+ */
+function generarCodigo() {
+  const d = new Date();
+  const fecha =
+    d.getFullYear().toString() +
+    String(d.getMonth() + 1).padStart(2, "0") +
+    String(d.getDate()).padStart(2, "0");
+  let sufijo = "";
+  const abc = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  for (let i = 0; i < 6; i++)
+    sufijo += abc[Math.floor(Math.random() * abc.length)];
+  return `SOL-${fecha}-${sufijo}`;
+}
 
 export default function NuevaSolicitudScreen() {
   const [perfil, setPerfil] = useState(null);
@@ -19,235 +50,232 @@ export default function NuevaSolicitudScreen() {
   const [tarjetaSeleccionada, setTarjetaSeleccionada] = useState(null);
   const [comprobante, setComprobante] = useState(null);
   const [nota, setNota] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [enviando, setEnviando] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    cargarDatos();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      cargarDatos();
+    }, []),
+  );
 
   async function cargarDatos() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    setCargando(true);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
 
-    const { data: perfilData } = await supabase
-      .from("perfiles_cliente")
-      .select("id")
-      .eq("user_id", user.id)
-      .single();
-    if (!perfilData) return;
-    setPerfil(perfilData);
+      const { data: perfilData } = await supabase
+        .from("perfiles_cliente")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!perfilData) return;
+      setPerfil(perfilData);
 
-    const { data: tarjetasData } = await supabase
-      .from("tarjetas")
-      .select("*")
-      .eq("cliente_id", perfilData.id)
-      .eq("activa", true)
-      .eq("estado", "aprobado")
-      .order("created_at", { ascending: false });
-    setTarjetas(tarjetasData || []);
+      const { data: tarjetasData, error } = await supabase
+        .from("tarjetas")
+        .select("id, banco, ultimos_4")
+        .eq("cliente_id", perfilData.id)
+        .eq("activa", true)
+        .eq("estado", "aprobado")
+        .order("created_at", { ascending: false });
+      if (error) {
+        alerta(mensajeError(error));
+        return;
+      }
+      setTarjetas(tarjetasData || []);
+
+      // Si la tarjeta elegida ya no esta disponible, se limpia.
+      setTarjetaSeleccionada((actual) =>
+        actual && (tarjetasData || []).some((t) => t.id === actual.id)
+          ? actual
+          : null,
+      );
+    } finally {
+      setCargando(false);
+    }
   }
 
   async function tomarFoto() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      if (typeof window !== "undefined")
-        window.alert("Se necesita permiso para la cámara.");
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      quality: 0.7,
-      allowsEditing: true,
-    });
-    if (!result.canceled && result.assets[0]) setComprobante(result.assets[0]);
+    if (status !== "granted")
+      return alerta("Necesitamos permiso para usar la camara.");
+    const r = await ImagePicker.launchCameraAsync(OPCIONES_FOTO);
+    if (!r.canceled && r.assets?.[0]) guardarComprobante(r.assets[0]);
   }
 
   async function seleccionarDeGaleria() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      if (typeof window !== "undefined")
-        window.alert("Se necesita permiso para la galería.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.7,
-      allowsEditing: true,
-    });
-    if (!result.canceled && result.assets[0]) setComprobante(result.assets[0]);
+    if (status !== "granted")
+      return alerta("Necesitamos permiso para acceder a tus fotos.");
+    const r = await ImagePicker.launchImageLibraryAsync(OPCIONES_FOTO);
+    if (!r.canceled && r.assets?.[0]) guardarComprobante(r.assets[0]);
   }
 
-  async function generarCodigo() {
-    const anio = new Date().getFullYear();
-    const prefijo = `SOL-${anio}-`;
-    const { data } = await supabase
-      .from("solicitudes")
-      .select("codigo")
-      .like("codigo", `${prefijo}%`)
-      .order("codigo", { ascending: false })
-      .limit(1);
-    let siguiente = 1;
-    if (data && data.length > 0) {
-      const ultimo = parseInt(data[0].codigo.split("-")[2]) || 0;
-      siguiente = ultimo + 1;
-    }
-    return `${prefijo}${String(siguiente).padStart(6, "0")}`;
+  function guardarComprobante(asset) {
+    if (!asset.base64)
+      return alerta("No pudimos leer la imagen. Intentalo otra vez.");
+    setComprobante(asset);
   }
 
   async function enviarSolicitud() {
-    if (!tarjetaSeleccionada) {
-      if (typeof window !== "undefined")
-        window.alert(
-          "Selecciona la tarjeta con la que realizaste la operación.",
-        );
-      return;
-    }
-    if (!comprobante) {
-      if (typeof window !== "undefined")
-        window.alert("Adjunta el comprobante de la operación.");
-      return;
-    }
+    if (!perfil) return alerta("No pudimos cargar tu perfil. Reintenta.");
+    if (!tarjetaSeleccionada)
+      return alerta("Selecciona la tarjeta con la que hiciste la operacion.");
+    if (!comprobante) return alerta("Adjunta el comprobante de la operacion.");
 
-    setLoading(true);
-
+    setEnviando(true);
+    let pathSubido = null;
     try {
-      const codigo = await generarCodigo();
-
-      // Subir comprobante
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const timestamp = Date.now();
-      const path = `${user.id}/${timestamp}.jpg`;
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
 
-      const response = await fetch(comprobante.uri);
-      const blob = await response.blob();
+      const codigo = generarCodigo();
+      const path = `${user.id}/${codigo}.jpg`;
+      await subirImagen(BUCKET, path, comprobante);
+      pathSubido = path;
 
-      const { error: uploadError } = await supabase.storage
-        .from("comprobantes")
-        .upload(path, blob, { contentType: "image/jpeg", upsert: true });
-
-      if (uploadError)
-        throw new Error("Error subiendo comprobante: " + uploadError.message);
-
-      const { data: urlData } = await supabase.storage
-        .from("comprobantes")
-        .createSignedUrl(path, 60 * 60 * 24 * 365);
-
-      // Crear solicitud
+      // Se guarda el path del objeto, no una URL firmada: las firmadas
+      // caducan y el admin termina viendo un enlace roto.
       const { error: solError } = await supabase.from("solicitudes").insert({
         codigo,
         cliente_id: perfil.id,
         tarjeta_id: tarjetaSeleccionada.id,
         banco: tarjetaSeleccionada.banco,
-        comprobante_url: urlData?.signedUrl || path,
-        nota_cliente: nota || null,
+        comprobante_url: path,
+        nota_cliente: nota.trim() || null,
         estado: "pendiente",
       });
+      if (solError) throw solError;
 
-      if (solError)
-        throw new Error("Error creando solicitud: " + solError.message);
+      // La auditoria no debe tumbar la solicitud si falla.
+      const { error: auditError } = await supabase
+        .from("auditoria_logs")
+        .insert({
+          usuario_id: user.id,
+          accion: "CREAR_SOLICITUD",
+          entidad: "solicitudes",
+          datos_despues: { codigo, banco: tarjetaSeleccionada.banco },
+        });
+      if (auditError) console.warn("Auditoria:", auditError.message);
 
-      // Auditoría
-      const {
-        data: { user: currentUser },
-      } = await supabase.auth.getUser();
-      await supabase.from("auditoria_logs").insert({
-        usuario_id: currentUser.id,
-        accion: "CREAR_SOLICITUD",
-        entidad: "solicitudes",
-        datos_despues: { codigo, banco: tarjetaSeleccionada.banco },
-      });
-
-      setLoading(false);
-      if (typeof window !== "undefined") {
-        window.alert(
-          `Solicitud ${codigo} enviada. Revisaremos tu comprobante.`,
-        );
-      }
+      alerta(`Solicitud ${codigo} enviada. Revisaremos tu comprobante.`);
       router.replace("/(tabs)/solicitudes");
     } catch (err) {
-      setLoading(false);
-      if (typeof window !== "undefined") window.alert("Error: " + err.message);
+      // Sin esto la imagen quedaba huerfana en Storage.
+      await borrarImagenes(BUCKET, [pathSubido]);
+      alerta(mensajeError(err));
+    } finally {
+      setEnviando(false);
     }
   }
 
+  if (cargando) {
+    return (
+      <View style={[s.container, s.centrado]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  const listo = Boolean(tarjetaSeleccionada && comprobante);
+
   return (
-    <ScrollView style={s.container} contentContainerStyle={s.content}>
+    <ScrollView
+      style={s.container}
+      contentContainerStyle={s.content}
+      keyboardShouldPersistTaps="handled"
+    >
       {/* Paso 1: Seleccionar tarjeta */}
       <Text style={s.stepTitle}>
-        1. ¿Con qué tarjeta realizaste la operación?
+        1. Con que tarjeta realizaste la operacion?
       </Text>
       <Text style={s.stepSub}>
-        Solo puedes enviar comprobantes de tus tarjetas registradas
+        Solo puedes enviar comprobantes de tus tarjetas verificadas
       </Text>
 
       {tarjetas.length === 0 ? (
-        <View style={s.warningBox}>
+        <TouchableOpacity
+          style={s.warningBox}
+          onPress={() => router.replace("/(tabs)/tarjetas")}
+        >
           <Text style={s.warningText}>
-            No tienes tarjetas registradas. Agrégala en la pestaña Tarjetas.
+            No tienes tarjetas verificadas. Toca aqui para registrar una.
           </Text>
-        </View>
+        </TouchableOpacity>
       ) : (
         <View style={s.tarjetasGrid}>
-          {tarjetas.map((t) => (
-            <TouchableOpacity
-              key={t.id}
-              style={[
-                s.tarjetaCard,
-                tarjetaSeleccionada?.id === t.id && s.tarjetaCardActive,
-              ]}
-              onPress={() => setTarjetaSeleccionada(t)}
-            >
-              <Text
-                style={[
-                  s.tarjetaBanco,
-                  tarjetaSeleccionada?.id === t.id && s.tarjetaTextActive,
-                ]}
+          {tarjetas.map((t) => {
+            const activa = tarjetaSeleccionada?.id === t.id;
+            return (
+              <TouchableOpacity
+                key={t.id}
+                style={[s.tarjetaCard, activa && s.tarjetaCardActive]}
+                onPress={() => setTarjetaSeleccionada(activa ? null : t)}
               >
-                {t.banco}
-              </Text>
-              <Text
-                style={[
-                  s.tarjetaNumero,
-                  tarjetaSeleccionada?.id === t.id && s.tarjetaTextActive,
-                ]}
-              >
-                •••• {t.ultimos_4}
-              </Text>
-              {tarjetaSeleccionada?.id === t.id && (
-                <Text style={s.tarjetaCheck}>✓</Text>
-              )}
-            </TouchableOpacity>
-          ))}
+                <Text
+                  style={[s.tarjetaBanco, activa && s.tarjetaTextActive]}
+                >
+                  {t.banco}
+                </Text>
+                <Text
+                  style={[s.tarjetaNumero, activa && s.tarjetaTextActive]}
+                >
+                  {"•••• "}
+                  {t.ultimos_4}
+                </Text>
+                {activa && <Text style={s.tarjetaCheck}>{"✓"}</Text>}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       )}
 
       {/* Paso 2: Comprobante */}
       <Text style={s.stepTitle}>2. Adjunta el comprobante</Text>
       <Text style={s.stepSub}>
-        Foto clara del voucher o captura de pantalla de la transferencia
+        Foto clara del voucher o captura de la transferencia
       </Text>
 
       {comprobante ? (
         <View style={s.comprobantePreview}>
           <Image source={{ uri: comprobante.uri }} style={s.comprobanteImage} />
-          <TouchableOpacity onPress={() => setComprobante(null)}>
+          <TouchableOpacity
+            onPress={() => setComprobante(null)}
+            disabled={enviando}
+          >
             <Text style={s.cambiarFoto}>Cambiar comprobante</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <View style={s.fotoBtns}>
-          <TouchableOpacity style={s.fotoBtn} onPress={tomarFoto}>
-            <Text style={s.fotoBtnIcon}>📷</Text>
+          <TouchableOpacity
+            style={s.fotoBtn}
+            onPress={tomarFoto}
+            disabled={enviando}
+          >
+            <Text style={s.fotoBtnIcon}>{"📷"}</Text>
             <Text style={s.fotoBtnText}>Tomar foto</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.fotoBtn} onPress={seleccionarDeGaleria}>
-            <Text style={s.fotoBtnIcon}>🖼️</Text>
-            <Text style={s.fotoBtnText}>Galería</Text>
+          <TouchableOpacity
+            style={s.fotoBtn}
+            onPress={seleccionarDeGaleria}
+            disabled={enviando}
+          >
+            <Text style={s.fotoBtnIcon}>{"🖼"}</Text>
+            <Text style={s.fotoBtnText}>Galeria</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -256,35 +284,40 @@ export default function NuevaSolicitudScreen() {
       <Text style={s.stepTitle}>3. Nota adicional (opcional)</Text>
       <TextInput
         style={s.textArea}
-        placeholder="Algún detalle sobre la operación..."
+        placeholder="Algun detalle sobre la operacion..."
         value={nota}
-        onChangeText={setNota}
+        onChangeText={(v) => setNota(v.slice(0, MAX_NOTA))}
         multiline
-        numberOfLines={3}
+        maxLength={MAX_NOTA}
         placeholderTextColor={COLORS.textLight}
       />
+      <Text style={s.contador}>
+        {nota.length} / {MAX_NOTA}
+      </Text>
 
       {/* Resumen */}
-      {tarjetaSeleccionada && comprobante && (
+      {listo && (
         <View style={s.resumen}>
           <Text style={s.resumenTitle}>Resumen de solicitud</Text>
           <View style={s.resumenRow}>
             <Text style={s.resumenLabel}>Tarjeta</Text>
             <Text style={s.resumenValue}>
-              {tarjetaSeleccionada.banco} •••• {tarjetaSeleccionada.ultimos_4}
+              {tarjetaSeleccionada.banco}
+              {" •••• "}
+              {tarjetaSeleccionada.ultimos_4}
             </Text>
           </View>
           <View style={s.resumenRow}>
             <Text style={s.resumenLabel}>Comprobante</Text>
             <Text style={[s.resumenValue, { color: COLORS.success }]}>
-              ✅ Adjunto
+              Adjunto
             </Text>
           </View>
-          {nota ? (
+          {nota.trim() ? (
             <View style={s.resumenRow}>
               <Text style={s.resumenLabel}>Nota</Text>
               <Text style={s.resumenValue} numberOfLines={1}>
-                {nota}
+                {nota.trim()}
               </Text>
             </View>
           ) : null}
@@ -293,23 +326,21 @@ export default function NuevaSolicitudScreen() {
 
       {/* Enviar */}
       <TouchableOpacity
-        style={[
-          s.btnEnviar,
-          (!tarjetaSeleccionada || !comprobante) && s.btnDisabled,
-        ]}
+        style={[s.btnEnviar, (!listo || enviando) && s.btnDisabled]}
         onPress={enviarSolicitud}
-        disabled={loading || !tarjetaSeleccionada || !comprobante}
+        disabled={enviando || !listo}
       >
         <Text style={s.btnEnviarText}>
-          {loading ? "Enviando..." : "Enviar solicitud"}
+          {enviando ? "Enviando..." : "Enviar solicitud"}
         </Text>
       </TouchableOpacity>
     </ScrollView>
   );
 }
-
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  centrado: { justifyContent: "center", alignItems: "center" },
+  contador: { fontSize: 12, color: COLORS.textLight, textAlign: "right", marginTop: 6 },
   content: { padding: 20, paddingBottom: 60 },
   stepTitle: {
     fontSize: 16,

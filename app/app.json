@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Fintech Efectivización",
+    "name": "AlToque Perú WK",
     "slug": "fintech-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,19 +10,42 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1B2A4A"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Usamos la cámara para que puedas fotografiar tu DNI, tu tarjeta y tus comprobantes de operación.",
+        "NSPhotoLibraryUsageDescription": "Accedemos a tus fotos para que puedas adjuntar comprobantes ya guardados en tu galería."
+      }
     },
     "android": {
+      "package": "com.altoqueperu.fintech",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png",
+        "backgroundColor": "#1B2A4A"
       }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-camera",
-      "expo-image-picker"
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Usamos la cámara para que puedas fotografiar tu DNI, tu tarjeta y tus comprobantes de operación."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Accedemos a tus fotos para que puedas adjuntar comprobantes ya guardados en tu galería."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

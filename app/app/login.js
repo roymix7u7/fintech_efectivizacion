@@ -5,144 +5,275 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
+import COLORS from "../src/theme/colors";
+import { alerta, mensajeError } from "../src/lib/ui";
+import { validarEmail } from "../src/lib/validaciones";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   async function handleLogin() {
-    if (!email || !password) {
-      if (typeof window !== "undefined")
-        return window.alert("Completa todos los campos.");
-      return Alert.alert("Error", "Completa todos los campos.");
-    }
+    const errorEmail = validarEmail(email);
+    if (errorEmail) return alerta(errorEmail);
+    if (!password) return alerta("Ingresa tu contrasena.");
+
     setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      if (error) return alerta(mensajeError(error));
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("rol, estado")
+        .eq("id", data.user.id)
+        .maybeSingle();
 
-    if (error) {
+      if (userError) {
+        await supabase.auth.signOut();
+        return alerta(mensajeError(userError));
+      }
+
+      // Cuentas viejas que quedaron sin fila en users porque el registro
+      // se interrumpio. Se repara aqui en vez de dejar al usuario fuera.
+      if (!userData) {
+        const { error: repararError } = await supabase.from("users").insert({
+          id: data.user.id,
+          email: data.user.email,
+          rol: "cliente",
+          estado: "pendiente",
+        });
+        if (repararError) {
+          await supabase.auth.signOut();
+          return alerta(
+            "Tu registro quedo incompleto. Escribenos para activarlo.",
+          );
+        }
+        return router.replace("/en-revision");
+      }
+
+      if (userData.rol !== "cliente") {
+        await supabase.auth.signOut();
+        return alerta("Esta app es solo para clientes.");
+      }
+
+      if (userData.estado === "bloqueado") {
+        await supabase.auth.signOut();
+        return alerta("Tu cuenta esta bloqueada. Contacta a soporte.");
+      }
+
+      // pendiente y observado comparten pantalla: en-revision muestra el
+      // motivo y deja volver a subir los documentos.
+      if (userData.estado === "activo") router.replace("/(tabs)/inicio");
+      else router.replace("/en-revision");
+    } catch (err) {
+      alerta(mensajeError(err));
+    } finally {
       setLoading(false);
-      if (typeof window !== "undefined") return window.alert(error.message);
-      return Alert.alert("Error", error.message);
-    }
-
-    const { data: userData } = await supabase
-      .from("users")
-      .select("rol, estado")
-      .eq("id", data.user.id)
-      .single();
-
-    if (!userData || userData.rol !== "cliente") {
-      await supabase.auth.signOut();
-      setLoading(false);
-      const msg = "Esta app es solo para clientes.";
-      if (typeof window !== "undefined") return window.alert(msg);
-      return Alert.alert("Error", msg);
-    }
-
-    if (userData.estado === "bloqueado") {
-      await supabase.auth.signOut();
-      setLoading(false);
-      const msg = "Tu cuenta está bloqueada. Contacta soporte.";
-      if (typeof window !== "undefined") return window.alert(msg);
-      return Alert.alert("Error", msg);
-    }
-
-    setLoading(false);
-
-    if (userData.estado === "activo") {
-      router.replace("/(tabs)/inicio");
-    } else {
-      router.replace("/en-revision");
     }
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Bienvenido de vuelta</Text>
-      <Text style={styles.subtitle}>Ingresa con tu cuenta</Text>
-
-      <View style={styles.form}>
-        <TextInput
-          style={styles.input}
-          placeholder="Correo electrónico"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
+    <KeyboardAvoidingView
+      style={s.container}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      {/* Header azul */}
+      <View style={s.header}>
+        <Image
+          source={require("../assets/LOGOATK.png")}
+          style={s.logo}
+          resizeMode="contain"
         />
-        <TextInput
-          style={styles.input}
-          placeholder="Contraseña"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-
-        <TouchableOpacity
-          onPress={() => router.push("/recuperar")}
-          style={styles.forgotLink}
-        >
-          <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.btn}
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          <Text style={styles.btnText}>
-            {loading ? "Ingresando..." : "Iniciar sesión"}
-          </Text>
-        </TouchableOpacity>
+        <Text style={s.brand}>ALTOQUE PERÚ WK</Text>
+        <Text style={s.headerSub}>Tu aliado financiero</Text>
       </View>
 
-      <TouchableOpacity
-        onPress={() => router.push("/registro")}
-        style={styles.link}
-      >
-        <Text style={styles.linkText}>¿No tienes cuenta? Regístrate</Text>
-      </TouchableOpacity>
-    </View>
+      {/* Formulario */}
+      <View style={s.formContainer}>
+        <Text style={s.title}>Iniciar sesión</Text>
+        <Text style={s.subtitle}>Ingresa con tu cuenta para continuar</Text>
+
+        <View style={s.form}>
+          <View style={s.inputContainer}>
+            <Ionicons
+              name="mail-outline"
+              size={20}
+              color={COLORS.textLight}
+              style={s.inputIcon}
+            />
+            <TextInput
+              style={s.input}
+              placeholder="Correo electrónico"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              placeholderTextColor={COLORS.textLight}
+            />
+          </View>
+
+          <View style={s.inputContainer}>
+            <Ionicons
+              name="lock-closed-outline"
+              size={20}
+              color={COLORS.textLight}
+              style={s.inputIcon}
+            />
+            <TextInput
+              style={s.input}
+              placeholder="Contraseña"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              placeholderTextColor={COLORS.textLight}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword(!showPassword)}
+              style={s.eyeBtn}
+            >
+              <Ionicons
+                name={showPassword ? "eye-off-outline" : "eye-outline"}
+                size={20}
+                color={COLORS.textLight}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => router.push("/recuperar")}
+            style={s.forgotLink}
+          >
+            <Text style={s.forgotText}>¿Olvidaste tu contraseña?</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[s.btn, loading && s.btnDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <Text style={s.btnText}>Ingresando...</Text>
+            ) : (
+              <View style={s.btnInner}>
+                <Text style={s.btnText}>Ingresar</Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={18}
+                  color={COLORS.primaryDark}
+                />
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={s.dividerRow}>
+          <View style={s.dividerLine} />
+          <Text style={s.dividerText}>o</Text>
+          <View style={s.dividerLine} />
+        </View>
+
+        <TouchableOpacity
+          style={s.registerBtn}
+          onPress={() => router.push("/registro")}
+        >
+          <Text style={s.registerText}>Crear cuenta nueva</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-    padding: 32,
-    justifyContent: "center",
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.primary },
+  // Header
+  header: {
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    paddingTop: 70,
+    paddingBottom: 30,
   },
-  title: { fontSize: 28, fontWeight: "700", color: "#111" },
-  subtitle: { fontSize: 16, color: "#666", marginTop: 4, marginBottom: 32 },
-  form: { gap: 14 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
+  logo: { width: 64, height: 64, marginBottom: 12 },
+  brand: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: COLORS.secondary,
+    letterSpacing: 1,
+  },
+  headerSub: { fontSize: 14, color: COLORS.white, opacity: 0.7, marginTop: 4 },
+  // Form
+  formContainer: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 28,
+    paddingTop: 32,
+  },
+  title: { fontSize: 24, fontWeight: "700", color: COLORS.text },
+  subtitle: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+    marginBottom: 28,
+  },
+  form: { gap: 16 },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
     borderRadius: 12,
+    backgroundColor: COLORS.inputBg,
+  },
+  inputIcon: { paddingLeft: 14 },
+  input: {
+    flex: 1,
     padding: 14,
     fontSize: 16,
+    color: COLORS.text,
   },
+  eyeBtn: { paddingRight: 14 },
   forgotLink: { alignItems: "flex-end" },
-  forgotText: { color: "#3B82F6", fontSize: 14 },
+  forgotText: { color: COLORS.primary, fontSize: 14, fontWeight: "500" },
   btn: {
-    backgroundColor: "#111",
+    backgroundColor: COLORS.secondary,
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
     marginTop: 4,
   },
-  btnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  link: { marginTop: 24, alignItems: "center" },
-  linkText: { color: "#666", fontSize: 14 },
+  btnDisabled: { opacity: 0.7 },
+  btnInner: { flexDirection: "row", alignItems: "center", gap: 8 },
+  btnText: { color: COLORS.primaryDark, fontSize: 16, fontWeight: "700" },
+  // Divider
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 24,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.borderLight },
+  dividerText: { paddingHorizontal: 14, fontSize: 13, color: COLORS.textLight },
+  // Register
+  registerBtn: {
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    borderRadius: 12,
+    padding: 15,
+    alignItems: "center",
+  },
+  registerText: { color: COLORS.primary, fontSize: 15, fontWeight: "600" },
 });

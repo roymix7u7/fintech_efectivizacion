@@ -5,18 +5,38 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  RefreshControl,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../src/lib/supabase";
+import Header from "../../src/components/Header";
+import MenuLateral from "../../src/components/MenuLateral";
+import COLORS from "../../src/theme/colors";
 
 export default function NoticiasScreen() {
   const [alertas, setAlertas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [perfil, setPerfil] = useState(null);
 
   useEffect(() => {
     cargarNoticias();
   }, []);
 
   async function cargarNoticias() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      const { data: perfilData } = await supabase
+        .from("perfiles_cliente")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+      setPerfil(perfilData);
+    }
+
     const { data } = await supabase
       .from("alertas_sistema")
       .select("*")
@@ -24,128 +44,142 @@ export default function NoticiasScreen() {
       .order("created_at", { ascending: false });
     setAlertas(data || []);
     setLoading(false);
+    setRefreshing(false);
   }
 
   const colores = {
-    info: { bg: "#EBF5FF", border: "#93C5FD", text: "#1E40AF", icon: "ℹ️" },
-    advertencia: {
-      bg: "#FFF7ED",
-      border: "#FDBA74",
-      text: "#9A3412",
-      icon: "⚠️",
+    info: {
+      bg: "#E8F0FE",
+      border: "#4285F4",
+      text: "#1A73E8",
+      icon: "information-circle",
     },
-    critico: { bg: "#FEF2F2", border: "#FCA5A5", text: "#991B1B", icon: "🚨" },
+    advertencia: {
+      bg: COLORS.warningLight,
+      border: COLORS.warning,
+      text: COLORS.warning,
+      icon: "alert-circle",
+    },
+    critico: {
+      bg: COLORS.errorLight,
+      border: COLORS.error,
+      text: COLORS.error,
+      icon: "warning",
+    },
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.titulo}>Noticias y avisos</Text>
-      <Text style={styles.subtitulo}>
-        Mantente al día con las novedades de la empresa
-      </Text>
+    <View style={s.container}>
+      <Header onMenuPress={() => setMenuVisible(true)} titulo="Noticias" />
 
-      {loading ? (
-        <Text style={styles.empty}>Cargando...</Text>
-      ) : alertas.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>📭</Text>
-          <Text style={styles.emptyTitle}>Sin noticias</Text>
-          <Text style={styles.empty}>
-            No hay noticias ni avisos por el momento.
-          </Text>
-        </View>
-      ) : (
-        alertas.map((alerta) => {
-          const c = colores[alerta.tipo] || colores.info;
-          return (
-            <View
-              key={alerta.id}
-              style={[
-                styles.card,
-                { backgroundColor: c.bg, borderColor: c.border },
-              ]}
-            >
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardIcon}>{c.icon}</Text>
-                <View style={styles.cardHeaderText}>
-                  <Text style={[styles.cardTitulo, { color: c.text }]}>
-                    {alerta.titulo}
-                  </Text>
-                  <Text style={styles.cardFecha}>
-                    {new Date(alerta.created_at).toLocaleDateString("es-PE", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </Text>
-                </View>
-              </View>
-              <Text style={[styles.cardMensaje, { color: c.text }]}>
-                {alerta.mensaje}
-              </Text>
-              {alerta.fecha_fin && (
-                <Text style={styles.cardExpira}>
-                  Vigente hasta:{" "}
-                  {new Date(alerta.fecha_fin).toLocaleDateString("es-PE")}
-                </Text>
-              )}
-            </View>
-          );
-        })
-      )}
-
-      <TouchableOpacity
-        style={styles.btnRefresh}
-        onPress={() => {
-          setLoading(true);
-          cargarNoticias();
-        }}
+      <ScrollView
+        contentContainerStyle={s.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              cargarNoticias();
+            }}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
       >
-        <Text style={styles.btnRefreshText}>Actualizar noticias</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <Text style={s.subtitulo}>Mantente al día con las novedades</Text>
+
+        {loading ? (
+          <Text style={s.empty}>Cargando...</Text>
+        ) : alertas.length === 0 ? (
+          <View style={s.emptyContainer}>
+            <Ionicons
+              name="megaphone-outline"
+              size={48}
+              color={COLORS.textLight}
+            />
+            <Text style={s.emptyTitle}>Sin noticias</Text>
+            <Text style={s.empty}>No hay noticias por el momento</Text>
+          </View>
+        ) : (
+          alertas.map((alerta) => {
+            const c = colores[alerta.tipo] || colores.info;
+            return (
+              <View
+                key={alerta.id}
+                style={[s.card, { borderLeftColor: c.border }]}
+              >
+                <View style={s.cardHeader}>
+                  <Ionicons name={c.icon} size={20} color={c.text} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.cardTitulo, { color: c.text }]}>
+                      {alerta.titulo}
+                    </Text>
+                    <Text style={s.cardFecha}>
+                      {new Date(alerta.created_at).toLocaleDateString("es-PE", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={s.cardMensaje}>{alerta.mensaje}</Text>
+                {alerta.fecha_fin && (
+                  <Text style={s.cardExpira}>
+                    Vigente hasta:{" "}
+                    {new Date(alerta.fecha_fin).toLocaleDateString("es-PE")}
+                  </Text>
+                )}
+              </View>
+            );
+          })
+        )}
+      </ScrollView>
+
+      <MenuLateral
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        perfil={perfil}
+      />
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f9f9f9" },
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: 20, paddingBottom: 40 },
-  titulo: { fontSize: 24, fontWeight: "700", color: "#111", marginBottom: 4 },
-  subtitulo: { fontSize: 14, color: "#666", marginBottom: 24 },
-  card: { borderWidth: 1, borderRadius: 14, padding: 16, marginBottom: 14 },
+  subtitulo: { fontSize: 14, color: COLORS.textSecondary, marginBottom: 20 },
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderLeftWidth: 4,
+  },
   cardHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 12,
     marginBottom: 10,
   },
-  cardIcon: { fontSize: 24, marginTop: 2 },
-  cardHeaderText: { flex: 1 },
   cardTitulo: { fontSize: 16, fontWeight: "700" },
-  cardFecha: { fontSize: 12, color: "#999", marginTop: 2 },
-  cardMensaje: { fontSize: 14, lineHeight: 22 },
+  cardFecha: { fontSize: 12, color: COLORS.textLight, marginTop: 2 },
+  cardMensaje: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 22 },
   cardExpira: {
     fontSize: 12,
-    color: "#999",
+    color: COLORS.textLight,
     marginTop: 8,
     fontStyle: "italic",
   },
   emptyContainer: { alignItems: "center", marginTop: 60 },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
-    color: "#111",
+    color: COLORS.textSecondary,
+    marginTop: 12,
     marginBottom: 4,
   },
-  empty: { fontSize: 14, color: "#999", textAlign: "center" },
-  btnRefresh: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 12,
-    padding: 14,
-    alignItems: "center",
-    marginTop: 20,
-  },
-  btnRefreshText: { color: "#666", fontSize: 14, fontWeight: "500" },
+  empty: { fontSize: 14, color: COLORS.textLight, textAlign: "center" },
 });

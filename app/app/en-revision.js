@@ -1,91 +1,319 @@
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+} from "react-native";
+import { useRouter, useFocusEffect } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
+import COLORS from "../src/theme/colors";
+import { alerta, confirmar, mensajeError } from "../src/lib/ui";
+import { subirImagen, borrarImagenes } from "../src/lib/storage";
+import SubidaDocumentos, {
+  DOCUMENTOS,
+  documentosCompletos,
+} from "../src/components/SubidaDocumentos";
+
+const BUCKET_KYC = "kyc-documentos";
 
 export default function EnRevisionScreen() {
+  const [cargando, setCargando] = useState(true);
+  const [estado, setEstado] = useState(null);
+  const [perfil, setPerfil] = useState(null);
+  const [fotos, setFotos] = useState({
+    dni_frontal: null,
+    dni_posterior: null,
+    selfie: null,
+  });
+  const [enviando, setEnviando] = useState(false);
   const router = useRouter();
 
-  async function verificarEstado() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return router.replace("/");
+  useFocusEffect(
+    useCallback(() => {
+      cargar();
+    }, []),
+  );
 
-    const { data } = await supabase
-      .from("users")
-      .select("estado")
-      .eq("id", user.id)
-      .single();
-
-    if (data?.estado === "activo") {
-      router.replace("/(tabs)/inicio");
-    } else {
-      if (typeof window !== "undefined") {
-        window.alert("Tu cuenta aún está en revisión. Intenta más tarde.");
+  async function cargar(avisar = false) {
+    setCargando(true);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.replace("/login");
+        return;
       }
+
+      const { data: userData } = await supabase
+        .from("users")
+        .select("estado")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const { data: perfilData } = await supabase
+        .from("perfiles_cliente")
+        .select("id, nombres, motivo_observacion")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      setEstado(userData?.estado || "pendiente");
+      setPerfil(perfilData);
+
+      if (userData?.estado === "activo") {
+        router.replace("/(tabs)/inicio");
+        return;
+      }
+      if (userData?.estado === "bloqueado") {
+        await supabase.auth.signOut();
+        alerta("Tu cuenta esta bloqueada. Contacta a soporte.");
+        router.replace("/login");
+        return;
+      }
+      if (avisar) {
+        alerta("Tu cuenta sigue en revision. Te avisaremos apenas este lista.");
+      }
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  /**
+   * Sube los documentos y vuelve a poner la cuenta en cola de revision.
+   * Sirve tanto para un registro que quedo sin perfil como para un
+   * cliente observado que necesita corregir sus fotos.
+   */
+  async function reenviarDocumentos() {
+    if (!documentosCompletos(fotos))
+      return alerta("Sube las 3 fotos antes de enviar.");
+
+    setEnviando(true);
+    const subidos = [];
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+
+      const paths = {};
+      for (const doc of DOCUMENTOS) {
+        // El sufijo de tiempo evita que la foto vieja quede cacheada.
+        const path = `${user.id}/${doc.key}-${Date.now()}.jpg`;
+        await subirImagen(BUCKET_KYC, path, fotos[doc.key]);
+        subidos.push(path);
+        paths[doc.key] = path;
+      }
+
+      const campos = {
+        foto_dni_frontal: paths.dni_frontal,
+        foto_dni_posterior: paths.dni_posterior,
+        foto_selfie: paths.selfie,
+        motivo_observacion: null,
+      };
+
+      const { error: perfilError } = perfil
+        ? await supabase
+            .from("perfiles_cliente")
+            .update(campos)
+            .eq("user_id", user.id)
+        : await supabase
+            .from("perfiles_cliente")
+            .insert({ ...campos, user_id: user.id });
+      if (perfilError) throw perfilError;
+
+      const { error: estadoError } = await supabase
+        .from("users")
+        .update({ estado: "pendiente" })
+        .eq("id", user.id);
+      if (estadoError) {
+        // Las fotos si se guardaron, asi que no se borra nada. El gestor
+        // las vera igual; solo no se reinicio el estado automaticamente.
+        alerta(
+          "Guardamos tus documentos, pero no pudimos reabrir la revision. Escribenos para que la activemos.",
+        );
+      } else {
+        alerta("Documentos enviados. Los revisaremos en las proximas horas.");
+      }
+
+      setFotos({ dni_frontal: null, dni_posterior: null, selfie: null });
+      await cargar();
+    } catch (err) {
+      await borrarImagenes(BUCKET_KYC, subidos);
+      alerta(mensajeError(err));
+    } finally {
+      setEnviando(false);
     }
   }
 
   async function cerrarSesion() {
+    if (!(await confirmar("Seguro que quieres cerrar sesion?"))) return;
     await supabase.auth.signOut();
-    router.replace("/");
+    router.replace("/login");
   }
 
+  if (cargando) {
+    return (
+      <View style={[s.container, s.centrado]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  const observado = estado === "observado";
+  const faltanDocumentos = !perfil || observado;
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.icon}>⏳</Text>
-      <Text style={styles.title}>Cuenta en revisión</Text>
-      <Text style={styles.mensaje}>
-        Tu cuenta está siendo revisada por nuestro equipo. Te notificaremos
-        cuando sea aprobada.
+    <ScrollView style={s.container} contentContainerStyle={s.content}>
+      <View style={s.iconoBg}>
+        <Ionicons
+          name={observado ? "alert-circle-outline" : "time-outline"}
+          size={44}
+          color={observado ? COLORS.warning : COLORS.primary}
+        />
+      </View>
+
+      <Text style={s.titulo}>
+        {observado ? "Necesitamos corregir algo" : "Cuenta en revision"}
       </Text>
-      <Text style={styles.sub}>Este proceso puede tomar unas horas.</Text>
 
-      <TouchableOpacity style={styles.btnVerificar} onPress={verificarEstado}>
-        <Text style={styles.btnVerificarText}>Verificar estado</Text>
-      </TouchableOpacity>
+      {observado ? (
+        <>
+          <Text style={s.mensaje}>
+            Un revisor encontro un problema con tus documentos. Corrigelo y
+            vuelve a enviarlos.
+          </Text>
+          {perfil?.motivo_observacion ? (
+            <View style={s.motivoBox}>
+              <Text style={s.motivoLabel}>Motivo</Text>
+              <Text style={s.motivoTexto}>{perfil.motivo_observacion}</Text>
+            </View>
+          ) : null}
+        </>
+      ) : !perfil ? (
+        <Text style={s.mensaje}>
+          Tu registro quedo a medias. Sube tus documentos para que podamos
+          verificar tu identidad.
+        </Text>
+      ) : (
+        <>
+          <Text style={s.mensaje}>
+            Estamos revisando tus documentos. Te avisaremos cuando tu cuenta
+            este aprobada.
+          </Text>
+          <Text style={s.sub}>Este proceso puede tomar unas horas.</Text>
+        </>
+      )}
 
-      <TouchableOpacity style={styles.btnLogout} onPress={cerrarSesion}>
-        <Text style={styles.btnLogoutText}>Cerrar sesión</Text>
+      {faltanDocumentos ? (
+        <View style={s.formulario}>
+          <SubidaDocumentos
+            fotos={fotos}
+            onChange={setFotos}
+            deshabilitado={enviando}
+          />
+          <TouchableOpacity
+            style={[
+              s.btnPrimario,
+              (enviando || !documentosCompletos(fotos)) && s.btnDeshabilitado,
+            ]}
+            onPress={reenviarDocumentos}
+            disabled={enviando || !documentosCompletos(fotos)}
+          >
+            <Text style={s.btnPrimarioTexto}>
+              {enviando ? "Enviando..." : "Enviar documentos"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity style={s.btnPrimario} onPress={() => cargar(true)}>
+          <Ionicons name="refresh" size={18} color={COLORS.primaryDark} />
+          <Text style={s.btnPrimarioTexto}>Verificar estado</Text>
+        </TouchableOpacity>
+      )}
+
+      <TouchableOpacity style={s.btnSalir} onPress={cerrarSesion}>
+        <Text style={s.btnSalirTexto}>Cerrar sesion</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+  centrado: { justifyContent: "center", alignItems: "center" },
+  content: { padding: 28, paddingTop: 80, paddingBottom: 48 },
+  iconoBg: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: COLORS.white,
     justifyContent: "center",
     alignItems: "center",
-    padding: 32,
+    alignSelf: "center",
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
   },
-  icon: { fontSize: 64, marginBottom: 20 },
-  title: { fontSize: 24, fontWeight: "700", color: "#111", marginBottom: 12 },
-  mensaje: {
-    fontSize: 16,
-    color: "#666",
+  titulo: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: COLORS.text,
     textAlign: "center",
-    lineHeight: 24,
-    marginBottom: 8,
   },
-  sub: { fontSize: 14, color: "#999", marginBottom: 32 },
-  btnVerificar: {
-    backgroundColor: "#111",
+  mensaje: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    lineHeight: 22,
+    marginTop: 10,
+  },
+  sub: {
+    fontSize: 13,
+    color: COLORS.textLight,
+    textAlign: "center",
+    marginTop: 6,
+  },
+  motivoBox: {
+    backgroundColor: COLORS.warningLight,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.warning,
+    borderRadius: 10,
+    padding: 14,
+    marginTop: 18,
+  },
+  motivoLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.warning,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 4,
+  },
+  motivoTexto: { fontSize: 14, color: COLORS.text, lineHeight: 20 },
+  formulario: { gap: 14, marginTop: 24 },
+  btnPrimario: {
+    backgroundColor: COLORS.secondary,
     borderRadius: 12,
     padding: 16,
-    width: "100%",
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 24,
   },
-  btnVerificarText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  btnLogout: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 12,
-    padding: 14,
-    width: "100%",
-    alignItems: "center",
+  btnDeshabilitado: { opacity: 0.5 },
+  btnPrimarioTexto: {
+    color: COLORS.primaryDark,
+    fontSize: 16,
+    fontWeight: "700",
   },
-  btnLogoutText: { color: "#666", fontSize: 15 },
+  btnSalir: { padding: 16, alignItems: "center", marginTop: 8 },
+  btnSalirTexto: { color: COLORS.textSecondary, fontSize: 15 },
 });

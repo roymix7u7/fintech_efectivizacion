@@ -56,10 +56,10 @@ export default function EmpresaScreen() {
         <Text style={styles.cardTitulo}>Contáctanos</Text>
         <TouchableOpacity
           style={styles.contactBtn}
-          onPress={() => Linking.openURL("https://wa.me/51987654321")}
+          onPress={() => Linking.openURL("https://wa.me/51995766986")}
         >
           <Text style={styles.contactIcon}>💬</Text>
-          <Text style={styles.contactText}>WhatsApp: +51 987 654 321</Text>
+          <Text style={styles.contactText}>WhatsApp: +51 995 766 986</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.contactBtn}

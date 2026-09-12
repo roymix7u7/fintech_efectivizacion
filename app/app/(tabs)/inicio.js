@@ -1,25 +1,61 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  RefreshControl,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../src/lib/supabase";
+import Header from "../../src/components/Header";
+import MenuLateral from "../../src/components/MenuLateral";
+import COLORS from "../../src/theme/colors";
+
+const BANCO_COLORS = {
+  BCP: { bg: "#FFF3E0", border: "#E67E00", text: "#BF5F00" },
+  BBVA: { bg: "#E3E8F4", border: "#004481", text: "#003366" },
+  Interbank: { bg: "#E3F2E8", border: "#00855A", text: "#006344" },
+  Scotiabank: { bg: "#FCE4E4", border: "#CC0000", text: "#990000" },
+  BanBif: { bg: "#E0F0FA", border: "#0077C0", text: "#005A94" },
+  CMR: { bg: "#E0F5ED", border: "#00897B", text: "#00695C" },
+};
 
 export default function InicioScreen() {
   const [perfil, setPerfil] = useState(null);
   const [alertas, setAlertas] = useState([]);
   const [guias, setGuias] = useState([]);
+  const [bancosTarjetas, setBancosTarjetas] = useState([]);
+  const [stats, setStats] = useState({
+    pendientes: 0,
+    aprobadas: 0,
+    tarjetas: 0,
+  });
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    cargarDatos();
-  }, []);
+  // useFocusEffect y no useEffect: al volver de crear una solicitud los
+  // contadores quedaban desactualizados.
+  useFocusEffect(
+    useCallback(() => {
+      cargarDatos();
+    }, []),
+  );
 
   async function cargarDatos() {
+    // El finally garantiza que el spinner se apague incluso cuando la
+    // funcion sale temprano por falta de sesion o de perfil.
+    try {
+      await cargarDatosInterno();
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function cargarDatosInterno() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -29,10 +65,39 @@ export default function InicioScreen() {
       .from("perfiles_cliente")
       .select("*")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
     setPerfil(perfilData);
 
-    // Últimas 3 noticias
+    if (perfilData) {
+      const { count: pend } = await supabase
+        .from("solicitudes")
+        .select("*", { count: "exact", head: true })
+        .eq("cliente_id", perfilData.id)
+        .eq("estado", "pendiente");
+      const { count: apr } = await supabase
+        .from("solicitudes")
+        .select("*", { count: "exact", head: true })
+        .eq("cliente_id", perfilData.id)
+        .eq("estado", "aprobado");
+
+      const { data: tarjetasData } = await supabase
+        .from("tarjetas")
+        .select("banco")
+        .eq("cliente_id", perfilData.id)
+        .eq("activa", true)
+        .eq("estado", "aprobado");
+
+      const bancosUnicos = [
+        ...new Set((tarjetasData || []).map((t) => t.banco)),
+      ];
+      setBancosTarjetas(bancosUnicos);
+      setStats({
+        pendientes: pend || 0,
+        aprobadas: apr || 0,
+        tarjetas: bancosUnicos.length,
+      });
+    }
+
     const { data: alertasData } = await supabase
       .from("alertas_sistema")
       .select("*")
@@ -41,185 +106,531 @@ export default function InicioScreen() {
       .limit(3);
     setAlertas(alertasData || []);
 
-    // Guías de banco activas
     const { data: guiasData } = await supabase
       .from("guias_banco")
-      .select("id, banco, imagen_portada, activa")
+      .select("id, banco, activa")
       .eq("activa", true)
       .order("banco");
     setGuias(guiasData || []);
   }
 
-  const alertaColors = {
-    info: { bg: "#EBF5FF", border: "#93C5FD", text: "#1E40AF" },
-    advertencia: { bg: "#FFF7ED", border: "#FDBA74", text: "#9A3412" },
-    critico: { bg: "#FEF2F2", border: "#FCA5A5", text: "#991B1B" },
+  const guiasFiltradas = guias.filter((g) => bancosTarjetas.includes(g.banco));
+
+  const alertaStyles = {
+    info: { bg: "#E8F0FE", border: "#4285F4", accent: "#1A73E8" },
+    advertencia: {
+      bg: COLORS.warningLight,
+      border: COLORS.warning,
+      accent: COLORS.warning,
+    },
+    critico: {
+      bg: COLORS.errorLight,
+      border: COLORS.error,
+      accent: COLORS.error,
+    },
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Saludo */}
-      <Text style={styles.saludo}>Hola, {perfil?.nombres || "Usuario"} 👋</Text>
+    <View style={s.container}>
+      <Header onMenuPress={() => setMenuVisible(true)} />
 
-      {/* Estado de cuenta */}
-      <View
-        style={[
-          styles.estadoCard,
-          perfil?.validado_por ? styles.estadoActivo : styles.estadoPendiente,
-        ]}
+      <ScrollView
+        contentContainerStyle={s.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              cargarDatos();
+            }}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
       >
-        <Text style={styles.estadoTexto}>
-          {perfil?.validado_por ? "✅ Cuenta activa" : "⏳ Cuenta en revisión"}
-        </Text>
-        {!perfil?.validado_por && (
-          <Text style={styles.estadoSub}>
-            Tu cuenta está siendo revisada por nuestro equipo.
-          </Text>
-        )}
-      </View>
-
-      {/* Accesos rápidos */}
-      <View style={styles.quickActions}>
-        <TouchableOpacity
-          style={styles.quickBtn}
-          onPress={() => router.push("/(tabs)/noticias")}
-        >
-          <Text style={styles.quickIcon}>📢</Text>
-          <Text style={styles.quickLabel}>Noticias</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.quickBtn}
-          onPress={() => router.push("/(tabs)/tarjetas")}
-        >
-          <Text style={styles.quickIcon}>💳</Text>
-          <Text style={styles.quickLabel}>Tarjetas</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.quickBtn}
-          onPress={() => router.push("/empresa")}
-        >
-          <Text style={styles.quickIcon}>🏢</Text>
-          <Text style={styles.quickLabel}>Empresa</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.quickBtn}
-          onPress={() => router.push("/(tabs)/perfil")}
-        >
-          <Text style={styles.quickIcon}>👤</Text>
-          <Text style={styles.quickLabel}>Mi cuenta</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Últimas noticias */}
-      {alertas.length > 0 && (
-        <>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Últimas noticias</Text>
-            <TouchableOpacity onPress={() => router.push("/(tabs)/noticias")}>
-              <Text style={styles.verTodo}>Ver todo</Text>
-            </TouchableOpacity>
+        {/* Saludo */}
+        <View style={s.saludoRow}>
+          <View>
+            <Text style={s.saludoText}>
+              Hola, {perfil?.nombres || "Usuario"}
+            </Text>
+            <Text style={s.saludoSub}>Bienvenido a AlToque Perú</Text>
           </View>
-          {alertas.map((alerta) => {
-            const c = alertaColors[alerta.tipo] || alertaColors.info;
-            return (
+          <View
+            style={[
+              s.estadoPill,
+              perfil?.validado_por ? s.estadoActivo : s.estadoPendiente,
+            ]}
+          >
+            <Ionicons
+              name={perfil?.validado_por ? "checkmark-circle" : "time"}
+              size={14}
+              color={perfil?.validado_por ? COLORS.success : COLORS.warning}
+            />
+            <Text
+              style={[
+                s.estadoTexto,
+                {
+                  color: perfil?.validado_por ? COLORS.success : COLORS.warning,
+                },
+              ]}
+            >
+              {perfil?.validado_por ? "Verificado" : "En revisión"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Resumen de actividad */}
+        <View style={s.resumenCard}>
+          <Text style={s.resumenTitulo}>Tu actividad</Text>
+          <View style={s.resumenGrid}>
+            <TouchableOpacity
+              style={s.resumenItem}
+              onPress={() => router.push("/(tabs)/solicitudes")}
+            >
               <View
-                key={alerta.id}
                 style={[
-                  styles.noticiaCard,
-                  { backgroundColor: c.bg, borderColor: c.border },
+                  s.resumenIconBg,
+                  { backgroundColor: COLORS.warningLight },
                 ]}
               >
-                <Text style={[styles.noticiaTitulo, { color: c.text }]}>
-                  {alerta.titulo}
-                </Text>
-                <Text
-                  style={[styles.noticiaMensaje, { color: c.text }]}
-                  numberOfLines={2}
-                >
-                  {alerta.mensaje}
-                </Text>
+                <Ionicons
+                  name="time-outline"
+                  size={18}
+                  color={COLORS.warning}
+                />
               </View>
-            );
-          })}
-        </>
-      )}
+              <Text style={s.resumenNumero}>{stats.pendientes}</Text>
+              <Text style={s.resumenLabel}>En revisión</Text>
+            </TouchableOpacity>
 
-      {/* Guías de banco */}
-      {guias.length > 0 && (
-        <>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Guías de bancos</Text>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.guiasRow}
-          >
-            {guias.map((guia) => (
-              <TouchableOpacity
-                key={guia.id}
-                style={styles.guiaCard}
-                onPress={() => router.push(`/guia/${guia.banco}`)}
+            <View style={s.resumenDivider} />
+
+            <TouchableOpacity
+              style={s.resumenItem}
+              onPress={() => router.push("/(tabs)/solicitudes")}
+            >
+              <View
+                style={[
+                  s.resumenIconBg,
+                  { backgroundColor: COLORS.successLight },
+                ]}
               >
-                <Text style={styles.guiaIcon}>🏦</Text>
-                <Text style={styles.guiaBanco}>{guia.banco}</Text>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={18}
+                  color={COLORS.success}
+                />
+              </View>
+              <Text style={s.resumenNumero}>{stats.aprobadas}</Text>
+              <Text style={s.resumenLabel}>Aprobadas</Text>
+            </TouchableOpacity>
+
+            <View style={s.resumenDivider} />
+
+            <TouchableOpacity
+              style={s.resumenItem}
+              onPress={() => router.push("/(tabs)/tarjetas")}
+            >
+              <View style={[s.resumenIconBg, { backgroundColor: "#E3E8F4" }]}>
+                <Ionicons
+                  name="card-outline"
+                  size={18}
+                  color={COLORS.primary}
+                />
+              </View>
+              <Text style={s.resumenNumero}>{stats.tarjetas}</Text>
+              <Text style={s.resumenLabel}>Tarjetas</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Acción principal */}
+        {perfil?.validado_por && stats.tarjetas > 0 && (
+          <TouchableOpacity
+            style={s.btnAccion}
+            onPress={() => router.push("/nueva-solicitud")}
+          >
+            <View style={s.btnAccionLeft}>
+              <Ionicons
+                name="add-circle"
+                size={24}
+                color={COLORS.primaryDark}
+              />
+              <View>
+                <Text style={s.btnAccionTitle}>Enviar comprobante</Text>
+                <Text style={s.btnAccionSub}>Nueva solicitud de operación</Text>
+              </View>
+            </View>
+            <Ionicons
+              name="arrow-forward"
+              size={20}
+              color={COLORS.primaryDark}
+            />
+          </TouchableOpacity>
+        )}
+
+        {/* CTA registrar tarjeta */}
+        {perfil?.validado_por && stats.tarjetas === 0 && (
+          <TouchableOpacity
+            style={s.ctaRegistrar}
+            onPress={() => router.push("/(tabs)/tarjetas")}
+          >
+            <View style={s.ctaIconBg}>
+              <Ionicons
+                name="card-outline"
+                size={22}
+                color={COLORS.secondary}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.ctaTitle}>Registra tu tarjeta</Text>
+              <Text style={s.ctaSub}>
+                Verifica una tarjeta para comenzar a operar
+              </Text>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={COLORS.textLight}
+            />
+          </TouchableOpacity>
+        )}
+
+        {/* Guías de bancos del cliente */}
+        {guiasFiltradas.length > 0 && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>Pasos para operar</Text>
+            <View style={s.guiasGrid}>
+              {guiasFiltradas.map((guia) => {
+                const bc = BANCO_COLORS[guia.banco] || {
+                  bg: "#ECEFF1",
+                  border: "#607D8B",
+                  text: "#455A64",
+                };
+                return (
+                  <TouchableOpacity
+                    key={guia.id}
+                    style={[s.guiaCard, { borderColor: bc.border }]}
+                    onPress={() => router.push(`/guia/${guia.banco}`)}
+                  >
+                    <View style={[s.guiaDot, { backgroundColor: bc.border }]} />
+                    <Text style={[s.guiaBanco, { color: bc.text }]}>
+                      {guia.banco}
+                    </Text>
+                    <View style={s.guiaVerRow}>
+                      <Text style={[s.guiaVer, { color: bc.border }]}>
+                        Ver pasos
+                      </Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={14}
+                        color={bc.border}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* Info cuando no tiene tarjetas */}
+        {perfil?.validado_por && stats.tarjetas === 0 && guias.length > 0 && (
+          <View style={s.infoBox}>
+            <Ionicons
+              name="information-circle-outline"
+              size={20}
+              color={COLORS.textLight}
+            />
+            <Text style={s.infoText}>
+              Al verificar tu tarjeta, verás aquí los pasos de tu banco
+            </Text>
+          </View>
+        )}
+
+        {/* Noticias */}
+        {alertas.length > 0 && (
+          <View style={s.section}>
+            <View style={s.sectionHeaderRow}>
+              <Text style={s.sectionTitle}>Noticias</Text>
+              <TouchableOpacity
+                onPress={() => router.push("/(tabs)/noticias")}
+                style={s.verTodoBtn}
+              >
+                <Text style={s.verTodoText}>Ver todo</Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={14}
+                  color={COLORS.primary}
+                />
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </>
-      )}
-    </ScrollView>
+            </View>
+            {alertas.map((alerta) => {
+              const as = alertaStyles[alerta.tipo] || alertaStyles.info;
+              return (
+                <View
+                  key={alerta.id}
+                  style={[
+                    s.alertaCard,
+                    { backgroundColor: as.bg, borderLeftColor: as.border },
+                  ]}
+                >
+                  <Text style={[s.alertaTitulo, { color: as.accent }]}>
+                    {alerta.titulo}
+                  </Text>
+                  <Text style={s.alertaMensaje} numberOfLines={2}>
+                    {alerta.mensaje}
+                  </Text>
+                  <Text style={s.alertaFecha}>
+                    {new Date(alerta.created_at).toLocaleDateString("es-PE", {
+                      day: "numeric",
+                      month: "short",
+                    })}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Accesos rápidos */}
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Accesos rápidos</Text>
+          <View style={s.quickGrid}>
+            <TouchableOpacity
+              style={s.quickCard}
+              onPress={() => router.push("/(tabs)/solicitudes")}
+            >
+              <View
+                style={[
+                  s.quickIconBg,
+                  { backgroundColor: COLORS.secondaryLight },
+                ]}
+              >
+                <Ionicons
+                  name="document-text-outline"
+                  size={20}
+                  color={COLORS.primaryDark}
+                />
+              </View>
+              <Text style={s.quickLabel}>Solicitudes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.quickCard}
+              onPress={() => router.push("/(tabs)/tarjetas")}
+            >
+              <View style={[s.quickIconBg, { backgroundColor: "#E3E8F4" }]}>
+                <Ionicons
+                  name="card-outline"
+                  size={20}
+                  color={COLORS.primary}
+                />
+              </View>
+              <Text style={s.quickLabel}>Tarjetas</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.quickCard}
+              onPress={() => router.push("/empresa")}
+            >
+              <View style={[s.quickIconBg, { backgroundColor: "#E3F2E8" }]}>
+                <Ionicons name="business-outline" size={20} color="#00855A" />
+              </View>
+              <Text style={s.quickLabel}>Empresa</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.quickCard}
+              onPress={() => router.push("/(tabs)/noticias")}
+            >
+              <View style={[s.quickIconBg, { backgroundColor: "#FCE4E4" }]}>
+                <Ionicons name="megaphone-outline" size={20} color="#CC0000" />
+              </View>
+              <Text style={s.quickLabel}>Noticias</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+
+      <MenuLateral
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        perfil={perfil}
+      />
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f9f9f9" },
-  content: { padding: 20, paddingBottom: 40 },
-  saludo: { fontSize: 24, fontWeight: "700", color: "#111", marginBottom: 16 },
-  estadoCard: { borderRadius: 12, padding: 16, marginBottom: 24 },
-  estadoActivo: { backgroundColor: "#F0FDF4" },
-  estadoPendiente: { backgroundColor: "#FFFBEB" },
-  estadoTexto: { fontSize: 16, fontWeight: "600", color: "#111" },
-  estadoSub: { fontSize: 13, color: "#666", marginTop: 4 },
-  quickActions: { flexDirection: "row", gap: 12, marginBottom: 28 },
-  quickBtn: {
-    flex: 1,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#eee",
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+  content: { paddingHorizontal: 20, paddingBottom: 30, paddingTop: 16 },
+  // Saludo
+  saludoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 18,
   },
-  quickIcon: { fontSize: 28, marginBottom: 6 },
-  quickLabel: { fontSize: 12, color: "#666", fontWeight: "500" },
-  sectionHeader: {
+  saludoText: { fontSize: 22, fontWeight: "700", color: COLORS.text },
+  saludoSub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
+  estadoPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 99,
+  },
+  estadoActivo: { backgroundColor: COLORS.successLight },
+  estadoPendiente: { backgroundColor: COLORS.warningLight },
+  estadoTexto: { fontSize: 12, fontWeight: "600" },
+  // Resumen
+  resumenCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  resumenTitulo: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+    marginBottom: 14,
+  },
+  resumenGrid: { flexDirection: "row", alignItems: "center" },
+  resumenItem: { flex: 1, alignItems: "center" },
+  resumenIconBg: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  resumenNumero: { fontSize: 24, fontWeight: "700", color: COLORS.text },
+  resumenLabel: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    fontWeight: "500",
+  },
+  resumenDivider: { width: 1, height: 50, backgroundColor: COLORS.borderLight },
+  // Acción principal
+  btnAccion: {
+    backgroundColor: COLORS.secondary,
+    borderRadius: 14,
+    padding: 18,
+    marginBottom: 18,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  btnAccionLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+  btnAccionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.primaryDark,
+  },
+  btnAccionSub: {
+    fontSize: 12,
+    color: COLORS.primaryDark,
+    opacity: 0.7,
+    marginTop: 1,
+  },
+  // CTA registrar
+  ctaRegistrar: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 18,
+    marginBottom: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.secondary,
+    borderStyle: "dashed",
+  },
+  ctaIconBg: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.primaryDark,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  ctaTitle: { fontSize: 15, fontWeight: "600", color: COLORS.text },
+  ctaSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  // Info box
+  infoBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  infoText: { fontSize: 13, color: COLORS.textLight, flex: 1 },
+  // Secciones
+  section: { marginBottom: 22 },
+  sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
   },
-  sectionTitle: { fontSize: 18, fontWeight: "700", color: "#111" },
-  verTodo: { fontSize: 14, color: "#3B82F6", fontWeight: "500" },
-  noticiaCard: {
-    borderWidth: 1,
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: 10,
+  },
+  verTodoBtn: { flexDirection: "row", alignItems: "center", gap: 2 },
+  verTodoText: { fontSize: 13, color: COLORS.primary, fontWeight: "600" },
+  // Guías
+  guiasGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  guiaCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1.5,
+    width: "47%",
+  },
+  guiaDot: { width: 10, height: 10, borderRadius: 5, marginBottom: 8 },
+  guiaBanco: { fontSize: 15, fontWeight: "600", marginBottom: 6 },
+  guiaVerRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+  guiaVer: { fontSize: 12, fontWeight: "500" },
+  // Alertas
+  alertaCard: {
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
+    borderLeftWidth: 4,
   },
-  noticiaTitulo: { fontWeight: "600", fontSize: 14, marginBottom: 4 },
-  noticiaMensaje: { fontSize: 13 },
-  guiasRow: { marginBottom: 20 },
-  guiaCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 20,
-    marginRight: 12,
+  alertaTitulo: { fontWeight: "600", fontSize: 14, marginBottom: 4 },
+  alertaMensaje: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19 },
+  alertaFecha: { fontSize: 11, color: COLORS.textLight, marginTop: 6 },
+  // Quick access
+  quickGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  quickCard: {
+    width: "47%",
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 16,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#eee",
-    width: 100,
+    borderColor: COLORS.borderLight,
   },
-  guiaIcon: { fontSize: 32, marginBottom: 8 },
-  guiaBanco: { fontSize: 13, fontWeight: "600", color: "#111" },
+  quickIconBg: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  quickLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: "500" },
 });

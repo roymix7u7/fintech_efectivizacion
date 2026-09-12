@@ -6,16 +6,27 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  Image,
+  Modal,
+  Pressable,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../src/lib/supabase";
+import Header from "../../src/components/Header";
+import MenuLateral from "../../src/components/MenuLateral";
 import COLORS from "../../src/theme/colors";
+import { urlsFirmadas, extraerPath } from "../../src/lib/storage";
+
+const BUCKET = "comprobantes";
 
 export default function SolicitudesScreen() {
   const [solicitudes, setSolicitudes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [perfil, setPerfil] = useState(null);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [fotoAmpliada, setFotoAmpliada] = useState(null);
   const router = useRouter();
 
   useFocusEffect(
@@ -25,6 +36,15 @@ export default function SolicitudesScreen() {
   );
 
   async function cargarSolicitudes() {
+    try {
+      await cargarSolicitudesInterno();
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
+  async function cargarSolicitudesInterno() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -32,37 +52,60 @@ export default function SolicitudesScreen() {
 
     const { data: perfilData } = await supabase
       .from("perfiles_cliente")
-      .select("id")
+      .select("*")
       .eq("user_id", user.id)
-      .single();
-
-    if (!perfilData) {
-      setLoading(false);
-      return;
-    }
+      .maybeSingle();
+    if (!perfilData) return;
     setPerfil(perfilData);
 
     const { data } = await supabase
       .from("solicitudes")
       .select(
-        "id, codigo, banco, estado, nota_cliente, motivo_rechazo, created_at, tarjetas(banco, ultimos_4)",
+        "id, codigo, banco, estado, nota_cliente, motivo_rechazo, comprobante_url, created_at, tarjetas(banco, ultimos_4)",
       )
       .eq("cliente_id", perfilData.id)
       .order("created_at", { ascending: false });
 
-    setSolicitudes(data || []);
-    setLoading(false);
-    setRefreshing(false);
+    // Las URLs firmadas se generan al leer, no se guardan en la base.
+    const lista = data || [];
+    const firmadas = await urlsFirmadas(
+      BUCKET,
+      lista.map((x) => x.comprobante_url),
+    );
+    setSolicitudes(
+      lista.map((x) => ({
+        ...x,
+        comprobante_vista:
+          firmadas[extraerPath(BUCKET, x.comprobante_url)] || null,
+      })),
+    );
   }
 
   const estadoConfig = {
-    pendiente: { text: "En revisión", color: COLORS.warning, bg: "#FFF8E1" },
-    aprobado: { text: "Aprobado", color: COLORS.success, bg: "#E8F5E9" },
-    rechazado: { text: "Rechazado", color: COLORS.error, bg: "#FFEBEE" },
+    pendiente: {
+      text: "En revisión",
+      color: COLORS.warning,
+      bg: COLORS.warningLight,
+      icon: "time-outline",
+    },
+    aprobado: {
+      text: "Aprobado",
+      color: COLORS.success,
+      bg: COLORS.successLight,
+      icon: "checkmark-circle-outline",
+    },
+    rechazado: {
+      text: "Rechazado",
+      color: COLORS.error,
+      bg: COLORS.errorLight,
+      icon: "close-circle-outline",
+    },
   };
 
   return (
     <View style={s.container}>
+      <Header onMenuPress={() => setMenuVisible(true)} titulo="Solicitudes" />
+
       <ScrollView
         contentContainerStyle={s.content}
         refreshControl={
@@ -72,16 +115,18 @@ export default function SolicitudesScreen() {
               setRefreshing(true);
               cargarSolicitudes();
             }}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
           />
         }
       >
-        {/* Botón nueva solicitud */}
         {perfil && (
           <TouchableOpacity
             style={s.btnNueva}
             onPress={() => router.push("/nueva-solicitud")}
           >
-            <Text style={s.btnNuevaText}>+ Nueva solicitud</Text>
+            <Ionicons name="add-circle" size={22} color={COLORS.primaryDark} />
+            <Text style={s.btnNuevaText}>Nueva solicitud</Text>
           </TouchableOpacity>
         )}
 
@@ -89,10 +134,14 @@ export default function SolicitudesScreen() {
           <Text style={s.empty}>Cargando...</Text>
         ) : solicitudes.length === 0 ? (
           <View style={s.emptyContainer}>
-            <Text style={s.emptyIcon}>📋</Text>
+            <Ionicons
+              name="document-text-outline"
+              size={48}
+              color={COLORS.textLight}
+            />
             <Text style={s.emptyTitle}>Sin solicitudes</Text>
             <Text style={s.empty}>
-              Envía tu primer comprobante de operación.
+              Envía tu primer comprobante de operación
             </Text>
           </View>
         ) : (
@@ -103,6 +152,7 @@ export default function SolicitudesScreen() {
                 <View style={s.cardHeader}>
                   <Text style={s.codigo}>{sol.codigo}</Text>
                   <View style={[s.badge, { backgroundColor: est.bg }]}>
+                    <Ionicons name={est.icon} size={14} color={est.color} />
                     <Text style={[s.badgeText, { color: est.color }]}>
                       {est.text}
                     </Text>
@@ -111,11 +161,23 @@ export default function SolicitudesScreen() {
                 <Text style={s.banco}>
                   {sol.tarjetas?.banco} •••• {sol.tarjetas?.ultimos_4}
                 </Text>
-                {sol.nota_cliente && (
+                {sol.comprobante_vista ? (
+                  <TouchableOpacity
+                    onPress={() => setFotoAmpliada(sol.comprobante_vista)}
+                  >
+                    <Image
+                      source={{ uri: sol.comprobante_vista }}
+                      style={s.comprobanteMini}
+                      resizeMode="cover"
+                    />
+                    <Text style={s.verComprobante}>Ver comprobante</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {sol.nota_cliente ? (
                   <Text style={s.nota} numberOfLines={2}>
                     {sol.nota_cliente}
                   </Text>
-                )}
+                ) : null}
                 {sol.estado === "rechazado" && sol.motivo_rechazo && (
                   <View style={s.rechazoBox}>
                     <Text style={s.rechazoLabel}>Motivo del rechazo:</Text>
@@ -136,6 +198,29 @@ export default function SolicitudesScreen() {
           })
         )}
       </ScrollView>
+
+      <Modal
+        visible={Boolean(fotoAmpliada)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFotoAmpliada(null)}
+      >
+        <Pressable style={s.modalFondo} onPress={() => setFotoAmpliada(null)}>
+          {fotoAmpliada ? (
+            <Image
+              source={{ uri: fotoAmpliada }}
+              style={s.modalImagen}
+              resizeMode="contain"
+            />
+          ) : null}
+        </Pressable>
+      </Modal>
+
+      <MenuLateral
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        perfil={perfil}
+      />
     </View>
   );
 }
@@ -143,21 +228,45 @@ export default function SolicitudesScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: 20, paddingBottom: 40 },
+  comprobanteMini: {
+    width: "100%",
+    height: 140,
+    borderRadius: 10,
+    marginTop: 10,
+    backgroundColor: COLORS.inputBg,
+  },
+  verComprobante: {
+    fontSize: 13,
+    color: COLORS.primary,
+    fontWeight: "500",
+    marginTop: 6,
+  },
+  modalFondo: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  modalImagen: { width: "100%", height: "80%" },
   btnNueva: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.secondary,
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
     marginBottom: 20,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
   },
-  btnNuevaText: { color: COLORS.white, fontSize: 16, fontWeight: "600" },
+  btnNuevaText: { color: COLORS.primaryDark, fontSize: 16, fontWeight: "700" },
   card: {
     backgroundColor: COLORS.white,
     borderRadius: 14,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.borderLight,
   },
   cardHeader: {
     flexDirection: "row",
@@ -171,7 +280,14 @@ const s = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.text,
   },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 99,
+  },
   badgeText: { fontSize: 12, fontWeight: "600" },
   banco: { fontSize: 14, color: COLORS.textSecondary, marginBottom: 4 },
   nota: {
@@ -181,7 +297,7 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   rechazoBox: {
-    backgroundColor: "#FFEBEE",
+    backgroundColor: COLORS.errorLight,
     borderRadius: 8,
     padding: 10,
     marginTop: 6,
@@ -195,11 +311,11 @@ const s = StyleSheet.create({
   rechazoTexto: { fontSize: 13, color: COLORS.error },
   fecha: { fontSize: 12, color: COLORS.textLight, marginTop: 6 },
   emptyContainer: { alignItems: "center", marginTop: 60 },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
-    color: COLORS.text,
+    color: COLORS.textSecondary,
+    marginTop: 12,
     marginBottom: 4,
   },
   empty: { fontSize: 14, color: COLORS.textLight, textAlign: "center" },

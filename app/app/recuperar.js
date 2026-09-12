@@ -9,6 +9,12 @@ import {
 import { useRouter } from "expo-router";
 import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
+import { alerta, mensajeError } from "../src/lib/ui";
+import {
+  validarEmail,
+  validarPassword,
+  reglasPassword,
+} from "../src/lib/validaciones";
 
 export default function RecuperarScreen() {
   const [paso, setPaso] = useState(1);
@@ -20,41 +26,44 @@ export default function RecuperarScreen() {
   const [reenviando, setReenviando] = useState(false);
   const router = useRouter();
 
-  function alerta(msg) {
-    if (typeof window !== "undefined") window.alert(msg);
+  function handleBack() {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/login");
+    }
   }
 
-  const passChecks = {
-    length: nuevaPassword.length >= 8,
-    upper: /[A-Z]/.test(nuevaPassword),
-    lower: /[a-z]/.test(nuevaPassword),
-    number: /[0-9]/.test(nuevaPassword),
-    special: /\W/.test(nuevaPassword),
-    match: nuevaPassword === confirmarPassword && confirmarPassword.length > 0,
-  };
+  const passChecks = reglasPassword(nuevaPassword, confirmarPassword);
 
   async function enviarCodigo() {
-    if (!email) {
-      alerta("Ingresa tu correo electrónico.");
-      return;
-    }
+    const errorEmail = validarEmail(email);
+    if (errorEmail) return alerta(errorEmail);
+
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
-    if (error) {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        email.trim().toLowerCase(),
+      );
+      if (error) return alerta(mensajeError(error));
+      setPaso(2);
+      alerta("Te enviamos un codigo de recuperacion a tu correo.");
+    } finally {
       setLoading(false);
-      alerta("Error: " + error.message);
-      return;
     }
-    setLoading(false);
-    setPaso(2);
-    alerta("Se envió un código de recuperación a tu correo.");
   }
 
   async function reenviarCodigo() {
     setReenviando(true);
-    await supabase.auth.resetPasswordForEmail(email);
-    setReenviando(false);
-    alerta("Código reenviado. El anterior ya no es válido.");
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        email.trim().toLowerCase(),
+      );
+      if (error) return alerta(mensajeError(error));
+      alerta("Codigo reenviado. El anterior ya no sirve.");
+    } finally {
+      setReenviando(false);
+    }
   }
 
   async function verificarYCambiar() {
@@ -62,56 +71,29 @@ export default function RecuperarScreen() {
       alerta("Ingresa el código.");
       return;
     }
-    if (!passChecks.length) {
-      alerta("La contraseña debe tener al menos 8 caracteres.");
-      return;
-    }
-    if (!passChecks.upper) {
-      alerta("Debe tener al menos una mayúscula.");
-      return;
-    }
-    if (!passChecks.lower) {
-      alerta("Debe tener al menos una minúscula.");
-      return;
-    }
-    if (!passChecks.number) {
-      alerta("Debe tener al menos un número.");
-      return;
-    }
-    if (!passChecks.special) {
-      alerta("Debe tener al menos un carácter especial.");
-      return;
-    }
-    if (!passChecks.match) {
-      alerta("Las contraseñas no coinciden.");
-      return;
-    }
+    const errorPass = validarPassword(nuevaPassword, confirmarPassword);
+    if (errorPass) return alerta(errorPass);
 
     setLoading(true);
-    const { error: otpError } = await supabase.auth.verifyOtp({
-      email,
-      token: codigo,
-      type: "recovery",
-    });
-    if (otpError) {
-      setLoading(false);
-      alerta("Código inválido o expirado.");
-      return;
-    }
+    try {
+      const { error: otpError } = await supabase.auth.verifyOtp({
+        email: email.trim().toLowerCase(),
+        token: codigo,
+        type: "recovery",
+      });
+      if (otpError) return alerta("El codigo es incorrecto o ya expiro.");
 
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: nuevaPassword,
-    });
-    if (updateError) {
-      setLoading(false);
-      alerta("Error: " + updateError.message);
-      return;
-    }
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: nuevaPassword,
+      });
+      if (updateError) return alerta(mensajeError(updateError));
 
-    await supabase.auth.signOut();
-    setLoading(false);
-    alerta("Contraseña cambiada. Inicia sesión con tu nueva contraseña.");
-    router.replace("/login");
+      await supabase.auth.signOut();
+      alerta("Contrasena cambiada. Inicia sesion con tu nueva contrasena.");
+      router.replace("/login");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -147,7 +129,7 @@ export default function RecuperarScreen() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => router.back()} style={s.link}>
+          <TouchableOpacity onPress={handleBack} style={s.link}>
             <Text style={s.linkText}>← Volver al login</Text>
           </TouchableOpacity>
         </>

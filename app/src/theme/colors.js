@@ -1,19 +1,25 @@
 const COLORS = {
-  primary: "#1B2A4A", // Azul marino oscuro
-  primaryLight: "#2C4270", // Azul marino claro
-  secondary: "#F5C518", // Amarillo dorado
-  secondaryLight: "#FFF3CC", // Amarillo suave
+  primary: "#1B2A4A",
+  primaryLight: "#2C4270",
+  primaryDark: "#0F1B33",
+  secondary: "#E8B800",
+  secondaryLight: "#FFF3CC",
+  secondaryDark: "#C49B00",
   white: "#FFFFFF",
-  background: "#F5F7FA", // Gris muy claro con toque azul
+  background: "#F0F2F5",
   card: "#FFFFFF",
-  text: "#1B2A4A", // Texto principal = azul marino
-  textSecondary: "#6B7B99", // Texto secundario
-  textLight: "#9AA5B9", // Texto terciario
-  border: "#E2E8F0",
-  success: "#10B981",
-  error: "#EF4444",
-  warning: "#F59E0B",
-  inputBg: "#F8FAFC",
+  text: "#1B2A4A",
+  textSecondary: "#5A6B87",
+  textLight: "#94A3BB",
+  border: "#DDE3ED",
+  borderLight: "#EDF0F5",
+  success: "#0D9668",
+  successLight: "#E6F7F1",
+  error: "#D93025",
+  errorLight: "#FDE8E6",
+  warning: "#E8A500",
+  warningLight: "#FFF5D6",
+  inputBg: "#F7F9FC",
 };
 
 export default COLORS;

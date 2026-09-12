@@ -1,53 +1,53 @@
 import { Tabs } from "expo-router";
-import { Text } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import COLORS from "../../src/theme/colors";
 
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: "#fff" },
-        headerShadowVisible: false,
-        headerTitleStyle: { fontWeight: "600", fontSize: 17 },
-        tabBarStyle: { backgroundColor: "#fff", borderTopColor: "#eee" },
-        tabBarActiveTintColor: "#1B2A4A",
-        tabBarInactiveTintColor: "#999",
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: COLORS.white,
+          borderTopColor: COLORS.borderLight,
+          height: 58,
+          paddingBottom: 8,
+          paddingTop: 6,
+        },
+        tabBarActiveTintColor: COLORS.primary,
+        tabBarInactiveTintColor: COLORS.textLight,
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "500" },
       }}
     >
       <Tabs.Screen
         name="inicio"
         options={{
           title: "Inicio",
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>🏠</Text>,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home-outline" size={22} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="solicitudes"
         options={{
           title: "Solicitudes",
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>📋</Text>,
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="document-text-outline" size={22} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="tarjetas"
         options={{
           title: "Tarjetas",
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>💳</Text>,
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="card-outline" size={22} color={color} />
+          ),
         }}
       />
-      <Tabs.Screen
-        name="noticias"
-        options={{
-          title: "Noticias",
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>📢</Text>,
-        }}
-      />
-      <Tabs.Screen
-        name="perfil"
-        options={{
-          title: "Mi cuenta",
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>👤</Text>,
-        }}
-      />
+      <Tabs.Screen name="noticias" options={{ href: null }} />
+      <Tabs.Screen name="perfil" options={{ href: null }} />
     </Tabs>
   );
 }

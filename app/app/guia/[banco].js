@@ -13,13 +13,21 @@ export default function GuiaBancoScreen() {
   }, [banco]);
 
   async function cargarGuia() {
-    const { data } = await supabase
-      .from("guias_banco")
-      .select("*")
-      .eq("banco", banco)
-      .single();
-    setGuia(data);
-    setLoading(false);
+    try {
+      // El filtro por activa evita que una guia dada de baja siga
+      // visible con un enlace directo. maybeSingle no revienta si hay
+      // mas de una fila del mismo banco.
+      const { data } = await supabase
+        .from("guias_banco")
+        .select("*")
+        .eq("banco", banco)
+        .eq("activa", true)
+        .limit(1)
+        .maybeSingle();
+      setGuia(data);
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (loading)

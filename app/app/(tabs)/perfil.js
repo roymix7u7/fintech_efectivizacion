@@ -1,16 +1,30 @@
-import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
-import { useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+} from "react-native";
+import { useRouter, useFocusEffect } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../src/lib/supabase";
+import Header from "../../src/components/Header";
+import MenuLateral from "../../src/components/MenuLateral";
+import COLORS from "../../src/theme/colors";
+import { confirmar, mensajeError, alerta } from "../../src/lib/ui";
 
 export default function PerfilScreen() {
   const [usuario, setUsuario] = useState(null);
   const [perfil, setPerfil] = useState(null);
+  const [menuVisible, setMenuVisible] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    cargarPerfil();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      cargarPerfil();
+    }, []),
+  );
 
   async function cargarPerfil() {
     const {
@@ -18,124 +32,188 @@ export default function PerfilScreen() {
     } = await supabase.auth.getUser();
     if (!user) return;
     setUsuario(user);
-
     const { data } = await supabase
       .from("perfiles_cliente")
       .select("*")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
     setPerfil(data);
   }
 
+  // window.confirm no existe en React Native: con el codigo anterior el
+  // boton de cerrar sesion no hacia nada en el telefono.
   async function cerrarSesion() {
-    if (typeof window !== "undefined") {
-      if (window.confirm("¿Estás seguro de cerrar sesión?")) {
-        await supabase.auth.signOut();
-        router.replace("/");
-      }
-    } else {
-      Alert.alert("Cerrar sesión", "¿Estás seguro?", [
-        { text: "Cancelar" },
-        {
-          text: "Sí",
-          onPress: async () => {
-            await supabase.auth.signOut();
-            router.replace("/");
-          },
-        },
-      ]);
-    }
+    if (!(await confirmar("Seguro que quieres cerrar sesion?"))) return;
+    const { error } = await supabase.auth.signOut();
+    if (error) return alerta(mensajeError(error));
+    router.replace("/");
   }
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.avatarContainer}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {perfil ? perfil.nombres[0] + perfil.apellidos[0] : "??"}
-          </Text>
-        </View>
-        <Text style={styles.nombre}>
-          {perfil ? `${perfil.nombres} ${perfil.apellidos}` : "Cargando..."}
-        </Text>
-        <Text style={styles.email}>{usuario?.email}</Text>
-      </View>
+  // Con nombres vacio, perfil.nombres[0] lanzaba una excepcion.
+  const iniciales =
+    ((perfil?.nombres || "").trim()[0] || "") +
+      ((perfil?.apellidos || "").trim()[0] || "") || "?";
 
-      <View style={styles.infoCard}>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Teléfono</Text>
-          <Text style={styles.infoValue}>{perfil?.telefono || "—"}</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Dirección</Text>
-          <Text style={styles.infoValue}>{perfil?.direccion || "—"}</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Comisión</Text>
-          <Text style={styles.infoValue}>
-            {perfil?.tasa_comision ? `${perfil.tasa_comision}%` : "—"}
+  const campos = [
+    { label: "Nombres", valor: perfil?.nombres, icon: "person-outline" },
+    { label: "Apellidos", valor: perfil?.apellidos, icon: "person-outline" },
+    { label: "DNI", valor: perfil?.dni, icon: "id-card-outline" },
+    { label: "Teléfono", valor: perfil?.telefono, icon: "call-outline" },
+    { label: "Dirección", valor: perfil?.direccion, icon: "location-outline" },
+    {
+      label: "Comisión",
+      valor: perfil?.tasa_comision ? `${perfil.tasa_comision}%` : null,
+      icon: "cash-outline",
+    },
+  ];
+
+  return (
+    <View style={s.container}>
+      <Header onMenuPress={() => setMenuVisible(true)} titulo="Mi cuenta" />
+
+      <ScrollView contentContainerStyle={s.content}>
+        {/* Avatar */}
+        <View style={s.avatarSection}>
+          <View style={s.avatar}>
+            <Text style={s.avatarText}>
+              {iniciales}
+            </Text>
+          </View>
+          <Text style={s.nombre}>
+            {perfil ? `${perfil.nombres} ${perfil.apellidos}` : "Cargando..."}
           </Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Estado</Text>
-          <Text
+          <Text style={s.email}>{usuario?.email}</Text>
+          <View
             style={[
-              styles.infoValue,
-              { color: perfil?.validado_por ? "#10B981" : "#F59E0B" },
+              s.estadoPill,
+              perfil?.validado_por ? s.estadoActivo : s.estadoPendiente,
             ]}
           >
-            {perfil?.validado_por ? "Activo" : "En revisión"}
-          </Text>
+            <Ionicons
+              name={perfil?.validado_por ? "checkmark-circle" : "time"}
+              size={14}
+              color={perfil?.validado_por ? COLORS.success : COLORS.warning}
+            />
+            <Text
+              style={[
+                s.estadoTexto,
+                {
+                  color: perfil?.validado_por ? COLORS.success : COLORS.warning,
+                },
+              ]}
+            >
+              {perfil?.validado_por ? "Cuenta verificada" : "En revisión"}
+            </Text>
+          </View>
         </View>
-      </View>
 
-      <TouchableOpacity style={styles.btnLogout} onPress={cerrarSesion}>
-        <Text style={styles.btnLogoutText}>Cerrar sesión</Text>
-      </TouchableOpacity>
+        {/* Datos */}
+        <View style={s.datosCard}>
+          {campos.map((c, i) => (
+            <View key={c.label}>
+              <View style={s.datoRow}>
+                <View style={s.datoLeft}>
+                  <Ionicons
+                    name={c.icon}
+                    size={18}
+                    color={COLORS.textLight}
+                    style={{ width: 24 }}
+                  />
+                  <Text style={s.datoLabel}>{c.label}</Text>
+                </View>
+                <Text style={s.datoValor}>{c.valor || "—"}</Text>
+              </View>
+              {i < campos.length - 1 && <View style={s.datoDivider} />}
+            </View>
+          ))}
+        </View>
+
+        {/* Cerrar sesión */}
+        <TouchableOpacity style={s.logoutBtn} onPress={cerrarSesion}>
+          <Ionicons name="log-out-outline" size={20} color={COLORS.error} />
+          <Text style={s.logoutText}>Cerrar sesión</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      <MenuLateral
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        perfil={perfil}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f9f9f9", padding: 20 },
-  avatarContainer: { alignItems: "center", marginTop: 20, marginBottom: 32 },
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+  content: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: 20 },
+  // Avatar
+  avatarSection: { alignItems: "center", marginBottom: 28 },
   avatar: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: "#111",
+    backgroundColor: COLORS.primary,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
   },
-  avatarText: { color: "#fff", fontSize: 24, fontWeight: "700" },
-  nombre: { fontSize: 20, fontWeight: "700", color: "#111" },
-  email: { fontSize: 14, color: "#666", marginTop: 4 },
-  infoCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 4,
+  avatarText: { color: COLORS.secondary, fontSize: 24, fontWeight: "700" },
+  nombre: { fontSize: 20, fontWeight: "700", color: COLORS.text },
+  email: { fontSize: 14, color: COLORS.textSecondary, marginTop: 4 },
+  estadoPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 99,
+    marginTop: 10,
+  },
+  estadoActivo: { backgroundColor: COLORS.successLight },
+  estadoPendiente: { backgroundColor: COLORS.warningLight },
+  estadoTexto: { fontSize: 12, fontWeight: "600" },
+  // Datos
+  datosCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    paddingHorizontal: 4,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: COLORS.borderLight,
     marginBottom: 24,
   },
-  infoRow: {
+  datoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    padding: 14,
-  },
-  infoLabel: { fontSize: 14, color: "#666" },
-  infoValue: { fontSize: 14, fontWeight: "600", color: "#111" },
-  divider: { height: 1, backgroundColor: "#f0f0f0" },
-  btnLogout: {
-    borderWidth: 1,
-    borderColor: "#EF4444",
-    borderRadius: 12,
-    padding: 14,
     alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 14,
   },
-  btnLogoutText: { color: "#EF4444", fontSize: 15, fontWeight: "600" },
+  datoLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+  datoLabel: { fontSize: 14, color: COLORS.textSecondary },
+  datoValor: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+    maxWidth: "55%",
+    textAlign: "right",
+  },
+  datoDivider: {
+    height: 1,
+    backgroundColor: COLORS.borderLight,
+    marginHorizontal: 14,
+  },
+  // Logout
+  logoutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: COLORS.error,
+    borderRadius: 12,
+    paddingVertical: 14,
+    backgroundColor: COLORS.white,
+  },
+  logoutText: { fontSize: 15, color: COLORS.error, fontWeight: "600" },
 });
