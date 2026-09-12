@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { registrarAuditoria } from "@/lib/acciones";
+import { registrarAuditoria, explicarError } from "@/lib/acciones";
 import { estadoCola, contadoresDe } from "@/lib/cola";
 import { cn } from "@/lib/utils";
 import Shell, { Edificio, Flecha, Check } from "@/components/shell";
@@ -35,11 +35,7 @@ export default function SedesPage() {
       .select("*")
       .order("nombre");
     if (e) {
-      setError(
-        "No se pudieron cargar las sedes: " +
-          e.message +
-          ". ¿Ejecutaste server/09a y server/09b?",
-      );
+      setError(explicarError(e, "No se pudieron cargar las sedes."));
       setLoading(false);
       return;
     }

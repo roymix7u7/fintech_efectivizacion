@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { actualizar, registrarAuditoria } from "@/lib/acciones";
+import { actualizar, registrarAuditoria, explicarError } from "@/lib/acciones";
 import { estadoCola, contadoresDe } from "@/lib/cola";
 import { cn } from "@/lib/utils";
 import Shell, { Lupa, Personas } from "@/components/shell";
@@ -48,11 +48,7 @@ export default function EquipoPage() {
 
     const { data, error: e } = await supabase.rpc("listar_equipo");
     if (e) {
-      setError(
-        "No se pudo cargar el equipo: " +
-          e.message +
-          ". ¿Ejecutaste server/09a y server/09b?",
-      );
+      setError(explicarError(e, "No se pudo cargar el equipo."));
       setLoading(false);
       return;
     }

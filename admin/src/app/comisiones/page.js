@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { registrarAuditoria } from "@/lib/acciones";
+import { registrarAuditoria, explicarError } from "@/lib/acciones";
 import { estadoCola, contadoresDe } from "@/lib/cola";
 import { cn } from "@/lib/utils";
 import Shell, { Lupa, Check } from "@/components/shell";
@@ -43,11 +43,7 @@ export default function ComisionesPage() {
       .select("*")
       .order("banco");
     if (eBancos) {
-      setError(
-        "No se pudieron cargar las comisiones: " +
-          eBancos.message +
-          ". ¿Ejecutaste server/07-comisiones.sql?",
-      );
+      setError(explicarError(eBancos, "No se pudieron cargar las comisiones."));
       setLoading(false);
       return;
     }
