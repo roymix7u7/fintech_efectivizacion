@@ -103,6 +103,18 @@ export default function LoginScreen() {
     >
       {/* Header azul */}
       <View style={s.header}>
+        {/* Al ocultar la cabecera nativa, el botón de volver tiene que
+            vivir aquí: sin él no habría forma de regresar al inicio. */}
+        <TouchableOpacity
+          onPress={() =>
+            router.canGoBack() ? router.back() : router.replace("/")
+          }
+          style={s.volver}
+          hitSlop={12}
+        >
+          <Ionicons name="arrow-back" size={22} color={COLORS.white} />
+        </TouchableOpacity>
+
         <Image
           source={require("../assets/LOGOATK.png")}
           style={s.logo}
@@ -213,8 +225,14 @@ const s = StyleSheet.create({
   header: {
     backgroundColor: COLORS.primary,
     alignItems: "center",
-    paddingTop: 70,
+    paddingTop: 64,
     paddingBottom: 30,
+  },
+  volver: {
+    position: "absolute",
+    top: 54,
+    left: 18,
+    padding: 6,
   },
   logo: { width: 64, height: 64, marginBottom: 12 },
   brand: {

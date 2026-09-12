@@ -38,8 +38,11 @@ export default function RootLayout() {
           name="index"
           options={{ headerShown: false, animation: "fade" }}
         />
-        <Stack.Screen name="login" options={{ title: "Iniciar sesión" }} />
-        <Stack.Screen name="registro" options={{ title: "Crear cuenta" }} />
+        {/* Estas dos dibujan su propia cabecera de marca, con logo y
+            fondo azul. Sin esto salían dos cabeceras apiladas: la
+            nativa arriba y la de la pantalla debajo. */}
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="registro" options={{ headerShown: false }} />
         <Stack.Screen
           name="recuperar"
           options={{ title: "Recuperar contraseña" }}
