@@ -1,67 +1,71 @@
-# Conectar el proyecto a Supabase
+# Supabase: conexión y migraciones
 
-Hoy cada cambio de base de datos pasa por copiar un archivo y pegarlo en
-el editor SQL. Eso es lento y ya nos costó un error: las tablas de
-comisiones y sedes se crearon sin permisos porque el editor no aplica
-los mismos valores por defecto que el panel de Supabase.
+El proyecto ya está vinculado con la CLI de Supabase. A partir de aquí
+los cambios de base de datos se aplican con un comando, versionados, en
+vez de copiar y pegar en el editor SQL.
 
-Con la CLI conectada, yo ejecuto las migraciones y las verifico. Tú
-apruebas cada comando, como con cualquier otro.
+## Estado
 
-## Qué necesito, y qué no
+| Cosa | Estado |
+| --- | --- |
+| Proyecto vinculado | `zsrjctabxqrgunlzvzru` |
+| Migraciones versionadas | `supabase/migrations/` |
+| Función de alta de personal | Desplegada |
 
-**No me des la clave `service_role` ni la contraseña de la base.** No
-hacen falta y no deberías compartirlas con nadie.
+## Cómo trabajamos ahora
 
-Lo que hace falta es vincular el proyecto una sola vez desde tu máquina.
-El acceso queda guardado en tu equipo, a tu nombre, y lo puedes revocar
-cuando quieras desde Supabase, en Account, Access Tokens.
-
-## Vinculación, una sola vez
-
-Ejecuta esto tú, en la raíz del proyecto. El primero abre el navegador
-para que inicies sesión con tu cuenta.
-
-```bash
-npx supabase login
-npx supabase link --project-ref zsrjctabxqrgunlzvzru
-```
-
-Te pedirá la contraseña de la base de datos. Es la que pusiste al crear
-el proyecto; si no la recuerdas, la reinicias en Settings, Database.
-Esa contraseña no se guarda en el repositorio.
-
-## Qué cambia después
-
-A partir de ahí puedo hacer esto sin que tengas que copiar nada:
+Los archivos de `server/` numerados del 01 al 10 se ejecutaron a mano
+en el editor SQL y quedan como documentación de lo que se hizo y por
+qué. De ahí en adelante, cada cambio nuevo es una migración.
 
 | Comando | Para qué |
 | --- | --- |
 | `npx supabase db push` | Aplica las migraciones pendientes |
 | `npx supabase migration list` | Muestra qué se aplicó y qué falta |
+| `npx supabase functions deploy crear-staff` | Redespliega la función de alta |
 | `npx supabase gen types typescript --linked` | Genera los tipos del esquema |
-| `npx supabase functions deploy crear-staff` | Despliega la función de alta de personal |
 
-Y lo más importante: las migraciones quedan versionadas en
-`supabase/migrations/`, con su orden y su historial. Hoy los archivos
-de `server/` son solo texto suelto, y no hay forma de saber cuáles
-corriste ni en qué orden.
+## Qué acceso hay y cuál no
+
+**La clave `service_role` y la contraseña de la base no están en el
+repositorio y no hacen falta para trabajar.** La vinculación quedó
+guardada en tu máquina, a tu nombre. La puedes revocar cuando quieras
+desde Supabase, en Account, Access Tokens.
+
+La única parte que usa la clave `service_role` es la función
+`crear-staff`, y esa clave vive dentro de Supabase, nunca sale de ahí.
+
+## Dos limitaciones de este entorno
+
+**Docker no está instalado**, así que `supabase db dump` y el entorno
+local no funcionan. No hace falta para aplicar migraciones ni para
+desplegar funciones, que es lo que usamos.
+
+**No se puede sondear con la clave anónima** para comprobar permisos: a
+`anon` no se le dio acceso a propósito, así que responde denegado tanto
+si el permiso existe como si no. Para verificar se usa una migración
+que falla a propósito cuando falta algo, como
+`20260912000011_verificar_permisos.sql`.
+
+## Si algo falla al aplicar
+
+`db push` se detiene en la primera migración que falle y no aplica las
+siguientes. El historial queda en la tabla de migraciones de Supabase,
+así que `migration list` siempre dice dónde se quedó.
+
+Para marcar una migración como ya aplicada sin ejecutarla, por ejemplo
+si la corriste a mano antes:
+
+```bash
+npx supabase migration repair --status applied <version>
+```
 
 ## Alternativa: el servidor MCP de Supabase
 
-Existe un conector oficial que me deja consultar el esquema
+Existe un conector oficial que permite consultar el esquema
 directamente durante la conversación, sin comandos. Se configura en
-Claude Code con un token personal tuyo y se puede dejar en modo de solo
+Claude Code con un token personal y se puede dejar en modo de solo
 lectura.
 
-Es cómodo para inspeccionar, pero para aplicar cambios prefiero la CLI:
-deja rastro en el repositorio y se puede revertir. Si quieres los dos,
-funcionan juntos.
-
-## Migrar lo que ya existe
-
-Los archivos de `server/` ya los ejecutaste. Cuando vinculemos el
-proyecto conviene convertirlos en migraciones formales para que el
-historial quede completo. Es un paso que puedo hacer yo; solo hay que
-tener cuidado de marcarlas como ya aplicadas en vez de volver a
-ejecutarlas.
+Es cómodo para inspeccionar. Para aplicar cambios es mejor la CLI,
+porque deja rastro en el repositorio y se puede revertir.
