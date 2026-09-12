@@ -42,6 +42,7 @@ export default function TarjetasPage() {
   const [accion, setAccion] = useState(null);
   const [error, setError] = useState("");
   const [contadores, setContadores] = useState({});
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const router = useRouter();
 
   const cargar = useCallback(async (estado) => {
@@ -70,10 +71,9 @@ export default function TarjetasPage() {
       return;
     }
 
-    const firmadas = await firmarCampo(BUCKET, data || [], "foto_tarjeta", "foto");
-    setTarjetas(firmadas);
+    // La lista no firma ninguna foto: cada una se firma al abrirla.
+    setTarjetas(data || []);
     setLoading(false);
-    if (firmadas.length > 0) abrir(firmadas[0]);
   }, []);
 
   useEffect(() => {
@@ -101,10 +101,16 @@ export default function TarjetasPage() {
     });
   }
 
-  function abrir(t) {
+  async function abrir(t) {
     setSeleccionada(t);
     setMotivo("");
     setModoRechazo(false);
+    setCargandoDetalle(true);
+    const firmadas = await firmarCampo(BUCKET, [t], "foto_tarjeta", "foto");
+    setSeleccionada((actual) =>
+      actual && actual.id === t.id ? { ...actual, ...firmadas[0] } : actual,
+    );
+    setCargandoDetalle(false);
   }
 
   async function aprobar(t) {
@@ -315,9 +321,9 @@ export default function TarjetasPage() {
                       <span className="cifras font-mono text-[13px] text-muted-foreground">
                         ···· {t.ultimos_4}
                       </span>
-                      {!t.foto && (
-                        <span className="ml-auto text-[11px] text-red-600">
-                          sin imagen
+                      {!t.foto_tarjeta && (
+                        <span className="ml-auto text-[0.7333rem] text-red-600">
+                          sin adjunto
                         </span>
                       )}
                     </div>
@@ -338,8 +344,8 @@ export default function TarjetasPage() {
           {!seleccionada ? (
             <Vacio
               icono={<IconoTarjeta className="h-5 w-5" />}
-              titulo="Elige una tarjeta"
-              detalle="Selecciona un elemento de la cola para ver la foto y resolverla."
+              titulo="Elige una tarjeta de la lista"
+              detalle="Al pulsar una se carga su foto y los datos del titular."
             />
           ) : (
             <div className="space-y-4 animate-aparecer">
@@ -362,13 +368,17 @@ export default function TarjetasPage() {
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
                 <div className="min-w-0">
-                  <Visor
-                    url={seleccionada.foto}
-                    error={seleccionada.foto_error}
-                    path={seleccionada.foto_path}
-                    titulo="Foto de la tarjeta"
-                    alto="h-[440px]"
-                  />
+                  {cargandoDetalle ? (
+                    <Esqueleto className="h-[440px] w-full rounded-lg" />
+                  ) : (
+                    <Visor
+                      url={seleccionada.foto}
+                      error={seleccionada.foto_error}
+                      path={seleccionada.foto_path}
+                      titulo="Foto de la tarjeta"
+                      alto="h-[440px]"
+                    />
+                  )}
                   <div className="mt-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Qué comprobar

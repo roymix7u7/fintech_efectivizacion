@@ -80,6 +80,7 @@ export default function SolicitudesPage() {
   const [seleccionada, setSeleccionada] = useState(null);
   const [cuentas, setCuentas] = useState([]);
   const [cargandoCuentas, setCargandoCuentas] = useState(false);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [motivo, setMotivo] = useState("");
   const [modoRechazo, setModoRechazo] = useState(false);
   const [busqueda, setBusqueda] = useState("");
@@ -156,25 +157,26 @@ export default function SolicitudesPage() {
       return;
     }
 
-    // Las URLs se firman al leer. La columna guarda el path.
-    const firmadas = await firmarCampo(
-      BUCKET,
-      data || [],
-      "comprobante_url",
-      "comprobante",
-    );
-    if (mia !== peticion.current) return;
-
-    setSolicitudes(firmadas);
+    // La lista no firma ninguna imagen. Antes se firmaban las 25 de la
+    // página para mostrar una sola, y eso retrasaba la carga entera.
+    // Cada comprobante se firma al abrirlo.
+    const filas = data || [];
+    setSolicitudes(filas);
     setTotal(count || 0);
     setPrimeraCarga(false);
     setRefrescando(false);
 
-    const elegida = idPreferido
-      ? firmadas.find((f) => f.id === idPreferido)
-      : firmadas[0];
-    if (elegida) abrir(elegida);
-    else setSeleccionada(null);
+    // Solo se abre sola la solicitud que el usuario acaba de tomar con
+    // "Atender siguiente". En cualquier otro caso la lista queda
+    // esperando a que él elija.
+    if (idPreferido) {
+      const elegida = filas.find((f) => f.id === idPreferido);
+      if (elegida) abrir(elegida);
+    } else {
+      setSeleccionada((actual) =>
+        actual && filas.some((f) => f.id === actual.id) ? actual : null,
+      );
+    }
     // abrir solo usa setters de estado, que React garantiza estables.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -244,11 +246,29 @@ export default function SolicitudesPage() {
     await contarPendientes();
   }
 
-  function abrir(sol) {
+  /**
+   * Carga el detalle de una solicitud al pulsarla.
+   *
+   * Los datos de texto ya vienen con la lista, así que se muestran de
+   * inmediato y solo se espera por la imagen y las cuentas. Así la
+   * pantalla no aparece vacía mientras llega lo pesado.
+   */
+  async function abrir(sol) {
     setSeleccionada(sol);
     setMotivo("");
     setModoRechazo(false);
-    cargarCuentas(sol.cliente_id);
+    setCargandoDetalle(true);
+
+    const [firmadas] = await Promise.all([
+      firmarCampo(BUCKET, [sol], "comprobante_url", "comprobante"),
+      cargarCuentas(sol.cliente_id),
+    ]);
+
+    // Si mientras tanto se pulsó otra, esta respuesta ya no vale.
+    setSeleccionada((actual) =>
+      actual && actual.id === sol.id ? { ...actual, ...firmadas[0] } : actual,
+    );
+    setCargandoDetalle(false);
   }
 
   /**
@@ -575,9 +595,9 @@ export default function SolicitudesPage() {
                         <span className="cifras font-mono">
                           ···· {sol.tarjetas?.ultimos_4 || "····"}
                         </span>
-                        {!sol.comprobante && (
+                        {!sol.comprobante_url && (
                           <span className="ml-auto text-red-600">
-                            sin imagen
+                            sin adjunto
                           </span>
                         )}
                         {esCola &&
@@ -632,8 +652,8 @@ export default function SolicitudesPage() {
           ) : !seleccionada ? (
             <Vacio
               icono={<Documento className="h-5 w-5" />}
-              titulo="Elige una solicitud"
-              detalle="Selecciona un elemento de la lista para ver el comprobante."
+              titulo="Elige una solicitud de la lista"
+              detalle="Al pulsar una se carga su comprobante y los datos del cliente."
             />
           ) : (
             <div key={seleccionada.id} className="animate-aparecer space-y-4">
@@ -672,13 +692,17 @@ export default function SolicitudesPage() {
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
                 {/* Comprobante */}
                 <div className="min-w-0">
-                  <Visor
-                    url={seleccionada.comprobante}
-                    error={seleccionada.comprobante_error}
-                    path={seleccionada.comprobante_path}
-                    titulo="Comprobante de la operación"
-                    alto="h-[460px]"
-                  />
+                  {cargandoDetalle ? (
+                    <Esqueleto className="h-[460px] w-full rounded-lg" />
+                  ) : (
+                    <Visor
+                      url={seleccionada.comprobante}
+                      error={seleccionada.comprobante_error}
+                      path={seleccionada.comprobante_path}
+                      titulo="Comprobante de la operación"
+                      alto="h-[460px]"
+                    />
+                  )}
                   {seleccionada.nota_cliente && (
                     <div className="mt-3 rounded-lg border-l-[3px] border-marca-600 bg-marca-50 px-4 py-3">
                       <p className="t-etiqueta text-marca-600">
