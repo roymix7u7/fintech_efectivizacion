@@ -2,11 +2,23 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import COLORS from "../../src/theme/colors";
 
+/**
+ * Barra de pestañas.
+ *
+ * La animación va aquí y no en el layout de arriba: moverse entre
+ * pestañas usa este navegador, no el de pila, así que la transición
+ * del stack nunca se aplicaba y los cambios de pestaña salían secos.
+ *
+ * "shift" desplaza la pantalla saliente hacia el lado por el que se
+ * fue, así que el movimiento coincide con el orden de la barra y se
+ * entiende hacia dónde se avanzó.
+ */
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        animation: "shift",
         tabBarStyle: {
           backgroundColor: COLORS.white,
           borderTopColor: COLORS.borderLight,
@@ -16,15 +28,22 @@ export default function TabsLayout() {
         },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textLight,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "500" },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+        tabBarHideOnKeyboard: true,
       }}
     >
       <Tabs.Screen
         name="inicio"
         options={{
           title: "Inicio",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={22} color={color} />
+          // El icono relleno marca la pestaña activa mejor que el color
+          // solo, sobre todo para quien distingue mal los tonos.
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "home" : "home-outline"}
+              size={22}
+              color={color}
+            />
           ),
         }}
       />
@@ -32,8 +51,12 @@ export default function TabsLayout() {
         name="solicitudes"
         options={{
           title: "Solicitudes",
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="document-text-outline" size={22} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "document-text" : "document-text-outline"}
+              size={22}
+              color={color}
+            />
           ),
         }}
       />
@@ -41,8 +64,12 @@ export default function TabsLayout() {
         name="tarjetas"
         options={{
           title: "Tarjetas",
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="card-outline" size={22} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "card" : "card-outline"}
+              size={22}
+              color={color}
+            />
           ),
         }}
       />

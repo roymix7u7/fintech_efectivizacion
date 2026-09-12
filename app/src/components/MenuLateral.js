@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -5,19 +6,97 @@ import {
   StyleSheet,
   Image,
   ScrollView,
+  Animated,
+  Easing,
+  Dimensions,
+  BackHandler,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import COLORS from "../theme/colors";
+import TIPO from "../theme/tipografia";
 
+const ANCHO = 288;
+const VELOCIDAD_ENTRA = 260;
+const VELOCIDAD_SALE = 200;
+
+/**
+ * Menú lateral.
+ *
+ * Antes aparecía y desaparecía de golpe, porque se desmontaba en cuanto
+ * visible pasaba a false. Ahora entra deslizándose y sale por el mismo
+ * camino, y el componente se mantiene montado hasta que la salida
+ * termina: sin eso, el panel se borraría antes de poder animarse.
+ *
+ * El cierre es más rápido que la apertura. Abrir es una decisión que se
+ * acompaña; cerrar es querer irse, y hacerse esperar ahí molesta.
+ */
 export default function MenuLateral({ visible, onClose, perfil }) {
   const router = useRouter();
+  const [montado, setMontado] = useState(visible);
 
-  if (!visible) return null;
+  const desliz = useRef(new Animated.Value(visible ? 0 : -ANCHO)).current;
+  const fondo = useRef(new Animated.Value(visible ? 1 : 0)).current;
 
+  useEffect(() => {
+    if (visible) {
+      setMontado(true);
+      Animated.parallel([
+        Animated.timing(desliz, {
+          toValue: 0,
+          duration: VELOCIDAD_ENTRA,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(fondo, {
+          toValue: 1,
+          duration: VELOCIDAD_ENTRA,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start();
+      return;
+    }
+
+    Animated.parallel([
+      Animated.timing(desliz, {
+        toValue: -ANCHO,
+        duration: VELOCIDAD_SALE,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(fondo, {
+        toValue: 0,
+        duration: VELOCIDAD_SALE,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (finished) setMontado(false);
+    });
+  }, [visible, desliz, fondo]);
+
+  // El botón atrás de Android debe cerrar el menú antes que salir de la
+  // pantalla, que es lo que la gente espera.
+  useEffect(() => {
+    if (!visible || Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, onClose]);
+
+  if (!montado) return null;
+
+  /**
+   * Se cierra primero y se navega después. Si se navegara de inmediato,
+   * la pantalla nueva entraría con el menú todavía encima.
+   */
   function navegar(ruta) {
     onClose();
-    router.push(ruta);
+    setTimeout(() => router.push(ruta), VELOCIDAD_SALE - 60);
   }
 
   const opciones = [
@@ -38,11 +117,7 @@ export default function MenuLateral({ visible, onClose, perfil }) {
       ruta: "/notificaciones",
       icon: "notifications-outline",
     },
-    {
-      label: "Noticias",
-      ruta: "/(tabs)/noticias",
-      icon: "megaphone-outline",
-    },
+    { label: "Noticias", ruta: "/(tabs)/noticias", icon: "megaphone-outline" },
     { label: "Sobre la empresa", ruta: "/empresa", icon: "business-outline" },
     { tipo: "separador" },
     { label: "Mi cuenta", ruta: "/(tabs)/perfil", icon: "person-outline" },
@@ -50,13 +125,18 @@ export default function MenuLateral({ visible, onClose, perfil }) {
 
   return (
     <View style={s.overlay}>
-      <TouchableOpacity
-        style={s.backdrop}
-        onPress={onClose}
-        activeOpacity={1}
-      />
-      <View style={s.menu}>
-        {/* Header */}
+      <Animated.View style={[s.backdropCapa, { opacity: fondo }]}>
+        <TouchableOpacity
+          style={s.backdrop}
+          onPress={onClose}
+          activeOpacity={1}
+          accessibilityLabel="Cerrar menú"
+        />
+      </Animated.View>
+
+      <Animated.View
+        style={[s.menu, { transform: [{ translateX: desliz }] }]}
+      >
         <View style={s.menuHeader}>
           <Image
             source={require("../../assets/LOGOATK.png")}
@@ -65,7 +145,7 @@ export default function MenuLateral({ visible, onClose, perfil }) {
           />
           <View style={{ flex: 1 }}>
             <Text style={s.menuBrand}>ALTOQUE PERÚ WK</Text>
-            <Text style={s.menuUser}>
+            <Text style={s.menuUser} numberOfLines={1}>
               {perfil ? `${perfil.nombres} ${perfil.apellidos}` : "Mi cuenta"}
             </Text>
           </View>
@@ -74,7 +154,7 @@ export default function MenuLateral({ visible, onClose, perfil }) {
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={s.menuBody}>
+        <ScrollView style={s.menuBody} showsVerticalScrollIndicator={false}>
           {opciones.map((op, i) => {
             if (op.tipo === "separador") {
               return <View key={`sep-${i}`} style={s.separador} />;
@@ -84,6 +164,7 @@ export default function MenuLateral({ visible, onClose, perfil }) {
                 key={op.label}
                 style={s.menuItem}
                 onPress={() => navegar(op.ruta)}
+                activeOpacity={0.6}
               >
                 <Ionicons
                   name={op.icon}
@@ -92,6 +173,11 @@ export default function MenuLateral({ visible, onClose, perfil }) {
                   style={{ width: 28 }}
                 />
                 <Text style={s.menuItemText}>{op.label}</Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={16}
+                  color={COLORS.textLight}
+                />
               </TouchableOpacity>
             );
           })}
@@ -100,7 +186,7 @@ export default function MenuLateral({ visible, onClose, perfil }) {
         <View style={s.menuFooter}>
           <Text style={s.footerText}>AlToque Perú WK v1.0</Text>
         </View>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -115,8 +201,23 @@ const s = StyleSheet.create({
     zIndex: 100,
     flexDirection: "row",
   },
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)" },
-  menu: { width: 280, backgroundColor: COLORS.white, height: "100%" },
+  backdropCapa: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(11,20,38,0.55)",
+  },
+  backdrop: { flex: 1 },
+  menu: {
+    width: ANCHO,
+    backgroundColor: COLORS.white,
+    height: "100%",
+    // Sombra hacia la derecha: despega el panel del contenido y deja
+    // claro que está por encima, no al lado.
+    shadowColor: "#0B1426",
+    shadowOffset: { width: 4, height: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 16,
+  },
   menuHeader: {
     backgroundColor: COLORS.primary,
     paddingTop: 50,
@@ -127,8 +228,17 @@ const s = StyleSheet.create({
     gap: 12,
   },
   menuLogo: { width: 40, height: 40 },
-  menuBrand: { fontSize: 14, fontWeight: "700", color: COLORS.secondary },
-  menuUser: { fontSize: 13, color: COLORS.white, marginTop: 2, opacity: 0.8 },
+  menuBrand: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: COLORS.secondary,
+    letterSpacing: 1.2,
+  },
+  menuUser: {
+    ...TIPO.apoyo,
+    color: "rgba(255,255,255,0.75)",
+    marginTop: 2,
+  },
   closeBtn: { padding: 4 },
   menuBody: { flex: 1, paddingTop: 10 },
   menuItem: {
@@ -138,7 +248,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 15,
   },
-  menuItemText: { fontSize: 15, color: COLORS.text, fontWeight: "500" },
+  menuItemText: { ...TIPO.cuerpo, fontWeight: "500", flex: 1 },
   separador: {
     height: 1,
     backgroundColor: COLORS.borderLight,
@@ -152,5 +262,5 @@ const s = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 30,
   },
-  footerText: { fontSize: 12, color: COLORS.textLight },
+  footerText: { ...TIPO.micro },
 });
