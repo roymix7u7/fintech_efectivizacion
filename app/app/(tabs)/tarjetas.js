@@ -9,6 +9,8 @@ import {
   Image,
   RefreshControl,
   ActivityIndicator,
+  Modal,
+  Pressable,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -100,6 +102,7 @@ export default function TarjetasScreen() {
   const [nuevaCuenta, setNuevaCuenta] = useState(CUENTA_VACIA);
   const [guardando, setGuardando] = useState(false);
   const [guardandoCuenta, setGuardandoCuenta] = useState(false);
+  const [guiaVisible, setGuiaVisible] = useState(false);
   const altoTeclado = useAlturaTeclado();
   const { mostrar } = useAviso();
 
@@ -399,7 +402,21 @@ export default function TarjetasScreen() {
               })}
             </View>
 
-            <Text style={s.formLabel}>Ultimos 4 digitos</Text>
+            <View style={s.labelFila}>
+              <Text style={s.formLabel}>Últimos 4 dígitos</Text>
+              <TouchableOpacity
+                onPress={() => setGuiaVisible(true)}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Cómo tomar la foto de la tarjeta"
+              >
+                <Ionicons
+                  name="information-circle"
+                  size={19}
+                  color={COLORS.primaryLight}
+                />
+              </TouchableOpacity>
+            </View>
             <TextInput
               style={s.input}
               placeholder="Ej: 5678"
@@ -788,6 +805,110 @@ export default function TarjetasScreen() {
             })
         )}
       </ScrollView>
+      <Modal
+        visible={guiaVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGuiaVisible(false)}
+      >
+        <Pressable style={s.guiaFondo} onPress={() => setGuiaVisible(false)}>
+          {/* El Pressable de dentro para el toque: si no, tocar la
+              tarjeta cerraria el modal como si fuera el fondo. */}
+          <Pressable style={s.guiaCaja} onPress={() => {}}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={s.guiaScroll}
+            >
+              <View style={s.guiaEncabezado}>
+                <Text style={s.guiaTitulo}>Cómo tomar la foto</Text>
+                <TouchableOpacity
+                  onPress={() => setGuiaVisible(false)}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cerrar"
+                >
+                  <Ionicons name="close" size={22} color={COLORS.textLight} />
+                </TouchableOpacity>
+              </View>
+
+              <Image
+                source={require("../../assets/tc-guia.jpg")}
+                style={s.guiaImagen}
+                resizeMode="cover"
+              />
+
+              <Text style={s.guiaIntro}>
+                Solo necesitamos dos datos para confirmar que la tarjeta es
+                tuya:
+              </Text>
+
+              <View style={s.guiaPunto}>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={18}
+                  color={COLORS.success}
+                />
+                <Text style={s.guiaPuntoText}>
+                  <Text style={s.guiaFuerte}>Tu nombre</Text> tal como aparece
+                  impreso en la tarjeta.
+                </Text>
+              </View>
+              <View style={s.guiaPunto}>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={18}
+                  color={COLORS.success}
+                />
+                <Text style={s.guiaPuntoText}>
+                  <Text style={s.guiaFuerte}>Los últimos 4 dígitos</Text> del
+                  número, como en el ejemplo.
+                </Text>
+              </View>
+
+              <View style={s.guiaSeparador} />
+
+              <Text style={s.guiaIntro}>
+                Lo demás puedes taparlo con el dedo o con un papel antes de
+                tomar la foto:
+              </Text>
+
+              <View style={s.guiaPunto}>
+                <Ionicons name="close-circle" size={18} color={COLORS.error} />
+                <Text style={s.guiaPuntoText}>
+                  Los primeros 12 dígitos del número.
+                </Text>
+              </View>
+              <View style={s.guiaPunto}>
+                <Ionicons name="close-circle" size={18} color={COLORS.error} />
+                <Text style={s.guiaPuntoText}>
+                  La fecha de vencimiento y el código de 3 dígitos del reverso.
+                </Text>
+              </View>
+
+              <View style={s.guiaNota}>
+                <Ionicons
+                  name="shield-checkmark"
+                  size={18}
+                  color={COLORS.primaryLight}
+                />
+                <Text style={s.guiaNotaText}>
+                  Esos tres datos juntos son los que permiten hacer un cargo a
+                  tu tarjeta. Por eso no te los pedimos ni los guardamos: con el
+                  nombre y los últimos 4 dígitos nos basta para verificarla.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={s.guiaBtn}
+                onPress={() => setGuiaVisible(false)}
+              >
+                <Text style={s.guiaBtnText}>Entendido</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <MenuLateral
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
@@ -857,6 +978,77 @@ const s = StyleSheet.create({
     marginTop: -6,
     lineHeight: 18,
   },
+  labelFila: { flexDirection: "row", alignItems: "center", gap: 6 },
+
+  // Guia de como fotografiar la tarjeta
+  guiaFondo: {
+    flex: 1,
+    backgroundColor: "rgba(15,27,51,0.72)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  guiaCaja: {
+    backgroundColor: COLORS.card,
+    borderRadius: 18,
+    maxHeight: "86%",
+    overflow: "hidden",
+  },
+  guiaScroll: { padding: 18, gap: 10 },
+  guiaEncabezado: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  guiaTitulo: { fontSize: 18, fontWeight: "700", color: COLORS.text },
+  guiaImagen: {
+    width: "100%",
+    height: 150,
+    borderRadius: 12,
+    backgroundColor: COLORS.inputBg,
+    marginTop: 2,
+  },
+  guiaIntro: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 19,
+    marginTop: 4,
+  },
+  guiaPunto: { flexDirection: "row", alignItems: "flex-start", gap: 9 },
+  guiaPuntoText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.text,
+    lineHeight: 19,
+  },
+  guiaFuerte: { fontWeight: "700" },
+  guiaSeparador: {
+    height: 1,
+    backgroundColor: COLORS.borderLight,
+    marginVertical: 6,
+  },
+  guiaNota: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 6,
+  },
+  guiaNotaText: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+  },
+  guiaBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  guiaBtnText: { color: COLORS.white, fontSize: 15, fontWeight: "700" },
   input: {
     borderWidth: 1,
     borderColor: COLORS.border,
