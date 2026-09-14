@@ -61,7 +61,29 @@ const OPCIONES_FOTO = {
   // El base64 lo entrega prepararImagen, ya achicada.
 };
 
-const TARJETA_VACIA = { banco: "BCP", ultimos_4: "", foto: null };
+// Dos caras. El frente es obligatorio; el reverso solo si los datos
+// a verificar no caben en una sola foto, que depende del banco.
+const TARJETA_VACIA = {
+  banco: "BCP",
+  ultimos_4: "",
+  frente: null,
+  reverso: null,
+};
+
+const CARAS = [
+  {
+    clave: "frente",
+    etiqueta: "Frente",
+    pista: "Nombre y últimos 4 dígitos",
+    obligatoria: true,
+  },
+  {
+    clave: "reverso",
+    etiqueta: "Reverso",
+    pista: "Solo si los datos están detrás",
+    obligatoria: false,
+  },
+];
 const CUENTA_VACIA = { banco: "BCP", numero_cuenta: "", tipo: "ahorros" };
 
 export default function TarjetasScreen() {
@@ -114,19 +136,10 @@ export default function TarjetasScreen() {
         return;
       }
 
-      // Se firman todas las fotos de una sola llamada. Antes se hacia una
-      // peticion por tarjeta dentro de un bucle.
-      const lista = tarjetasData || [];
-      const firmadas = await urlsFirmadas(
-        BUCKET_TARJETAS,
-        lista.map((t) => t.foto_tarjeta),
-      );
-      setTarjetas(
-        lista.map((t) => ({
-          ...t,
-          foto_vista: firmadas[extraerPath(BUCKET_TARJETAS, t.foto_tarjeta)] || null,
-        })),
-      );
+      // La lista no firma ninguna imagen: las fotos de una tarjeta son
+      // documentos de verificación para el revisor, no algo que el
+      // cliente necesite volver a mirar en su propia lista.
+      setTarjetas(tarjetasData || []);
 
       const { data: cuentasData, error: errorCuentas } = await supabase
         .from("cuentas_bancarias")
@@ -147,7 +160,7 @@ export default function TarjetasScreen() {
     }
   }
 
-  async function elegirFoto(desdeCamara) {
+  async function elegirFoto(cara, desdeCamara) {
     if (!(await pedirPermiso(desdeCamara ? "camara" : "galeria"))) return;
     const r = desdeCamara
       ? await ImagePicker.launchCameraAsync(OPCIONES_FOTO)
@@ -156,7 +169,7 @@ export default function TarjetasScreen() {
     const lista = await prepararImagen(r.assets[0]);
     if (!lista.base64)
       return mostrar("No pudimos leer la imagen. Intentalo otra vez.", "error");
-    setNuevaTarjeta((p) => ({ ...p, foto: lista }));
+    setNuevaTarjeta((p) => ({ ...p, [cara]: lista }));
   }
 
   async function agregarTarjeta() {
@@ -178,18 +191,28 @@ export default function TarjetasScreen() {
     }
 
     setGuardando(true);
-    let pathSubido = null;
+    const subidos = [];
     try {
-      const path = `${userId}/${Date.now()}.jpg`;
-      await subirImagen(BUCKET_TARJETAS, path, nuevaTarjeta.foto);
-      pathSubido = path;
+      const sello = Date.now();
+
+      const pathFrente = `${userId}/${sello}-frente.jpg`;
+      await subirImagen(BUCKET_TARJETAS, pathFrente, nuevaTarjeta.frente);
+      subidos.push(pathFrente);
+
+      let pathReverso = null;
+      if (nuevaTarjeta.reverso) {
+        pathReverso = `${userId}/${sello}-reverso.jpg`;
+        await subirImagen(BUCKET_TARJETAS, pathReverso, nuevaTarjeta.reverso);
+        subidos.push(pathReverso);
+      }
 
       // Se guarda el path, no una URL firmada que caduca.
       const { error: insertError } = await supabase.from("tarjetas").insert({
         cliente_id: perfil.id,
         banco: nuevaTarjeta.banco,
         ultimos_4: nuevaTarjeta.ultimos_4,
-        foto_tarjeta: path,
+        foto_tarjeta: pathFrente,
+        foto_reverso: pathReverso,
         estado: "pendiente",
         activa: true,
       });
@@ -200,7 +223,9 @@ export default function TarjetasScreen() {
       mostrar("Tarjeta enviada para verificación", "exito");
       await cargarDatos();
     } catch (err) {
-      await borrarImagenes(BUCKET_TARJETAS, [pathSubido]);
+      // Si algo falla, se limpian las dos: una tarjeta a medias no
+      // sirve y dejaría archivos sueltos en el servidor.
+      await borrarImagenes(BUCKET_TARJETAS, subidos);
       mostrar(mensajeError(err), "error");
     } finally {
       setGuardando(false);
@@ -390,68 +415,101 @@ export default function TarjetasScreen() {
               placeholderTextColor={COLORS.textLight}
             />
 
-            <Text style={s.formLabel}>Foto de la tarjeta</Text>
+            <Text style={s.formLabel}>Fotos de la tarjeta</Text>
             <Text style={s.formHint}>
-              Debe mostrar tu nombre y los ultimos 4 digitos. Cubre el numero
-              completo por seguridad.
+              Máximo 2 imágenes. Deben mostrar tu nombre y los últimos 4
+              dígitos. Cubre el número completo por seguridad.
             </Text>
 
-            {nuevaTarjeta.foto ? (
-              <View style={s.fotoPreview}>
-                <Image
-                  source={{ uri: nuevaTarjeta.foto.uri }}
-                  style={s.fotoImage}
-                />
-                <TouchableOpacity
-                  onPress={() => setNuevaTarjeta((p) => ({ ...p, foto: null }))}
-                  style={s.fotoChangeBtn}
-                  disabled={guardando}
-                >
-                  <Text style={s.fotoChangeText}>Cambiar foto</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={s.fotoBtns}>
-                <TouchableOpacity
-                  style={s.fotoBtn}
-                  onPress={() => elegirFoto(true)}
-                  disabled={guardando}
-                >
-                  <Ionicons
-                    name="camera-outline"
-                    size={22}
-                    color={COLORS.primary}
-                  />
-                  <Text style={s.fotoBtnText}>Camara</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={s.fotoBtn}
-                  onPress={() => elegirFoto(false)}
-                  disabled={guardando}
-                >
-                  <Ionicons
-                    name="images-outline"
-                    size={22}
-                    color={COLORS.primary}
-                  />
-                  <Text style={s.fotoBtnText}>Galeria</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+            {CARAS.map((cara) => {
+              const foto = nuevaTarjeta[cara.clave];
+              return (
+                <View key={cara.clave} style={s.caraBloque}>
+                  <View style={s.caraEncabezado}>
+                    <Text style={s.caraTitulo}>
+                      {cara.etiqueta}
+                      {cara.obligatoria ? "" : " (opcional)"}
+                    </Text>
+                    {foto && (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={18}
+                        color={COLORS.success}
+                      />
+                    )}
+                  </View>
+                  <Text style={s.caraPista}>{cara.pista}</Text>
+
+                  {foto ? (
+                    <View style={s.fotoPreview}>
+                      <Image source={{ uri: foto.uri }} style={s.fotoImage} />
+                      <View style={s.caraAcciones}>
+                        <TouchableOpacity
+                          onPress={() => elegirFoto(cara.clave, true)}
+                          style={s.fotoChangeBtn}
+                          disabled={guardando}
+                        >
+                          <Text style={s.fotoChangeText}>Cambiar</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() =>
+                            setNuevaTarjeta((p) => ({
+                              ...p,
+                              [cara.clave]: null,
+                            }))
+                          }
+                          style={s.fotoChangeBtn}
+                          disabled={guardando}
+                        >
+                          <Text style={s.fotoQuitarText}>Quitar</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={s.fotoBtns}>
+                      <TouchableOpacity
+                        style={s.fotoBtn}
+                        onPress={() => elegirFoto(cara.clave, true)}
+                        disabled={guardando}
+                      >
+                        <Ionicons
+                          name="camera-outline"
+                          size={22}
+                          color={COLORS.primary}
+                        />
+                        <Text style={s.fotoBtnText}>Cámara</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={s.fotoBtn}
+                        onPress={() => elegirFoto(cara.clave, false)}
+                        disabled={guardando}
+                      >
+                        <Ionicons
+                          name="images-outline"
+                          size={22}
+                          color={COLORS.primary}
+                        />
+                        <Text style={s.fotoBtnText}>Galería</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
 
             <TouchableOpacity
               style={[
                 s.btnPrimary,
                 (guardando ||
                   nuevaTarjeta.ultimos_4.length !== 4 ||
-                  !nuevaTarjeta.foto) &&
+                  !nuevaTarjeta.frente) &&
                   s.btnDisabled,
               ]}
               onPress={agregarTarjeta}
               disabled={
                 guardando ||
                 nuevaTarjeta.ultimos_4.length !== 4 ||
-                !nuevaTarjeta.foto
+                !nuevaTarjeta.frente
               }
             >
               <Text style={s.btnPrimaryText}>
@@ -503,13 +561,6 @@ export default function TarjetasScreen() {
                       {"•••• •••• •••• "}
                       {t.ultimos_4}
                     </Text>
-                    {t.foto_vista ? (
-                      <Image
-                        source={{ uri: t.foto_vista }}
-                        style={s.tarjetaMiniatura}
-                        resizeMode="cover"
-                      />
-                    ) : null}
                     {t.estado === "rechazado" && t.motivo_rechazo ? (
                       <View style={s.rechazoBox}>
                         <Text style={s.rechazoText}>{t.motivo_rechazo}</Text>
@@ -748,13 +799,19 @@ export default function TarjetasScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   centrado: { justifyContent: "center", alignItems: "center" },
-  tarjetaMiniatura: {
-    width: 96,
-    height: 62,
-    borderRadius: 8,
-    marginTop: 10,
+  caraBloque: {
     backgroundColor: COLORS.inputBg,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
   },
+  caraEncabezado: { flexDirection: "row", alignItems: "center", gap: 7 },
+  caraTitulo: { fontSize: 14, fontWeight: "600", color: COLORS.text },
+  caraPista: { fontSize: 12, color: COLORS.textLight, marginTop: 2, marginBottom: 10 },
+  caraAcciones: { flexDirection: "row", gap: 18 },
+  fotoQuitarText: { fontSize: 14, color: COLORS.error, fontWeight: "500" },
   content: { padding: 20, paddingBottom: 40 },
   loadingText: {
     textAlign: "center",

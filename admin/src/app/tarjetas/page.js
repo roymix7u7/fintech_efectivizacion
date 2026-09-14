@@ -43,6 +43,7 @@ export default function TarjetasPage() {
   const [error, setError] = useState("");
   const [contadores, setContadores] = useState({});
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [cara, setCara] = useState("frente");
   const router = useRouter();
 
   const cargar = useCallback(async (estado) => {
@@ -56,8 +57,8 @@ export default function TarjetasPage() {
     const { data, error: consultaError } = await supabase
       .from("tarjetas")
       .select(
-        `id, banco, ultimos_4, estado, foto_tarjeta, motivo_rechazo,
-         created_at, fecha_revision,
+        `id, banco, ultimos_4, estado, foto_tarjeta, foto_reverso,
+         motivo_rechazo, created_at, fecha_revision,
          perfiles_cliente (nombres, apellidos, dni, telefono, user_id)`,
       )
       .eq("estado", estado)
@@ -105,10 +106,25 @@ export default function TarjetasPage() {
     setSeleccionada(t);
     setMotivo("");
     setModoRechazo(false);
+    // Siempre se abre por el frente: es la cara obligatoria y la que
+    // toda tarjeta tiene.
+    setCara("frente");
     setCargandoDetalle(true);
-    const firmadas = await firmarCampo(BUCKET, [t], "foto_tarjeta", "foto");
+
+    // Las dos caras se firman juntas, para que cambiar de una a otra
+    // sea inmediato en vez de pedir otra firma al servidor.
+    const [conFrente] = await firmarCampo(BUCKET, [t], "foto_tarjeta", "foto");
+    const [conReverso] = await firmarCampo(
+      BUCKET,
+      [t],
+      "foto_reverso",
+      "reverso",
+    );
+
     setSeleccionada((actual) =>
-      actual && actual.id === t.id ? { ...actual, ...firmadas[0] } : actual,
+      actual && actual.id === t.id
+        ? { ...actual, ...conFrente, ...conReverso }
+        : actual,
     );
     setCargandoDetalle(false);
   }
@@ -321,11 +337,15 @@ export default function TarjetasPage() {
                       <span className="cifras font-mono text-[13px] text-muted-foreground">
                         ···· {t.ultimos_4}
                       </span>
-                      {!t.foto_tarjeta && (
+                      {!t.foto_tarjeta ? (
                         <span className="ml-auto text-[0.7333rem] text-red-600">
                           sin adjunto
                         </span>
-                      )}
+                      ) : t.foto_reverso ? (
+                        <span className="ml-auto text-[0.7333rem] text-muted-foreground">
+                          2 fotos
+                        </span>
+                      ) : null}
                     </div>
                     <p className="mt-1.5 truncate text-[13px] text-muted-foreground">
                       {t.perfiles_cliente
@@ -368,14 +388,55 @@ export default function TarjetasPage() {
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
                 <div className="min-w-0">
+                  {/* Selector de cara. Solo aparece si el cliente subió
+                      el reverso: la mayoría de tarjetas muestra todo en
+                      una sola foto y un selector de una opción confunde. */}
+                  {seleccionada.foto_reverso && (
+                    <div className="mb-3 flex items-center gap-1 rounded-lg border border-border bg-muted/60 p-1">
+                      {[
+                        { clave: "frente", texto: "Frente" },
+                        { clave: "reverso", texto: "Reverso" },
+                      ].map((c) => (
+                        <button
+                          key={c.clave}
+                          onClick={() => setCara(c.clave)}
+                          className={cn(
+                            "pulsable flex-1 rounded-md px-3 py-1.5 text-[0.8667rem] font-medium",
+                            cara === c.clave
+                              ? "bg-card text-foreground shadow-panel"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {c.texto}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   {cargandoDetalle ? (
                     <Esqueleto className="h-[440px] w-full rounded-lg" />
                   ) : (
                     <Visor
-                      url={seleccionada.foto}
-                      error={seleccionada.foto_error}
-                      path={seleccionada.foto_path}
-                      titulo="Foto de la tarjeta"
+                      url={
+                        cara === "reverso"
+                          ? seleccionada.reverso
+                          : seleccionada.foto
+                      }
+                      error={
+                        cara === "reverso"
+                          ? seleccionada.reverso_error
+                          : seleccionada.foto_error
+                      }
+                      path={
+                        cara === "reverso"
+                          ? seleccionada.reverso_path
+                          : seleccionada.foto_path
+                      }
+                      titulo={
+                        cara === "reverso"
+                          ? "Reverso de la tarjeta"
+                          : "Frente de la tarjeta"
+                      }
                       alto="h-[440px]"
                     />
                   )}
@@ -393,6 +454,9 @@ export default function TarjetasPage() {
                         .
                       </li>
                       <li>El número completo está cubierto.</li>
+                      {seleccionada.foto_reverso && (
+                        <li>Revisa las dos caras antes de resolver.</li>
+                      )}
                     </ul>
                   </div>
                 </div>
