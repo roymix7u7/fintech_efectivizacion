@@ -1,5 +1,4 @@
 import { Platform } from "react-native";
-import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants, { ExecutionEnvironment } from "expo-constants";
 import { supabase } from "./supabase";
@@ -11,54 +10,83 @@ import { supabase } from "./supabase";
  * la tiene cerrada, que es la mayoria: es el unico canal que llega
  * cuando la aplicacion no esta corriendo.
  *
- * Nada de lo que hay aqui puede tumbar el arranque. Si el permiso se
- * niega, si el telefono es un emulador o si falta la configuracion, se
- * avisa por consola y el app sigue funcionando igual: las alertas
- * seguiran viendose en su pestana.
+ * ── Por que expo-notifications no se importa arriba ──
+ *
+ * Expo Go dejo de traer ese modulo nativo en Android a partir del SDK
+ * 53. Importarlo en el nivel del archivo lo carga en cuanto alguien
+ * importa este modulo, y como cerrarSesion vive en la pantalla de
+ * bienvenida, el app reventaba antes de dibujar nada.
+ *
+ * Cargarlo solo cuando de verdad se va a usar, y solo donde existe,
+ * deja a Expo Go funcionando igual que siempre y al APK con sus
+ * notificaciones. Nada de lo que hay aqui puede tumbar el arranque.
  */
 
 /** El canal de Android que usan las alertas. */
 export const CANAL_ALERTAS = "alertas";
 
 /**
- * Expo Go dejo de recibir notificaciones remotas en Android a partir
- * del SDK 53. No es un fallo del codigo: hace falta el APK compilado
- * con EAS. Se detecta para poder decirlo claro en vez de dejar un
- * error suelto en la consola.
+ * Expo Go no recibe notificaciones remotas en Android desde el SDK 53.
+ * No es un fallo del codigo: hace falta el APK compilado con EAS. Se
+ * detecta para poder decirlo claro en vez de dejar un error suelto.
  */
 export const enExpoGo =
   Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
-/**
- * Que hace el telefono cuando llega una notificacion con el app
- * abierto. Se deja que se vea igual: si el cliente esta en otra
- * pantalla, la burbuja de alertas no le llega.
- */
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+/** Donde el modulo existe de verdad: telefono real y fuera de Expo Go. */
+const hayNotificaciones = Device.isDevice && !enExpoGo;
+
+let modulo = null;
+let configurado = false;
 
 /**
- * Canal de Android.
+ * Carga expo-notifications la primera vez que hace falta.
  *
- * Sin un canal propio, Android mete las alertas en el canal por
- * defecto y el cliente no puede silenciarlas sin silenciar todo el
- * app. Con canal propio decide por separado.
+ * Devuelve null en vez de lanzar: quien llama sigue su camino y el
+ * cliente conserva sus alertas dentro del app, que es lo importante.
  */
-async function prepararCanal() {
-  if (Platform.OS !== "android") return;
-  await Notifications.setNotificationChannelAsync(CANAL_ALERTAS, {
-    name: "Alertas del servicio",
-    importance: Notifications.AndroidImportance.HIGH,
-    vibrationPattern: [0, 250, 250, 250],
-    lightColor: "#E8B800",
-    sound: "default",
-  });
+async function cargar() {
+  if (!hayNotificaciones) return null;
+  if (modulo) return modulo;
+
+  try {
+    const N = await import("expo-notifications");
+
+    if (!configurado) {
+      configurado = true;
+
+      // Que hace el telefono cuando llega una notificacion con el app
+      // abierta. Se deja que se vea igual: si el cliente esta en otra
+      // pantalla, la burbuja de alertas no le llega.
+      N.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: true,
+          shouldSetBadge: false,
+        }),
+      });
+
+      // Canal propio de Android. Sin el, las alertas caen en el canal
+      // por defecto y el cliente no puede silenciarlas sin silenciar
+      // el app entera.
+      if (Platform.OS === "android") {
+        await N.setNotificationChannelAsync(CANAL_ALERTAS, {
+          name: "Alertas del servicio",
+          importance: N.AndroidImportance.HIGH,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: "#E8B800",
+          sound: "default",
+        });
+      }
+    }
+
+    modulo = N;
+    return N;
+  } catch (e) {
+    console.warn("Notificaciones no disponibles:", e?.message || e);
+    return null;
+  }
 }
 
 /** El identificador del proyecto EAS, que aparece tras el primer build. */
@@ -70,6 +98,22 @@ function idDeProyecto() {
   );
 }
 
+/** Token de este telefono, o null con el motivo por el que no lo hay. */
+async function tokenDeEsteTelefono(N) {
+  const proyecto = idDeProyecto();
+  if (!proyecto) return { token: null, motivo: "sin_proyecto" };
+
+  // Solo se pregunta si no hay respuesta previa. Volver a preguntar a
+  // quien ya dijo que no es ruido: Android ni siquiera muestra el
+  // dialogo la segunda vez.
+  let { status } = await N.getPermissionsAsync();
+  if (status !== "granted") ({ status } = await N.requestPermissionsAsync());
+  if (status !== "granted") return { token: null, motivo: "sin_permiso" };
+
+  const { data } = await N.getExpoPushTokenAsync({ projectId: proyecto });
+  return { token: data || null, motivo: data ? null : "sin_token" };
+}
+
 /**
  * Pide permiso, obtiene el token y lo guarda.
  *
@@ -78,27 +122,14 @@ function idDeProyecto() {
  */
 export async function registrarPush() {
   try {
-    await prepararCanal();
-
     if (!Device.isDevice) return { ok: false, motivo: "emulador" };
     if (enExpoGo) return { ok: false, motivo: "expo_go" };
 
-    const proyecto = idDeProyecto();
-    if (!proyecto) return { ok: false, motivo: "sin_proyecto" };
+    const N = await cargar();
+    if (!N) return { ok: false, motivo: "sin_modulo" };
 
-    // Solo se pregunta si no hay respuesta previa. Volver a preguntar a
-    // quien ya dijo que no es ruido: Android ni siquiera muestra el
-    // dialogo la segunda vez.
-    let { status } = await Notifications.getPermissionsAsync();
-    if (status !== "granted") {
-      ({ status } = await Notifications.requestPermissionsAsync());
-    }
-    if (status !== "granted") return { ok: false, motivo: "sin_permiso" };
-
-    const { data: token } = await Notifications.getExpoPushTokenAsync({
-      projectId: proyecto,
-    });
-    if (!token) return { ok: false, motivo: "sin_token" };
+    const { token, motivo } = await tokenDeEsteTelefono(N);
+    if (!token) return { ok: false, motivo };
 
     const {
       data: { user },
@@ -128,6 +159,35 @@ export async function registrarPush() {
 }
 
 /**
+ * Avisa cuando el cliente toca una notificacion.
+ *
+ * Devuelve una funcion para soltar la escucha. Cubre los dos casos: el
+ * app abierta y el app cerrada que se abre por el toque, porque ese
+ * segundo evento ocurre antes de que exista ningun listener.
+ */
+export async function escucharToques(alTocar) {
+  const N = await cargar();
+  if (!N) return () => {};
+
+  try {
+    const previa = await N.getLastNotificationResponseAsync();
+    if (previa?.notification?.request?.content?.data) {
+      alTocar(previa.notification.request.content.data);
+    }
+
+    const sub = N.addNotificationResponseReceivedListener((res) => {
+      const datos = res?.notification?.request?.content?.data;
+      if (datos) alTocar(datos);
+    });
+
+    return () => sub.remove();
+  } catch (e) {
+    console.warn("No se pudo escuchar notificaciones:", e?.message || e);
+    return () => {};
+  }
+}
+
+/**
  * Suelta el token al cerrar sesion.
  *
  * Sin esto, el telefono seguiria recibiendo alertas de una cuenta que
@@ -136,16 +196,15 @@ export async function registrarPush() {
  */
 export async function olvidarPush() {
   try {
-    if (!Device.isDevice || enExpoGo) return;
-    const proyecto = idDeProyecto();
-    if (!proyecto) return;
+    if (!hayNotificaciones) return;
 
-    const { status } = await Notifications.getPermissionsAsync();
+    const N = await cargar();
+    if (!N) return;
+
+    const { status } = await N.getPermissionsAsync();
     if (status !== "granted") return;
 
-    const { data: token } = await Notifications.getExpoPushTokenAsync({
-      projectId: proyecto,
-    });
+    const { token } = await tokenDeEsteTelefono(N);
     if (token) await supabase.from("push_tokens").delete().eq("token", token);
   } catch {
     // Si no se puede, la proxima sesion sobrescribe la fila igual.

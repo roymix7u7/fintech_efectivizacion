@@ -1,6 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
-import { olvidarPush } from "./push";
 import { limpiarCache } from "./cache";
 
 /**
@@ -51,9 +50,18 @@ export async function sesionVencida() {
 
 /** Cierra la sesion y borra todo rastro local del usuario anterior. */
 export async function cerrarSesion() {
-  // El token se suelta antes de cerrar: despues ya no hay sesion y la
-  // politica de la tabla rechazaria el borrado.
-  await olvidarPush();
+  // El token del telefono se suelta antes de cerrar la sesion, porque
+  // despues la politica de la tabla ya no dejaria borrarlo.
+  //
+  // Se carga aqui y no arriba a proposito: lib/push termina usando
+  // expo-notifications, que no existe en Expo Go, y este archivo lo
+  // importa la pantalla de bienvenida. Importarlo arriba cargaba ese
+  // modulo en el arranque y tumbaba el app antes de dibujar nada.
+  try {
+    const { olvidarPush } = await import("./push");
+    await olvidarPush();
+  } catch {}
+
   try {
     await supabase.auth.signOut();
   } catch {}
