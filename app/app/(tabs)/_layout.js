@@ -1,6 +1,8 @@
+import { View } from "react-native";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import COLORS from "../../src/theme/colors";
+import BurbujaAlerta from "../../src/components/BurbujaAlerta";
 
 /**
  * Barra de pestañas.
@@ -15,66 +17,71 @@ import COLORS from "../../src/theme/colors";
  */
 export default function TabsLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        animation: "shift",
-        tabBarStyle: {
-          backgroundColor: COLORS.white,
-          borderTopColor: COLORS.borderLight,
-          height: 58,
-          paddingBottom: 8,
-          paddingTop: 6,
-        },
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textLight,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
-        tabBarHideOnKeyboard: true,
-      }}
-    >
-      <Tabs.Screen
-        name="inicio"
-        options={{
-          title: "Inicio",
-          // El icono relleno marca la pestaña activa mejor que el color
-          // solo, sobre todo para quien distingue mal los tonos.
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "home" : "home-outline"}
-              size={22}
-              color={color}
-            />
-          ),
+    // La burbuja de alertas vive fuera del navegador para que se vea
+    // sobre cualquier pestana y no se desmonte al cambiar de una a otra.
+    <View style={{ flex: 1 }}>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          animation: "shift",
+          tabBarStyle: {
+            backgroundColor: COLORS.white,
+            borderTopColor: COLORS.borderLight,
+            height: 58,
+            paddingBottom: 8,
+            paddingTop: 6,
+          },
+          tabBarActiveTintColor: COLORS.primary,
+          tabBarInactiveTintColor: COLORS.textLight,
+          tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+          tabBarHideOnKeyboard: true,
         }}
-      />
-      <Tabs.Screen
-        name="solicitudes"
-        options={{
-          title: "Solicitudes",
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "document-text" : "document-text-outline"}
-              size={22}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="tarjetas"
-        options={{
-          title: "Tarjetas",
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "card" : "card-outline"}
-              size={22}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen name="noticias" options={{ href: null }} />
-      <Tabs.Screen name="perfil" options={{ href: null }} />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="inicio"
+          options={{
+            title: "Inicio",
+            // El icono relleno marca la pestaña activa mejor que el color
+            // solo, sobre todo para quien distingue mal los tonos.
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                name={focused ? "home" : "home-outline"}
+                size={22}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="solicitudes"
+          options={{
+            title: "Solicitudes",
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                name={focused ? "document-text" : "document-text-outline"}
+                size={22}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="tarjetas"
+          options={{
+            title: "Tarjetas",
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                name={focused ? "card" : "card-outline"}
+                size={22}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen name="noticias" options={{ href: null }} />
+        <Tabs.Screen name="perfil" options={{ href: null }} />
+      </Tabs>
+      <BurbujaAlerta />
+    </View>
   );
 }

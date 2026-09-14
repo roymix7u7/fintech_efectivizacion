@@ -53,6 +53,7 @@ export default function InicioScreen() {
   const perfil = datos?.perfil || null;
   const stats = datos?.stats || { pendientes: 0, aprobadas: 0, tarjetas: 0 };
   const alertas = datos?.alertas || [];
+  const alertasSinVer = datos?.alertas_sin_ver || 0;
   const guias = datos?.guias || [];
   const hayGuias = Boolean(datos?.hay_guias);
 
@@ -308,6 +309,33 @@ export default function InicioScreen() {
               Al verificar tu tarjeta, verás aquí los pasos de tu banco
             </Text>
           </View>
+        )}
+
+        {/* Alertas sin ver.
+            La burbuja se cierra por reflejo y el cliente se queda sin
+            saber que paso. Esta franja es la red debajo: sigue aqui
+            hasta que entre a leerlas. */}
+        {alertasSinVer > 0 && (
+          <TouchableOpacity
+            style={s.franjaAlerta}
+            onPress={() => router.push("/(tabs)/noticias?seccion=alertas")}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="warning" size={19} color={COLORS.error} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.franjaTitulo}>
+                {alertasSinVer === 1
+                  ? "Tienes 1 alerta sin leer"
+                  : `Tienes ${alertasSinVer} alertas sin leer`}
+              </Text>
+              <Text style={s.franjaTexto}>Toca para ver de qué se trata</Text>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={16}
+              color={COLORS.error}
+            />
+          </TouchableOpacity>
         )}
 
         {/* Noticias */}
@@ -580,6 +608,19 @@ const s = StyleSheet.create({
     marginBottom: 10,
     borderLeftWidth: 4,
   },
+  franjaAlerta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    backgroundColor: COLORS.errorLight,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#F5C6C2",
+    padding: 13,
+    marginBottom: 18,
+  },
+  franjaTitulo: { fontSize: 14, fontWeight: "700", color: COLORS.error },
+  franjaTexto: { fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
   alertaPortada: {
     width: "100%",
     height: 110,
