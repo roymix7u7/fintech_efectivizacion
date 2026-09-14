@@ -78,3 +78,17 @@ export async function urlsFirmadas(bucket, valores, segundos = 3600) {
   }
   return mapa;
 }
+
+/**
+ * URL de un objeto en un bucket publico.
+ *
+ * No firma nada ni llama al servidor: arma la ruta y devuelve. Para las
+ * imagenes de noticias eso importa, porque las ven todos los clientes y
+ * una URL fija la puede cachear la CDN, cosa que una firmada no.
+ */
+export function urlPublica(bucket, valor) {
+  const path = extraerPath(bucket, valor);
+  if (!path) return null;
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data?.publicUrl || null;
+}

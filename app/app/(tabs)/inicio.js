@@ -6,11 +6,13 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
+  Image,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../src/lib/supabase";
 import { useDatos } from "../../src/lib/cache";
+import { urlPublica } from "../../src/lib/storage";
 import { EsqueletoResumen } from "../../src/components/Cargando";
 import Header from "../../src/components/Header";
 import MenuLateral from "../../src/components/MenuLateral";
@@ -72,6 +74,11 @@ export default function InicioScreen() {
   const guiasFiltradas = guias;
 
   const alertaStyles = {
+    promocion: {
+      bg: COLORS.secondaryLight,
+      border: COLORS.secondary,
+      accent: COLORS.secondaryDark,
+    },
     info: { bg: "#E8F0FE", border: "#4285F4", accent: "#1A73E8" },
     advertencia: {
       bg: COLORS.warningLight,
@@ -330,6 +337,15 @@ export default function InicioScreen() {
                     { backgroundColor: as.bg, borderLeftColor: as.border },
                   ]}
                 >
+                  {alerta.portada && (
+                    <Image
+                      source={{
+                        uri: urlPublica("noticias-fotos", alerta.portada),
+                      }}
+                      style={s.alertaPortada}
+                      resizeMode="cover"
+                    />
+                  )}
                   <Text style={[s.alertaTitulo, { color: as.accent }]}>
                     {alerta.titulo}
                   </Text>
@@ -563,6 +579,13 @@ const s = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
     borderLeftWidth: 4,
+  },
+  alertaPortada: {
+    width: "100%",
+    height: 110,
+    borderRadius: 8,
+    marginBottom: 10,
+    backgroundColor: COLORS.inputBg,
   },
   alertaTitulo: { fontWeight: "600", fontSize: 14, marginBottom: 4 },
   alertaMensaje: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19 },
