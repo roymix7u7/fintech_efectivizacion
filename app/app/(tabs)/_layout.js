@@ -3,6 +3,7 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import COLORS from "../../src/theme/colors";
 import BurbujaAlerta from "../../src/components/BurbujaAlerta";
+import RegistroPush from "../../src/components/RegistroPush";
 
 /**
  * Barra de pestañas.
@@ -81,6 +82,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="noticias" options={{ href: null }} />
         <Tabs.Screen name="perfil" options={{ href: null }} />
       </Tabs>
+      <RegistroPush />
       <BurbujaAlerta />
     </View>
   );

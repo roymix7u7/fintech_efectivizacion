@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import COLORS from "../theme/colors";
+import { supabase } from "../lib/supabase";
 import { listarAlertas, marcarVistas, gravedadDe } from "../lib/alertas";
 
 /**
@@ -28,6 +29,11 @@ import { listarAlertas, marcarVistas, gravedadDe } from "../lib/alertas";
  *     seguir ahi manana.
  *
  *   · Una alerta urgente no se va sola. Espera a que alguien la toque.
+ *
+ * Y escucha a la base en vivo: si el aviso sale mientras el cliente
+ * esta a mitad de una solicitud, la burbuja aparece en ese momento. Si
+ * hubiera que esperar a que cierre y vuelva a abrir el app, se enteraria
+ * justo despues de mandarla, que es cuando el aviso ya no sirve.
  *
  * Vive en el layout de las pestanas, asi que se ve sobre cualquiera.
  */
@@ -77,12 +83,33 @@ export default function BurbujaAlerta() {
 
   useEffect(() => {
     buscar();
+
     const sub = AppState.addEventListener("change", (estado) => {
       if (estado === "active") buscar();
     });
+
+    // El aviso del servidor solo dice "algo cambio": la alerta se
+    // vuelve a pedir por la via normal. Asi la vigencia y los permisos
+    // los sigue decidiendo la base, y una alerta programada para
+    // manana no se cuela por venir dentro del mensaje.
+    const canal = supabase
+      .channel("alertas-en-vivo")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "alertas_sistema",
+          filter: "categoria=eq.alerta",
+        },
+        () => buscar(),
+      )
+      .subscribe();
+
     return () => {
       clearTimeout(temporizador.current);
       sub.remove();
+      supabase.removeChannel(canal);
     };
   }, [buscar]);
 

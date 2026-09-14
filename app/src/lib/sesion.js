@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
+import { olvidarPush } from "./push";
 import { limpiarCache } from "./cache";
 
 /**
@@ -50,6 +51,9 @@ export async function sesionVencida() {
 
 /** Cierra la sesion y borra todo rastro local del usuario anterior. */
 export async function cerrarSesion() {
+  // El token se suelta antes de cerrar: despues ya no hay sesion y la
+  // politica de la tabla rechazaria el borrado.
+  await olvidarPush();
   try {
     await supabase.auth.signOut();
   } catch {}

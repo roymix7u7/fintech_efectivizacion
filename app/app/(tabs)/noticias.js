@@ -202,6 +202,20 @@ export default function NoticiasScreen() {
     }, [cargar]),
   );
 
+  // Si el cliente esta parado en esta pantalla cuando sale una alerta,
+  // volver a la pantalla no ocurre nunca y la lista se quedaria vieja.
+  useEffect(() => {
+    const canal = supabase
+      .channel("noticias-en-vivo")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "alertas_sistema" },
+        () => cargar(),
+      )
+      .subscribe();
+    return () => supabase.removeChannel(canal);
+  }, [cargar]);
+
   const sinVer = useMemo(() => alertas.filter((a) => !a.vista).length, [alertas]);
 
   /**

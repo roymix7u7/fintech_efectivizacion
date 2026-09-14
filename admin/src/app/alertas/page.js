@@ -111,6 +111,12 @@ const vacio = (categoria) => ({
   imagenes: [],
   fecha_inicio: "",
   fecha_fin: "",
+  // Una alerta existe para interrumpir, asi que se notifica salvo que
+  // se diga lo contrario. Una promocion no: mandar un aviso al telefono
+  // por cada descuento es la forma mas rapida de que el cliente apague
+  // las notificaciones del app entero, y entonces tampoco le llegan las
+  // que si importan.
+  notificar: categoria === "alerta",
 });
 
 // ── Fechas ────────────────────────────────────────────────────
@@ -324,6 +330,7 @@ export default function NoticiasPage() {
   const [form, setForm] = useState(vacio("noticia"));
   const [subiendo, setSubiendo] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [notificando, setNotificando] = useState(null);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const archivoRef = useRef(null);
@@ -393,6 +400,9 @@ export default function NoticiasPage() {
       imagenes: n.imagenes || [],
       fecha_inicio: aInput(n.fecha_inicio),
       fecha_fin: aInput(n.fecha_fin),
+      // Editar una coma no deberia volver a sonar en treinta mil
+      // telefonos. Si hace falta reenviar, esta el boton de la lista.
+      notificar: false,
     });
     setEditando(n.id);
     setError("");
@@ -485,9 +495,11 @@ export default function NoticiasPage() {
     const nombre = esAlerta ? "alerta" : "noticia";
 
     if (editando === "nueva") {
-      const { error: e } = await supabase
+      const { data: creada, error: e } = await supabase
         .from("alertas_sistema")
-        .insert({ ...campos, activa: true, creada_por: session.user.id });
+        .insert({ ...campos, activa: true, creada_por: session.user.id })
+        .select("id")
+        .single();
       if (e) {
         setGuardando(false);
         return setError(explicarError(e, "No se pudo publicar."));
@@ -504,9 +516,13 @@ export default function NoticiasPage() {
       });
       setOk(
         esAlerta
-          ? "Alerta enviada. Aparecerá al abrir el app."
+          ? "Alerta publicada. A quien tenga el app abierta le aparece ya mismo."
           : "Noticia publicada. Ya se ve en el app.",
       );
+
+      // Despues de guardar, no antes: si el guardado falla, no puede
+      // haber sonado ya un aviso de algo que no existe.
+      if (form.notificar && creada?.id) await notificar(creada.id, true);
     } else {
       const { error: e } = await supabase
         .from("alertas_sistema")
@@ -529,6 +545,45 @@ export default function NoticiasPage() {
     setGuardando(false);
     cerrar();
     cargar();
+  }
+
+  /**
+   * Manda la alerta a los telefonos.
+   *
+   * El envio va por una funcion del servidor: leer los tokens de todos
+   * los clientes desde el navegador obligaria a abrir esa tabla a
+   * cualquiera con sesion.
+   */
+  async function notificar(id, silencioso = false) {
+    setNotificando(id);
+    const { data, error: e } = await supabase.functions.invoke(
+      "enviar-alerta-push",
+      { body: { alerta_id: id } },
+    );
+    setNotificando(null);
+
+    if (e) {
+      // El mensaje de arriba solo dice que la funcion devolvio un
+      // codigo distinto de 200. El motivo real viene en el cuerpo.
+      let mensaje = e.message;
+      try {
+        const cuerpo = await e.context?.json?.();
+        if (cuerpo?.error) mensaje = cuerpo.error;
+      } catch {}
+      setError("No se pudo notificar: " + mensaje);
+      return false;
+    }
+
+    if (data?.aviso) setOk(data.aviso);
+    else
+      setOk(
+        `Notificación enviada a ${data?.enviados ?? 0} teléfono${data?.enviados === 1 ? "" : "s"}.` +
+          (data?.invalidos
+            ? ` ${data.invalidos} ya no tenían el app instalada.`
+            : ""),
+      );
+    if (!silencioso) cargar();
+    return true;
   }
 
   async function alternar(n) {
@@ -905,6 +960,30 @@ export default function NoticiasPage() {
                 </p>
               </div>
 
+              {/* Notificacion al telefono */}
+              {editando === "nueva" && (
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3.5 hover:bg-muted/40">
+                  <input
+                    type="checkbox"
+                    checked={form.notificar}
+                    onChange={(e) =>
+                      setForm({ ...form, notificar: e.target.checked })
+                    }
+                    className="mt-0.5 h-4 w-4 accent-marca-700"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-[0.8667rem] font-semibold text-foreground">
+                      Avisar al teléfono
+                    </span>
+                    <span className="block text-[0.75rem] leading-relaxed text-muted-foreground">
+                      {esAlerta
+                        ? "Llega aunque el cliente tenga el app cerrada. Es lo que la hace servir cuando pasa algo en el momento."
+                        : "Para una promoción normalmente no hace falta: si suena por cada descuento, el cliente termina apagando las notificaciones y tampoco le llegan las alertas."}
+                    </span>
+                  </span>
+                </label>
+              )}
+
               <div className="flex gap-2">
                 <BotonAccion
                   onClick={guardar}
@@ -1014,6 +1093,11 @@ export default function NoticiasPage() {
                             : "Nadie la ha abierto todavía"}
                         </span>
                       )}
+                      {n.push_enviado_en && (
+                        <span className="text-[0.7333rem] text-emerald-700">
+                          Notificada a {n.push_alcance ?? 0} teléfonos
+                        </span>
+                      )}
                     </div>
 
                     <p className="mt-1.5 truncate text-[0.9333rem] font-semibold text-foreground">
@@ -1039,6 +1123,19 @@ export default function NoticiasPage() {
                     >
                       Editar
                     </button>
+                    {vigenciaDe(n).texto === "En el app" && (
+                      <button
+                        onClick={() => notificar(n.id)}
+                        disabled={notificando === n.id}
+                        className="pulsable rounded-lg border border-marca-300 px-3 py-1.5 text-[0.8rem] font-medium text-marca-700 hover:bg-marca-50 disabled:opacity-50"
+                      >
+                        {notificando === n.id
+                          ? "Enviando…"
+                          : n.push_enviado_en
+                            ? "Reenviar aviso"
+                            : "Avisar al teléfono"}
+                      </button>
+                    )}
                     <button
                       onClick={() => alternar(n)}
                       className={cn(

@@ -47,6 +47,14 @@
           "photosPermission": "Accedemos a tus fotos para que puedas adjuntar comprobantes ya guardados en tu galería."
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#1B2A4A",
+          "defaultChannel": "alertas"
+        }
+      ],
       "expo-status-bar"
     ],
     "experiments": {
