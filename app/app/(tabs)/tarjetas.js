@@ -17,7 +17,8 @@ import COLORS from "../../src/theme/colors";
 import Header from "../../src/components/Header";
 import MenuLateral from "../../src/components/MenuLateral";
 import { Ionicons } from "@expo/vector-icons";
-import { alerta, confirmar, mensajeError } from "../../src/lib/ui";
+import { confirmar, mensajeError } from "../../src/lib/ui";
+import { useAviso } from "../../src/components/Avisos";
 import { pedirPermiso } from "../../src/lib/permisos";
 import { prepararImagen } from "../../src/lib/imagen";
 import { useAlturaTeclado } from "../../src/lib/teclado";
@@ -78,6 +79,7 @@ export default function TarjetasScreen() {
   const [guardando, setGuardando] = useState(false);
   const [guardandoCuenta, setGuardandoCuenta] = useState(false);
   const altoTeclado = useAlturaTeclado();
+  const { mostrar } = useAviso();
 
   useFocusEffect(
     useCallback(() => {
@@ -108,7 +110,7 @@ export default function TarjetasScreen() {
         .eq("activa", true)
         .order("created_at", { ascending: false });
       if (errorTarjetas) {
-        alerta(mensajeError(errorTarjetas));
+        mostrar(mensajeError(errorTarjetas), "error");
         return;
       }
 
@@ -133,7 +135,7 @@ export default function TarjetasScreen() {
         .eq("activa", true)
         .order("banco", { ascending: true });
       if (errorCuentas) {
-        alerta(mensajeError(errorCuentas));
+        mostrar(mensajeError(errorCuentas), "error");
         return;
       }
       setCuentas(cuentasData || []);
@@ -153,14 +155,13 @@ export default function TarjetasScreen() {
     if (r.canceled || !r.assets?.[0]) return;
     const lista = await prepararImagen(r.assets[0]);
     if (!lista.base64)
-      return alerta("No pudimos leer la imagen. Intentalo otra vez.");
+      return mostrar("No pudimos leer la imagen. Intentalo otra vez.", "error");
     setNuevaTarjeta((p) => ({ ...p, foto: lista }));
   }
 
   async function agregarTarjeta() {
-    const error = validarUltimos4(nuevaTarjeta.ultimos_4);
-    if (error) return alerta(error);
-    if (!nuevaTarjeta.foto) return alerta("Adjunta una foto de tu tarjeta.");
+    // El botón de enviar está deshabilitado hasta tener los 4 dígitos y
+    // la foto, así que no hace falta avisar de lo que ya se ve.
 
     // Evita que el mismo plastico se registre dos veces.
     const repetida = tarjetas.find(
@@ -170,8 +171,9 @@ export default function TarjetasScreen() {
         t.estado !== "rechazado",
     );
     if (repetida) {
-      return alerta(
-        `Ya registraste una tarjeta ${nuevaTarjeta.banco} terminada en ${nuevaTarjeta.ultimos_4}.`,
+      return mostrar(
+        `Ya registraste una tarjeta ${nuevaTarjeta.banco} terminada en ${nuevaTarjeta.ultimos_4}`,
+        "atencion",
       );
     }
 
@@ -195,11 +197,11 @@ export default function TarjetasScreen() {
 
       setMostrarFormTarjeta(false);
       setNuevaTarjeta(TARJETA_VACIA);
-      alerta("Tarjeta enviada para verificacion.");
+      mostrar("Tarjeta enviada para verificación", "exito");
       await cargarDatos();
     } catch (err) {
       await borrarImagenes(BUCKET_TARJETAS, [pathSubido]);
-      alerta(mensajeError(err));
+      mostrar(mensajeError(err), "error");
     } finally {
       setGuardando(false);
     }
@@ -211,7 +213,7 @@ export default function TarjetasScreen() {
       nuevaCuenta.tipo,
       nuevaCuenta.banco,
     );
-    if (error) return alerta(error);
+    if (error) return mostrar(error, "atencion");
 
     const existente = cuentas.find(
       (c) => c.banco === nuevaCuenta.banco && c.tipo === nuevaCuenta.tipo,
@@ -219,15 +221,16 @@ export default function TarjetasScreen() {
     if (existente) {
       const tipoLabel =
         nuevaCuenta.tipo === "interbancaria" ? "interbancaria" : "de ahorros";
-      return alerta(
-        `Ya tienes una cuenta ${tipoLabel} registrada en ${nuevaCuenta.banco}.`,
+      return mostrar(
+        `Ya tienes una cuenta ${tipoLabel} en ${nuevaCuenta.banco}`,
+        "atencion",
       );
     }
     const mismoNumero = cuentas.find(
       (c) => c.numero_cuenta === nuevaCuenta.numero_cuenta,
     );
     if (mismoNumero)
-      return alerta("Ese numero de cuenta ya esta registrado.");
+      return mostrar("Ese número de cuenta ya está registrado", "atencion");
 
     // Sin este estado un doble toque creaba la cuenta por duplicado.
     setGuardandoCuenta(true);
@@ -247,7 +250,7 @@ export default function TarjetasScreen() {
       setNuevaCuenta(CUENTA_VACIA);
       await cargarDatos();
     } catch (err) {
-      alerta(mensajeError(err));
+      mostrar(mensajeError(err), "error");
     } finally {
       setGuardandoCuenta(false);
     }
@@ -265,7 +268,7 @@ export default function TarjetasScreen() {
       .from(tabla)
       .update({ activa: false })
       .eq("id", id);
-    if (error) return alerta(mensajeError(error));
+    if (error) return mostrar(mensajeError(error), "error");
     await cargarDatos();
   }
 

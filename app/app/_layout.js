@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import COLORS from "../src/theme/colors";
+import { ProveedorAvisos } from "../src/components/Avisos";
 
 /**
  * Cabecera y transiciones comunes a todas las pantallas.
@@ -12,7 +13,7 @@ import COLORS from "../src/theme/colors";
  */
 export default function RootLayout() {
   return (
-    <>
+    <ProveedorAvisos>
       <StatusBar style="dark" />
       <Stack
         screenOptions={{
@@ -68,6 +69,6 @@ export default function RootLayout() {
         />
         <Stack.Screen name="notificaciones" options={{ title: "Avisos" }} />
       </Stack>
-    </>
+    </ProveedorAvisos>
   );
 }

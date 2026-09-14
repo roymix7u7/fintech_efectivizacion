@@ -14,7 +14,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
 import TIPO from "../src/theme/tipografia";
-import { alerta, mensajeError } from "../src/lib/ui";
+import { mensajeError } from "../src/lib/ui";
+import { useAviso } from "../src/components/Avisos";
 import { validarEmail } from "../src/lib/validaciones";
 import { hayConexion } from "../src/lib/conexion";
 
@@ -24,19 +25,21 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { mostrar } = useAviso();
 
   async function handleLogin() {
     const errorEmail = validarEmail(email);
-    if (errorEmail) return alerta(errorEmail);
-    if (!password) return alerta("Ingresa tu contrasena.");
+    if (errorEmail) return mostrar(errorEmail, "atencion");
+    if (!password) return mostrar("Ingresa tu contraseña", "atencion");
 
     setLoading(true);
     try {
       // Sin esto, un telefono sin internet recibe "correo o contrasena
       // incorrectos", que manda a la persona a dudar de sus datos.
       if (!(await hayConexion())) {
-        return alerta(
-          "No hay conexion con el servidor. Revisa tu internet e intentalo de nuevo.",
+        return mostrar(
+          "Sin conexión con el servidor. Revisa tu internet.",
+          "error",
         );
       }
 
@@ -44,7 +47,7 @@ export default function LoginScreen() {
         email: email.trim().toLowerCase(),
         password,
       });
-      if (error) return alerta(mensajeError(error));
+      if (error) return mostrar(mensajeError(error), "error");
 
       const { data: userData, error: userError } = await supabase
         .from("users")
@@ -54,7 +57,7 @@ export default function LoginScreen() {
 
       if (userError) {
         await supabase.auth.signOut();
-        return alerta(mensajeError(userError));
+        return mostrar(mensajeError(userError), "error");
       }
 
       // Cuentas viejas que quedaron sin fila en users porque el registro
@@ -68,8 +71,9 @@ export default function LoginScreen() {
         });
         if (repararError) {
           await supabase.auth.signOut();
-          return alerta(
-            "Tu registro quedo incompleto. Escribenos para activarlo.",
+          return mostrar(
+            "Tu registro quedó incompleto. Escríbenos para activarlo.",
+            "error",
           );
         }
         return router.replace("/en-revision");
@@ -77,12 +81,12 @@ export default function LoginScreen() {
 
       if (userData.rol !== "cliente") {
         await supabase.auth.signOut();
-        return alerta("Esta app es solo para clientes.");
+        return mostrar("Esta app es solo para clientes", "atencion");
       }
 
       if (userData.estado === "bloqueado") {
         await supabase.auth.signOut();
-        return alerta("Tu cuenta esta bloqueada. Contacta a soporte.");
+        return mostrar("Tu cuenta está bloqueada. Contacta a soporte.", "error");
       }
 
       // pendiente y observado comparten pantalla: en-revision muestra el
@@ -90,7 +94,7 @@ export default function LoginScreen() {
       if (userData.estado === "activo") router.replace("/(tabs)/inicio");
       else router.replace("/en-revision");
     } catch (err) {
-      alerta(mensajeError(err));
+      mostrar(mensajeError(err), "error");
     } finally {
       setLoading(false);
     }

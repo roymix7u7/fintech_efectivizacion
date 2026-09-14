@@ -12,7 +12,8 @@ import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
-import { alerta, mensajeError } from "../src/lib/ui";
+import { mensajeError } from "../src/lib/ui";
+import { useAviso } from "../src/components/Avisos";
 import { EsqueletoLista, Aparece } from "../src/components/Cargando";
 
 /** Icono y color segun el tipo de aviso que manda el panel. */
@@ -48,6 +49,7 @@ export default function NotificacionesScreen() {
   const [avisos, setAvisos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const { mostrar } = useAviso();
 
   useFocusEffect(
     useCallback(() => {
@@ -70,7 +72,7 @@ export default function NotificacionesScreen() {
         .limit(50);
 
       if (error) {
-        alerta(mensajeError(error));
+        mostrar(mensajeError(error), "error");
         return;
       }
       setAvisos(data || []);

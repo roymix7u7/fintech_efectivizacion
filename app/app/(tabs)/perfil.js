@@ -14,7 +14,8 @@ import MenuLateral from "../../src/components/MenuLateral";
 import COLORS from "../../src/theme/colors";
 import TIPO from "../../src/theme/tipografia";
 import { Aparece } from "../../src/components/Cargando";
-import { confirmar, mensajeError, alerta } from "../../src/lib/ui";
+import { confirmar, mensajeError } from "../../src/lib/ui";
+import { useAviso } from "../../src/components/Avisos";
 import { limpiarCache } from "../../src/lib/cache";
 
 export default function PerfilScreen() {
@@ -23,6 +24,7 @@ export default function PerfilScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [comisiones, setComisiones] = useState([]);
   const router = useRouter();
+  const { mostrar } = useAviso();
 
   useFocusEffect(
     useCallback(() => {
@@ -79,7 +81,7 @@ export default function PerfilScreen() {
   async function cerrarSesion() {
     if (!(await confirmar("Seguro que quieres cerrar sesion?"))) return;
     const { error } = await supabase.auth.signOut();
-    if (error) return alerta(mensajeError(error));
+    if (error) return mostrar(mensajeError(error), "error");
     await limpiarCache();
     router.replace("/");
   }

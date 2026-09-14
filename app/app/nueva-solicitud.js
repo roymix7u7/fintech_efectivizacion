@@ -13,7 +13,8 @@ import { useRouter, useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
-import { alerta, mensajeError } from "../src/lib/ui";
+import { mensajeError } from "../src/lib/ui";
+import { useAviso } from "../src/components/Avisos";
 import { pedirPermiso } from "../src/lib/permisos";
 import { prepararImagen } from "../src/lib/imagen";
 import { esFalloDeRed } from "../src/lib/conexion";
@@ -58,6 +59,7 @@ export default function NuevaSolicitudScreen() {
   const [cargando, setCargando] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const altoTeclado = useAlturaTeclado();
+  const { mostrar } = useAviso();
   const router = useRouter();
 
   useFocusEffect(
@@ -93,7 +95,7 @@ export default function NuevaSolicitudScreen() {
         .eq("estado", "aprobado")
         .order("created_at", { ascending: false });
       if (error) {
-        alerta(mensajeError(error));
+        mostrar(mensajeError(error), "error");
         return;
       }
       setTarjetas(tarjetasData || []);
@@ -124,15 +126,15 @@ export default function NuevaSolicitudScreen() {
   async function guardarComprobante(asset) {
     const lista = await prepararImagen(asset);
     if (!lista.base64)
-      return alerta("No pudimos leer la imagen. Intentalo otra vez.");
+      return mostrar("No pudimos leer la imagen. Intentalo otra vez.", "error");
     setComprobante(lista);
   }
 
   async function enviarSolicitud() {
-    if (!perfil) return alerta("No pudimos cargar tu perfil. Reintenta.");
-    if (!tarjetaSeleccionada)
-      return alerta("Selecciona la tarjeta con la que hiciste la operacion.");
-    if (!comprobante) return alerta("Adjunta el comprobante de la operacion.");
+    // Sin comprobaciones de tarjeta ni comprobante: el botón de enviar
+    // está deshabilitado hasta tener ambos, así que avisarlo aquí sería
+    // repetir lo que la pantalla ya muestra.
+    if (!perfil) return mostrar("No pudimos cargar tu perfil. Reintenta.", "error");
 
     setEnviando(true);
     let pathSubido = null;
@@ -174,15 +176,16 @@ export default function NuevaSolicitudScreen() {
         });
       if (auditError) console.warn("Auditoria:", auditError.message);
 
-      alerta(`Solicitud ${codigo} enviada. Revisaremos tu comprobante.`);
+      mostrar(`Solicitud ${codigo} enviada`, "exito");
       router.replace("/(tabs)/solicitudes");
     } catch (err) {
       // Sin esto la imagen quedaba huerfana en Storage.
       await borrarImagenes(BUCKET, [pathSubido]);
-      alerta(
+      mostrar(
         esFalloDeRed(err)
-          ? "Se cortó la conexión al enviar. Tu comprobante sigue aquí: revisa tu internet y vuelve a pulsar Enviar."
+          ? "Se cortó la conexión. Tu comprobante sigue aquí: revisa tu internet y vuelve a enviar."
           : mensajeError(err),
+        "error",
       );
     } finally {
       setEnviando(false);

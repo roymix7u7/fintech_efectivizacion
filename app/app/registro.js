@@ -15,7 +15,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
 import PERU_DATA from "../src/data/peru";
 import COLORS from "../src/theme/colors";
-import { alerta, mensajeError } from "../src/lib/ui";
+import { mensajeError } from "../src/lib/ui";
+import { useAviso } from "../src/components/Avisos";
 import { useAlturaTeclado } from "../src/lib/teclado";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
 import SubidaDocumentos, {
@@ -196,6 +197,7 @@ export default function RegistroScreen() {
   // pantalla solo se desplaza hasta donde termina el contenido, y el
   // ultimo campo queda atrapado debajo del teclado.
   const altoTeclado = useAlturaTeclado();
+  const { mostrar } = useAviso();
 
   const scrollRef = useRef(null);
   const posiciones = useRef({});
@@ -231,8 +233,9 @@ export default function RegistroScreen() {
     // retroceder al formulario solo produciria un correo duplicado.
     if (paso === 3) return;
     if (paso === 2) {
-      alerta(
-        "Ya creamos tu cuenta con ese correo. Termina de verificarla para continuar.",
+      mostrar(
+        "Ya creamos tu cuenta con ese correo. Termina de verificarla.",
+        "info",
       );
       return;
     }
@@ -268,13 +271,14 @@ export default function RegistroScreen() {
 
   async function enviarCodigoVerificacion() {
     const error = validarPaso1();
-    if (error) return alerta(error);
+    if (error) return mostrar(error, "atencion");
 
     setLoading(true);
     try {
       if (!(await hayConexion())) {
-        return alerta(
-          "No hay conexion con el servidor. Revisa tu internet e intentalo de nuevo.",
+        return mostrar(
+          "Sin conexión con el servidor. Revisa tu internet.",
+          "error",
         );
       }
 
@@ -285,11 +289,12 @@ export default function RegistroScreen() {
 
       if (authError) {
         if (/already registered|already exists/i.test(authError.message)) {
-          alerta(
-            "Ese correo ya tiene una cuenta. Inicia sesion o recupera tu contrasena.",
+          mostrar(
+            "Ese correo ya tiene una cuenta. Inicia sesión o recupera tu contraseña.",
+            "atencion",
           );
         } else {
-          alerta(mensajeError(authError));
+          mostrar(mensajeError(authError), "error");
         }
         return;
       }
@@ -297,16 +302,16 @@ export default function RegistroScreen() {
       // Supabase devuelve un usuario sin identidades cuando el correo ya
       // existe y esta confirmado. No es un registro nuevo.
       if (data.user && data.user.identities?.length === 0) {
-        alerta(
-          "Ese correo ya tiene una cuenta. Inicia sesion o recupera tu contrasena.",
+        mostrar(
+          "Ese correo ya tiene una cuenta. Inicia sesión o recupera tu contraseña.",
+          "atencion",
         );
         return;
       }
 
       setPaso(2);
-      alerta("Enviamos un codigo de 6 digitos a " + form.email.trim());
     } catch (err) {
-      alerta(mensajeError(err));
+      mostrar(mensajeError(err), "error");
     } finally {
       setLoading(false);
     }
@@ -319,8 +324,6 @@ export default function RegistroScreen() {
    * volver a registrarse con el mismo correo.
    */
   async function verificarCodigo() {
-    if (codigoOtp.length !== 6) return alerta("Ingresa el codigo de 6 digitos.");
-
     setLoading(true);
     try {
       const { data, error } = await supabase.auth.verifyOtp({
@@ -328,11 +331,11 @@ export default function RegistroScreen() {
         token: codigoOtp,
         type: "signup",
       });
-      if (error) return alerta("El codigo es incorrecto o ya expiro.");
+      if (error) return mostrar("El código es incorrecto o ya expiró", "error");
 
       const uid = data.user?.id;
       if (!uid)
-        return alerta("No pudimos confirmar tu cuenta. Intenta de nuevo.");
+        return mostrar("No pudimos confirmar tu cuenta. Intenta de nuevo.", "error");
 
       const { data: existente } = await supabase
         .from("users")
@@ -347,12 +350,12 @@ export default function RegistroScreen() {
           rol: "cliente",
           estado: "pendiente",
         });
-        if (userError) return alerta(mensajeError(userError));
+        if (userError) return mostrar(mensajeError(userError), "error");
       }
 
       setPaso(3);
     } catch (err) {
-      alerta(mensajeError(err));
+      mostrar(mensajeError(err), "error");
     } finally {
       setLoading(false);
     }
@@ -365,8 +368,8 @@ export default function RegistroScreen() {
       email: form.email.trim().toLowerCase(),
     });
     setReenviando(false);
-    if (error) return alerta(mensajeError(error));
-    alerta("Te enviamos un codigo nuevo. El anterior ya no sirve.");
+    if (error) return mostrar(mensajeError(error), "error");
+    mostrar("Te enviamos un código nuevo", "exito");
   }
 
   /**
@@ -376,9 +379,6 @@ export default function RegistroScreen() {
    * documentos, dejando al gestor sin nada que revisar.
    */
   async function finalizarRegistro() {
-    if (!documentosCompletos(fotos))
-      return alerta("Sube las 3 fotos requeridas.");
-
     setLoading(true);
     const subidos = [];
     try {
@@ -386,7 +386,7 @@ export default function RegistroScreen() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) {
-        alerta("Tu sesion expiro. Vuelve a iniciar sesion para continuar.");
+        mostrar("Tu sesión expiró. Vuelve a iniciar sesión.", "atencion");
         router.replace("/login");
         return;
       }
@@ -439,13 +439,11 @@ export default function RegistroScreen() {
       if (perfilError) throw perfilError;
 
       await supabase.auth.signOut();
-      alerta(
-        "Cuenta creada. Revisaremos tus documentos y te avisaremos cuando este lista.",
-      );
+      mostrar("Cuenta creada. Revisaremos tus documentos.", "exito", 4500);
       router.replace("/login");
     } catch (err) {
       await borrarImagenes(BUCKET_KYC, subidos);
-      alerta(mensajeError(err));
+      mostrar(mensajeError(err), "error");
     } finally {
       setLoading(false);
     }

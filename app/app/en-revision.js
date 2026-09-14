@@ -12,7 +12,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
 import TIPO from "../src/theme/tipografia";
-import { alerta, confirmar, mensajeError } from "../src/lib/ui";
+import { confirmar, mensajeError } from "../src/lib/ui";
+import { useAviso } from "../src/components/Avisos";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
 import { limpiarCache } from "../src/lib/cache";
 import SubidaDocumentos, {
@@ -33,6 +34,7 @@ export default function EnRevisionScreen() {
   });
   const [enviando, setEnviando] = useState(false);
   const router = useRouter();
+  const { mostrar } = useAviso();
 
   useFocusEffect(
     useCallback(() => {
@@ -72,12 +74,12 @@ export default function EnRevisionScreen() {
       }
       if (userData?.estado === "bloqueado") {
         await supabase.auth.signOut();
-        alerta("Tu cuenta esta bloqueada. Contacta a soporte.");
+        mostrar("Tu cuenta está bloqueada. Contacta a soporte.", "error");
         router.replace("/login");
         return;
       }
       if (avisar) {
-        alerta("Tu cuenta sigue en revision. Te avisaremos apenas este lista.");
+        mostrar("Sigue en revisión. Te avisaremos apenas esté lista.", "info");
       }
     } finally {
       setCargando(false);
@@ -90,8 +92,8 @@ export default function EnRevisionScreen() {
    * cliente observado que necesita corregir sus fotos.
    */
   async function reenviarDocumentos() {
-    if (!documentosCompletos(fotos))
-      return alerta("Sube las 3 fotos antes de enviar.");
+    // El botón está deshabilitado hasta tener las tres fotos, y cada
+    // una muestra su marca de verificación al subirse.
 
     setEnviando(true);
     const subidos = [];
@@ -137,18 +139,19 @@ export default function EnRevisionScreen() {
       if (estadoError) {
         // Las fotos si se guardaron, asi que no se borra nada. El gestor
         // las vera igual; solo no se reinicio el estado automaticamente.
-        alerta(
-          "Guardamos tus documentos, pero no pudimos reabrir la revision. Escribenos para que la activemos.",
+        mostrar(
+          "Guardamos tus documentos, pero no pudimos reabrir la revisión. Escríbenos para activarla.",
+          "atencion",
         );
       } else {
-        alerta("Documentos enviados. Los revisaremos en las proximas horas.");
+        mostrar("Documentos enviados. Los revisamos en unas horas.", "exito");
       }
 
       setFotos({ dni_frontal: null, dni_posterior: null, selfie: null });
       await cargar();
     } catch (err) {
       await borrarImagenes(BUCKET_KYC, subidos);
-      alerta(mensajeError(err));
+      mostrar(mensajeError(err), "error");
     } finally {
       setEnviando(false);
     }

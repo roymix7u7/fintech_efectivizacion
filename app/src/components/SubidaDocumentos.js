@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import COLORS from "../theme/colors";
-import { alerta } from "../lib/ui";
+import { useAviso } from "./Avisos";
 import { pedirPermiso } from "../lib/permisos";
 import { prepararImagen } from "../lib/imagen";
 
@@ -52,6 +52,8 @@ function opciones(aspecto) {
 }
 
 export default function SubidaDocumentos({ fotos, onChange, deshabilitado }) {
+  const { mostrar } = useAviso();
+
   async function usarCamara(doc) {
     // pedirPermiso se encarga del caso dificil: cuando el sistema ya no
     // vuelve a preguntar, ofrece abrir los ajustes del telefono.
@@ -70,7 +72,7 @@ export default function SubidaDocumentos({ fotos, onChange, deshabilitado }) {
   async function guardar(key, asset) {
     const lista = await prepararImagen(asset);
     if (!lista.base64) {
-      alerta("No pudimos leer la imagen. Intentalo otra vez.");
+      mostrar("No pudimos leer la imagen. Intentalo otra vez.", "error");
       return;
     }
     onChange({ ...fotos, [key]: lista });
