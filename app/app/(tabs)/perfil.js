@@ -16,7 +16,7 @@ import TIPO from "../../src/theme/tipografia";
 import { Aparece } from "../../src/components/Cargando";
 import { confirmar, mensajeError } from "../../src/lib/ui";
 import { useAviso } from "../../src/components/Avisos";
-import { limpiarCache } from "../../src/lib/cache";
+import { cerrarSesion as cerrarSesionCompleta } from "../../src/lib/sesion";
 
 export default function PerfilScreen() {
   const [usuario, setUsuario] = useState(null);
@@ -80,9 +80,9 @@ export default function PerfilScreen() {
   // boton de cerrar sesion no hacia nada en el telefono.
   async function cerrarSesion() {
     if (!(await confirmar("Seguro que quieres cerrar sesion?"))) return;
-    const { error } = await supabase.auth.signOut();
-    if (error) return mostrar(mensajeError(error), "error");
-    await limpiarCache();
+    // Borra la sesión, la marca de tiempo y los datos guardados, para
+    // que nada del usuario anterior quede en el teléfono.
+    await cerrarSesionCompleta();
     router.replace("/");
   }
 

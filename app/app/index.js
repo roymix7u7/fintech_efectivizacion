@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
 import { hayConexion } from "../src/lib/conexion";
+import { sesionVencida, cerrarSesion, entrarA } from "../src/lib/sesion";
 import COLORS from "../src/theme/colors";
 import TIPO from "../src/theme/tipografia";
 
@@ -56,6 +57,15 @@ export default function Bienvenida() {
         return;
       }
 
+      // La sesión de Supabase se renueva sola, así que el plazo de dos
+      // horas lo lleva la app aparte. Sin esto, quien entró una vez no
+      // volvería a escribir su contraseña nunca.
+      if (await sesionVencida()) {
+        await cerrarSesion();
+        setFase("bienvenida");
+        return;
+      }
+
       const { data: usuario } = await supabase
         .from("users")
         .select("rol, estado")
@@ -64,17 +74,18 @@ export default function Bienvenida() {
 
       // Una sesión de staff no sirve en la app: el panel es aparte.
       if (!usuario || usuario.rol !== "cliente") {
-        await supabase.auth.signOut();
+        await cerrarSesion();
         setFase("bienvenida");
         return;
       }
       if (usuario.estado === "bloqueado") {
-        await supabase.auth.signOut();
+        await cerrarSesion();
         setFase("bienvenida");
         return;
       }
 
-      router.replace(
+      entrarA(
+        router,
         usuario.estado === "activo" ? "/(tabs)/inicio" : "/en-revision",
       );
     } catch {

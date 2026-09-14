@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import COLORS from "../src/theme/colors";
 import { ProveedorAvisos } from "../src/components/Avisos";
+import VigilanteSesion from "../src/components/VigilanteSesion";
 
 /**
  * Cabecera y transiciones comunes a todas las pantallas.
@@ -15,6 +16,7 @@ export default function RootLayout() {
   return (
     <ProveedorAvisos>
       <StatusBar style="dark" />
+      <VigilanteSesion />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: COLORS.white },

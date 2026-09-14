@@ -15,7 +15,7 @@ import TIPO from "../src/theme/tipografia";
 import { confirmar, mensajeError } from "../src/lib/ui";
 import { useAviso } from "../src/components/Avisos";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
-import { limpiarCache } from "../src/lib/cache";
+import { cerrarSesion as cerrarSesionCompleta } from "../src/lib/sesion";
 import SubidaDocumentos, {
   DOCUMENTOS,
   documentosCompletos,
@@ -159,8 +159,7 @@ export default function EnRevisionScreen() {
 
   async function cerrarSesion() {
     if (!(await confirmar("Seguro que quieres cerrar sesion?"))) return;
-    await supabase.auth.signOut();
-    await limpiarCache();
+    await cerrarSesionCompleta();
     router.replace("/login");
   }
 

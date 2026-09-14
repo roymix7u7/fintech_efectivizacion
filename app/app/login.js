@@ -18,6 +18,7 @@ import { mensajeError } from "../src/lib/ui";
 import { useAviso } from "../src/components/Avisos";
 import { validarEmail } from "../src/lib/validaciones";
 import { hayConexion } from "../src/lib/conexion";
+import { marcarInicioSesion, entrarA } from "../src/lib/sesion";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -76,7 +77,8 @@ export default function LoginScreen() {
             "error",
           );
         }
-        return router.replace("/en-revision");
+        await marcarInicioSesion();
+        return entrarA(router, "/en-revision");
       }
 
       if (userData.rol !== "cliente") {
@@ -89,10 +91,16 @@ export default function LoginScreen() {
         return mostrar("Tu cuenta está bloqueada. Contacta a soporte.", "error");
       }
 
+      // Desde aquí empiezan a contar las dos horas de sesión.
+      await marcarInicioSesion();
+
+      // entrarA borra el historial: sin eso, el botón atrás del teléfono
+      // devolvía a la pantalla de bienvenida y parecía que la sesión se
+      // hubiera perdido.
+      //
       // pendiente y observado comparten pantalla: en-revision muestra el
       // motivo y deja volver a subir los documentos.
-      if (userData.estado === "activo") router.replace("/(tabs)/inicio");
-      else router.replace("/en-revision");
+      entrarA(router, userData.estado === "activo" ? "/(tabs)/inicio" : "/en-revision");
     } catch (err) {
       mostrar(mensajeError(err), "error");
     } finally {
