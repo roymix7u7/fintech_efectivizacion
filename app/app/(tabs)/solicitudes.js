@@ -22,6 +22,7 @@ import TIPO, { CIFRAS } from "../../src/theme/tipografia";
 import { EsqueletoLista } from "../../src/components/Cargando";
 import { urlFirmada } from "../../src/lib/storage";
 import { agruparPorDia, hora } from "../../src/lib/fechas";
+import { estadoSolicitud } from "../../src/theme/estados";
 
 const BUCKET = "comprobantes";
 
@@ -30,36 +31,8 @@ const BUCKET = "comprobantes";
 // caducar mientras se mira.
 const FIRMA_VALIDA_MS = 50 * 60 * 1000;
 
-const ESTADOS = {
-  pendiente: {
-    text: "En revisión",
-    color: COLORS.warning,
-    bg: COLORS.warningLight,
-    icon: "time",
-  },
-  aprobado: {
-    text: "Aprobado",
-    color: COLORS.success,
-    bg: COLORS.successLight,
-    icon: "checkmark-circle",
-  },
-  rechazado: {
-    text: "Rechazado",
-    color: COLORS.error,
-    bg: COLORS.errorLight,
-    icon: "close-circle",
-  },
-  // El ultimo paso: ya se le deposito. Es lo que el cliente espera desde
-  // que envio el comprobante, asi que se distingue de aprobado.
-  pagado: {
-    text: "Pago enviado",
-    color: COLORS.primary,
-    bg: "#E6ECF7",
-    icon: "cash",
-  },
-};
-
-const estadoDe = (e) => ESTADOS[e] || ESTADOS.pendiente;
+// Colores e iconos por estado: compartidos con el inicio.
+const estadoDe = estadoSolicitud;
 
 const fechaLarga = (iso) =>
   new Date(iso).toLocaleDateString("es-PE", {

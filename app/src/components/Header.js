@@ -1,58 +1,49 @@
-import { useCallback, useState } from "react";
 import { View, Text, TouchableOpacity, Image, StyleSheet } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter } from "expo-router";
 import COLORS from "../theme/colors";
-import { supabase } from "../lib/supabase";
+import { useAvisosSinLeer } from "../lib/avisos";
 
+/**
+ * Cabecera de las pestañas.
+ *
+ * Muestra el nombre de la seccion, no la marca. Antes decia "ALTOQUE
+ * PERÚ" en todas las pestañas aunque cada una le pasaba su titulo: el
+ * cliente ya sabe en que app esta, lo que necesita saber es en que
+ * parte. El logo pequeño basta para la identidad.
+ */
 export default function Header({ onMenuPress, titulo }) {
-  const [sinLeer, setSinLeer] = useState(0);
+  const sinLeer = useAvisosSinLeer();
   const router = useRouter();
-
-  // Se recuenta al volver a la pantalla, asi la campana se apaga
-  // despues de leer los avisos.
-  useFocusEffect(
-    useCallback(() => {
-      contarSinLeer();
-    }, []),
-  );
-
-  async function contarSinLeer() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { count, error } = await supabase
-      .from("notificaciones")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("leida", false);
-
-    if (error) return;
-    setSinLeer(count || 0);
-  }
 
   return (
     <View style={s.header}>
+      <StatusBar style="light" />
       <View style={s.left}>
         <Image
           source={require("../../assets/LOGOATK.png")}
           style={s.logo}
           resizeMode="contain"
         />
-        <Text style={s.brand}>ALTOQUE PERÚ</Text>
+        <Text style={s.titulo} numberOfLines={1}>
+          {titulo}
+        </Text>
       </View>
 
       <View style={s.right}>
         <TouchableOpacity
           onPress={() => router.push("/notificaciones")}
           style={s.iconBtn}
+          accessibilityRole="button"
+          accessibilityLabel={
+            sinLeer > 0 ? `Avisos, ${sinLeer} sin leer` : "Avisos"
+          }
         >
           <Ionicons
             name={sinLeer > 0 ? "notifications" : "notifications-outline"}
-            size={24}
-            color={sinLeer > 0 ? COLORS.secondary : COLORS.white}
+            size={21}
+            color={COLORS.white}
           />
           {sinLeer > 0 && (
             <View style={s.badge}>
@@ -61,8 +52,13 @@ export default function Header({ onMenuPress, titulo }) {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={onMenuPress} style={s.iconBtn}>
-          <Ionicons name="menu-outline" size={26} color={COLORS.white} />
+        <TouchableOpacity
+          onPress={onMenuPress}
+          style={s.iconBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Abrir menú"
+        >
+          <Ionicons name="menu" size={22} color={COLORS.white} />
         </TouchableOpacity>
       </View>
     </View>
@@ -79,27 +75,38 @@ const s = StyleSheet.create({
     paddingTop: 50,
     paddingBottom: 14,
   },
-  left: { flexDirection: "row", alignItems: "center", gap: 10 },
-  logo: { width: 34, height: 34 },
-  brand: {
-    fontSize: 16,
+  left: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  logo: { width: 30, height: 30 },
+  titulo: {
+    fontSize: 19,
     fontWeight: "700",
-    color: COLORS.secondary,
-    letterSpacing: 0.5,
+    color: COLORS.white,
+    letterSpacing: -0.3,
+    flexShrink: 1,
   },
-  right: { flexDirection: "row", alignItems: "center", gap: 4 },
-  iconBtn: { padding: 6 },
+  right: { flexDirection: "row", alignItems: "center", gap: 8 },
+  // Botones de cristal: se leen sobre el azul sin competir con el titulo.
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   badge: {
     position: "absolute",
-    top: 2,
-    right: 2,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    top: -2,
+    right: -2,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
     backgroundColor: COLORS.error,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
   },
-  badgeText: { color: COLORS.white, fontSize: 10, fontWeight: "700" },
+  badgeText: { color: COLORS.white, fontSize: 9, fontWeight: "800" },
 });
