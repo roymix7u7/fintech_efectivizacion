@@ -172,3 +172,52 @@ test("primerError devuelve el primer problema encontrado", () => {
   assert.equal(primerError(null, null), null);
   assert.equal(primerError(), null);
 });
+
+// ─────────────────────────────────────────────────────────────
+//  fechas.js: divisores del historial
+//  Las fechas se construyen en hora local, igual que las ve el
+//  telefono, para que la prueba no dependa de la zona horaria.
+// ─────────────────────────────────────────────────────────────
+const { claveDia, tituloDia, agruparPorDia, hora } = await cargar("fechas.js");
+
+// "Ahora" fijo: 15 de septiembre de 2026, 08:00 local.
+const AHORA = new Date(2026, 8, 15, 8, 0);
+
+test("hoy y ayer se deciden por calendario, no por 24 horas", () => {
+  assert.equal(tituloDia(new Date(2026, 8, 15, 0, 5), AHORA), "Hoy");
+  // Anoche a las 23:00: pasaron 9 horas, pero fue ayer.
+  assert.equal(tituloDia(new Date(2026, 8, 14, 23, 0), AHORA), "Ayer");
+  // Antes de ayer a las 9:00: pasaron menos de 48 horas, pero no es ayer.
+  const antes = tituloDia(new Date(2026, 8, 13, 9, 0), AHORA);
+  assert.notEqual(antes, "Ayer");
+  assert.match(antes, /13/);
+  assert.match(antes, /^[A-ZÁÉÍÓÚ]/, "empieza en mayuscula");
+});
+
+test("el año solo aparece si no es el actual", () => {
+  assert.doesNotMatch(tituloDia(new Date(2026, 5, 1, 10), AHORA), /2026/);
+  assert.match(tituloDia(new Date(2025, 11, 31, 10), AHORA), /2025/);
+});
+
+test("agrupa por dia respetando el orden de llegada", () => {
+  const filas = [
+    { id: 1, created_at: new Date(2026, 8, 15, 7, 50).toISOString() },
+    { id: 2, created_at: new Date(2026, 8, 15, 0, 10).toISOString() },
+    { id: 3, created_at: new Date(2026, 8, 14, 23, 59).toISOString() },
+    { id: 4, created_at: new Date(2026, 8, 10, 12, 0).toISOString() },
+    { id: 5, created_at: null },
+  ];
+  const secciones = agruparPorDia(filas, "created_at", AHORA);
+  assert.deepEqual(
+    secciones.map((s) => [s.titulo === "Hoy" || s.titulo === "Ayer" ? s.titulo : "otro", s.data.map((f) => f.id)]),
+    [["Hoy", [1, 2]], ["Ayer", [3]], ["otro", [4]]],
+  );
+  assert.equal(agruparPorDia([], "created_at", AHORA).length, 0);
+  assert.equal(agruparPorDia(null, "created_at", AHORA).length, 0);
+});
+
+test("clave de dia y hora en formato local", () => {
+  const d = new Date(2026, 0, 5, 9, 7);
+  assert.equal(claveDia(d), "2026-01-05");
+  assert.equal(hora(d), "09:07");
+});
