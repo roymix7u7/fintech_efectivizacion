@@ -766,45 +766,16 @@ export default function NuevaSolicitudScreen() {
               <Ionicons name="alert-circle" size={28} color={COLORS.warning} />
             </View>
             <Text style={s.modalTitulo}>¿Salir sin enviar?</Text>
-            <Text style={s.modalTexto}>
-              Tu solicitud todavía no se envió. Si sales, se pierde lo que
-              cargaste:
+            {/* Solo texto: el aviso no vuelve a cargar la imagen ni repite
+                la nota. Basta con decir que se pierde. */}
+            <Text style={[s.modalTexto, s.salidaTexto]}>
+              Tu solicitud todavía no se envió.{" "}
+              {comprobante && nota.trim()
+                ? "Si sales, se perderán el comprobante y la nota que agregaste."
+                : comprobante
+                  ? "Si sales, se perderá el comprobante y tendrás que volver a subirlo."
+                  : "Si sales, se perderá la nota que escribiste."}
             </Text>
-
-            <View style={s.perdida}>
-              {comprobante ? (
-                <View style={s.perdidaFila}>
-                  <Image
-                    source={{ uri: comprobante.uri }}
-                    style={s.perdidaMini}
-                    resizeMode="cover"
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.perdidaTitulo}>Comprobante adjunto</Text>
-                    <Text style={s.perdidaDetalle}>
-                      Tendrás que volver a subirlo
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
-              {nota.trim() ? (
-                <View style={s.perdidaFila}>
-                  <View style={s.perdidaIcono}>
-                    <Ionicons
-                      name="chatbox-ellipses-outline"
-                      size={18}
-                      color={COLORS.primaryLight}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.perdidaTitulo}>Tu nota</Text>
-                    <Text style={s.perdidaDetalle} numberOfLines={2}>
-                      “{nota.trim()}”
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
-            </View>
 
             {/* La opcion segura va primero y es la mas visible. */}
             <TouchableOpacity
@@ -1203,31 +1174,7 @@ const s = StyleSheet.create({
     marginBottom: 14,
   },
   modalLista: { flexGrow: 0 },
-  perdida: {
-    backgroundColor: COLORS.inputBg,
-    borderRadius: 12,
-    padding: 12,
-    gap: 12,
-  },
-  perdidaFila: { flexDirection: "row", alignItems: "center", gap: 12 },
-  perdidaMini: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: COLORS.border,
-  },
-  perdidaIcono: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: COLORS.card,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  perdidaTitulo: { fontSize: 14, fontWeight: "700", color: COLORS.text },
-  perdidaDetalle: { ...TIPO.micro, marginTop: 1 },
+  salidaTexto: { fontSize: 14, lineHeight: 21, marginBottom: 4 },
   modalAlerta: {
     backgroundColor: COLORS.errorLight,
     borderRadius: 12,
