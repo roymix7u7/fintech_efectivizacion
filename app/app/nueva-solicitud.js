@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,9 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
+  Modal,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../src/lib/supabase";
@@ -21,6 +23,7 @@ import { esFalloDeRed } from "../src/lib/conexion";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
 import { Esqueleto } from "../src/components/Cargando";
 import { useAlturaTeclado } from "../src/lib/teclado";
+import { alertasUrgentes, marcarVistas } from "../src/lib/alertas";
 
 const BUCKET = "comprobantes";
 const MAX_NOTA = 300;
@@ -50,6 +53,16 @@ function generarCodigo() {
   return `SOL-${fecha}-${sufijo}`;
 }
 
+function haceCuanto(iso) {
+  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return "Hace un momento";
+  if (min < 60) return `Hace ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `Hace ${h} h`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? "Ayer" : `Hace ${d} días`;
+}
+
 export default function NuevaSolicitudScreen() {
   const [perfil, setPerfil] = useState(null);
   const [tarjetas, setTarjetas] = useState([]);
@@ -58,6 +71,13 @@ export default function NuevaSolicitudScreen() {
   const [nota, setNota] = useState("");
   const [cargando, setCargando] = useState(true);
   const [enviando, setEnviando] = useState(false);
+  const [verificando, setVerificando] = useState(false);
+  // Alertas urgentes que hay que mostrar antes de enviar. null: sin modal.
+  const [urgentes, setUrgentes] = useState(null);
+  // Candado contra el doble toque. El estado de React tarda un render en
+  // deshabilitar el boton, y en ese intervalo un segundo toque lanzaba
+  // otra verificacion y otro envio.
+  const enCurso = useRef(false);
   const altoTeclado = useAlturaTeclado();
   const { mostrar } = useAviso();
   const router = useRouter();
@@ -130,11 +150,53 @@ export default function NuevaSolicitudScreen() {
     setComprobante(lista);
   }
 
+  /**
+   * Toque en "Enviar solicitud".
+   *
+   * Si hay una alerta urgente al aire, se muestra antes de enviar. El
+   * cliente puede estar a punto de mandar un comprobante de un banco que
+   * justo esta caido: tiene que enterarse antes, no despues.
+   */
+  async function alPresionarEnviar() {
+    if (enCurso.current || enviando || verificando) return;
+    enCurso.current = true;
+    setVerificando(true);
+
+    const { alertas } = await alertasUrgentes();
+
+    setVerificando(false);
+    if (alertas.length > 0) {
+      // El candado se suelta aqui: mientras el modal esta abierto no hay
+      // nada en curso, y la decision la toma el cliente.
+      enCurso.current = false;
+      setUrgentes(alertas);
+      return;
+    }
+    await enviarSolicitud();
+    enCurso.current = false;
+  }
+
+  async function continuarPeseAlerta() {
+    if (enCurso.current) return;
+    enCurso.current = true;
+    const ids = (urgentes || []).map((a) => a.id);
+    setUrgentes(null);
+    // Ya la leyo en el modal: no tiene sentido que la burbuja vuelva a
+    // interrumpirlo con lo mismo.
+    marcarVistas(ids);
+    await enviarSolicitud();
+    enCurso.current = false;
+  }
+
   async function enviarSolicitud() {
     // Sin comprobaciones de tarjeta ni comprobante: el botón de enviar
     // está deshabilitado hasta tener ambos, así que avisarlo aquí sería
     // repetir lo que la pantalla ya muestra.
     if (!perfil) return mostrar("No pudimos cargar tu perfil. Reintenta.", "error");
+    // El boton ya exige ambas cosas, pero el envio puede llegar desde el
+    // modal despues de que algo cambio: se comprueba de nuevo.
+    if (!tarjetaSeleccionada) return mostrar("Elige la tarjeta de la operación.", "error");
+    if (!comprobante?.base64) return mostrar("Adjunta el comprobante otra vez.", "error");
 
     setEnviando(true);
     let pathSubido = null;
@@ -177,7 +239,11 @@ export default function NuevaSolicitudScreen() {
       if (auditError) console.warn("Auditoria:", auditError.message);
 
       mostrar(`Solicitud ${codigo} enviada`, "exito");
-      router.replace("/(tabs)/solicitudes");
+      // dismissTo y no replace. Esta pantalla esta encima de las
+      // pestanas; replace creaba una segunda copia de ellas, con una
+      // segunda burbuja de alertas escuchando el mismo canal, y eso
+      // tumbaba el app justo al enviar.
+      router.dismissTo("/(tabs)/solicitudes");
     } catch (err) {
       // Sin esto la imagen quedaba huerfana en Storage.
       await borrarImagenes(BUCKET, [pathSubido]);
@@ -229,7 +295,7 @@ export default function NuevaSolicitudScreen() {
       {tarjetas.length === 0 ? (
         <TouchableOpacity
           style={s.warningBox}
-          onPress={() => router.replace("/(tabs)/tarjetas")}
+          onPress={() => router.dismissTo("/(tabs)/tarjetas")}
         >
           <Text style={s.warningText}>
             No tienes tarjetas verificadas. Toca aqui para registrar una.
@@ -346,14 +412,78 @@ export default function NuevaSolicitudScreen() {
 
       {/* Enviar */}
       <TouchableOpacity
-        style={[s.btnEnviar, (!listo || enviando) && s.btnDisabled]}
-        onPress={enviarSolicitud}
-        disabled={enviando || !listo}
+        style={[
+          s.btnEnviar,
+          (!listo || enviando || verificando) && s.btnDisabled,
+        ]}
+        onPress={alPresionarEnviar}
+        disabled={enviando || verificando || !listo}
       >
+        {(enviando || verificando) && (
+          <ActivityIndicator size="small" color={COLORS.white} />
+        )}
         <Text style={s.btnEnviarText}>
-          {enviando ? "Enviando..." : "Enviar solicitud"}
+          {verificando
+            ? "Verificando..."
+            : enviando
+              ? "Enviando..."
+              : "Enviar solicitud"}
         </Text>
       </TouchableOpacity>
+
+      {/* Alerta urgente antes de enviar */}
+      <Modal
+        visible={Boolean(urgentes?.length)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setUrgentes(null)}
+      >
+        <View style={s.modalFondo}>
+          <View style={s.modalCaja}>
+            <View style={s.modalIcono}>
+              <Ionicons name="warning" size={26} color={COLORS.error} />
+            </View>
+            <Text style={s.modalTitulo}>
+              {urgentes?.length > 1
+                ? "Hay avisos urgentes"
+                : "Hay un aviso urgente"}
+            </Text>
+            <Text style={s.modalTexto}>
+              Léelo antes de enviar tu solicitud.
+            </Text>
+
+            <ScrollView
+              style={s.modalLista}
+              contentContainerStyle={{ gap: 10 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {(urgentes || []).map((a) => (
+                <View key={a.id} style={s.modalAlerta}>
+                  <Text style={s.modalAlertaTitulo}>{a.titulo}</Text>
+                  <Text style={s.modalAlertaMensaje}>{a.mensaje}</Text>
+                  <Text style={s.modalAlertaFecha}>
+                    {haceCuanto(a.fecha_inicio)}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={s.modalBtn}
+              onPress={continuarPeseAlerta}
+              activeOpacity={0.85}
+            >
+              <Text style={s.modalBtnText}>Enviar de todas formas</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.modalBtnSecundario}
+              onPress={() => setUrgentes(null)}
+            >
+              <Text style={s.modalBtnSecundarioText}>Ahora no</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -464,7 +594,75 @@ const s = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 10,
     marginTop: 24,
+  },
+  modalFondo: {
+    flex: 1,
+    backgroundColor: "rgba(15,27,51,0.72)",
+    justifyContent: "center",
+    padding: 22,
+  },
+  modalCaja: {
+    backgroundColor: COLORS.card,
+    borderRadius: 18,
+    padding: 20,
+    maxHeight: "86%",
+  },
+  modalIcono: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: COLORS.errorLight,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+  },
+  modalTitulo: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.text,
+    textAlign: "center",
+    marginTop: 12,
+  },
+  modalTexto: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  modalLista: { flexGrow: 0 },
+  modalAlerta: {
+    backgroundColor: COLORS.errorLight,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.error,
+    padding: 13,
+  },
+  modalAlertaTitulo: { fontSize: 15, fontWeight: "700", color: COLORS.text },
+  modalAlertaMensaje: {
+    fontSize: 13.5,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  modalAlertaFecha: { fontSize: 11, color: COLORS.textLight, marginTop: 6 },
+  modalBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 15,
+    alignItems: "center",
+    marginTop: 18,
+  },
+  modalBtnText: { color: COLORS.white, fontSize: 15, fontWeight: "700" },
+  modalBtnSecundario: { paddingVertical: 12, alignItems: "center", marginTop: 4 },
+  modalBtnSecundarioText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    fontWeight: "600",
   },
   btnDisabled: { backgroundColor: COLORS.textLight },
   btnEnviarText: { color: COLORS.white, fontSize: 16, fontWeight: "600" },

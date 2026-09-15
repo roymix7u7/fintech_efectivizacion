@@ -15,7 +15,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { supabase } from "../../src/lib/supabase";
 import { urlPublica } from "../../src/lib/storage";
-import { listarAlertas, marcarVistas, gravedadDe } from "../../src/lib/alertas";
+import {
+  listarAlertas,
+  marcarVistas,
+  gravedadDe,
+  nombreCanal,
+} from "../../src/lib/alertas";
 import Header from "../../src/components/Header";
 import MenuLateral from "../../src/components/MenuLateral";
 import COLORS from "../../src/theme/colors";
@@ -206,7 +211,7 @@ export default function NoticiasScreen() {
   // volver a la pantalla no ocurre nunca y la lista se quedaria vieja.
   useEffect(() => {
     const canal = supabase
-      .channel("noticias-en-vivo")
+      .channel(nombreCanal("noticias-en-vivo"))
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "alertas_sistema" },

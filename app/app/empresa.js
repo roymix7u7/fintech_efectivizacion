@@ -211,7 +211,7 @@ export default function EmpresaScreen() {
 
           <TouchableOpacity
             style={s.comisionBoton}
-            onPress={() => router.push("/(tabs)/perfil")}
+            onPress={() => router.dismissTo("/(tabs)/perfil")}
             activeOpacity={0.8}
           >
             <Text style={s.comisionBotonTexto}>Ver mi comisión</Text>

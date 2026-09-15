@@ -31,8 +31,11 @@ export default function RegistroPush() {
     }
 
     escucharToques((datos) => {
+      // dismissTo y no push: la notificacion puede tocarse con otra
+      // pantalla abierta encima de las pestanas, y push crearia una
+      // segunda copia de ellas en vez de volver a las que ya existen.
       if (datos?.seccion === "alertas") {
-        router.push("/(tabs)/noticias?seccion=alertas");
+        router.dismissTo("/(tabs)/noticias?seccion=alertas");
       }
     }).then((fn) => {
       // Si el componente se fue mientras se cargaba el modulo, se

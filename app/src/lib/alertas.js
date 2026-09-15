@@ -71,6 +71,47 @@ export async function marcarVistas(ids) {
   if (error) console.warn("No se pudo marcar la alerta:", error.message);
 }
 
+/**
+ * Alertas urgentes al aire en este momento.
+ *
+ * Se consulta en el instante de enviar, no se reutiliza lo que cargo la
+ * pantalla: una alerta publicada mientras el cliente llenaba el
+ * formulario tiene que alcanzarlo igual.
+ *
+ * Nunca lanza. Si no se puede consultar, devuelve una lista vacia con
+ * el error: no poder leer las alertas no puede impedir enviar, y si el
+ * problema es la conexion, el envio lo va a reportar con su propio
+ * mensaje.
+ */
+export async function alertasUrgentes() {
+  try {
+    const { data, error } = await supabase
+      .from("alertas_sistema")
+      .select("id, titulo, mensaje, tipo, fecha_inicio")
+      .eq("categoria", "alerta")
+      .eq("tipo", "critico")
+      .order("fecha_inicio", { ascending: false });
+    if (error) return { alertas: [], error };
+    return { alertas: data || [], error: null };
+  } catch (e) {
+    return { alertas: [], error: e };
+  }
+}
+
+/**
+ * Nombre de canal unico por montaje.
+ *
+ * supabase.channel(nombre) devuelve el canal existente si ya hay uno con
+ * ese nombre, y agregarle una escucha despues de suscribirlo lanza
+ * "cannot add postgres_changes callbacks after subscribe()". Como
+ * removeChannel es asincrono, basta con que un componente se monte dos
+ * veces seguidas para chocar. Con un sufijo propio, cada montaje tiene
+ * su canal y no se pisan.
+ */
+export function nombreCanal(base) {
+  return `${base}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 /** Reglas de presentacion por gravedad. */
 export const GRAVEDAD = {
   critico: {

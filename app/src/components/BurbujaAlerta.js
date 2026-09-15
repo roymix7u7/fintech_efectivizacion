@@ -12,7 +12,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import COLORS from "../theme/colors";
 import { supabase } from "../lib/supabase";
-import { listarAlertas, marcarVistas, gravedadDe } from "../lib/alertas";
+import {
+  listarAlertas,
+  marcarVistas,
+  gravedadDe,
+  nombreCanal,
+} from "../lib/alertas";
 
 /**
  * Burbuja flotante con la alerta que el cliente todavia no abrio.
@@ -93,7 +98,7 @@ export default function BurbujaAlerta() {
     // los sigue decidiendo la base, y una alerta programada para
     // manana no se cuela por venir dentro del mensaje.
     const canal = supabase
-      .channel("alertas-en-vivo")
+      .channel(nombreCanal("alertas-en-vivo"))
       .on(
         "postgres_changes",
         {
