@@ -22,6 +22,7 @@ import { tituloDia, hora } from "../../src/lib/fechas";
 import { Esqueleto, Aparece } from "../../src/components/Cargando";
 import { useAviso } from "../../src/components/Avisos";
 import MenuLateral from "../../src/components/MenuLateral";
+import DetalleSolicitud from "../../src/components/DetalleSolicitud";
 import COLORS from "../../src/theme/colors";
 import TIPO, { CIFRAS } from "../../src/theme/tipografia";
 import { estadoSolicitud } from "../../src/theme/estados";
@@ -223,6 +224,8 @@ function Seguimiento({ solicitud }) {
 
 export default function InicioScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
+  // Operacion abierta en la hoja de detalle, o null.
+  const [detalle, setDetalle] = useState(null);
   const router = useRouter();
   const { mostrar } = useAviso();
   const avisosSinLeer = useAvisosSinLeer();
@@ -612,6 +615,81 @@ export default function InicioScreen() {
             </Aparece>
           )}
 
+          {/* ── Ultima operacion ──
+              Va primero despues de los accesos: es lo que el cliente abre
+              el app para mirar. Tocarla abre su detalle ahi mismo, sin
+              mandarlo al historial a buscarla. */}
+          {datos && ultima && (
+            <Aparece retraso={200}>
+              <Pulsable
+                style={s.tarjeta}
+                onPress={() => setDetalle(ultima)}
+                accessibilityLabel={`Ver detalle de la solicitud ${ultima.codigo}`}
+              >
+                <View style={s.seccionCabecera}>
+                  <Text style={s.seccionTitulo}>Última operación</Text>
+                  <TouchableOpacity
+                    onPress={() => router.push("/(tabs)/solicitudes")}
+                    hitSlop={10}
+                  >
+                    <Text style={s.verTodo}>Ver historial</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={s.ultimaFila}>
+                  <View
+                    style={[
+                      s.movIcono,
+                      { backgroundColor: estadoSolicitud(ultima.estado).bg },
+                    ]}
+                  >
+                    <Ionicons
+                      name={estadoSolicitud(ultima.estado).icon}
+                      size={18}
+                      color={estadoSolicitud(ultima.estado).color}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.movTitulo}>
+                      {ultima.banco}
+                      {ultima.ultimos_4 ? ` •••• ${ultima.ultimos_4}` : ""}
+                    </Text>
+                    <Text style={s.movSub}>
+                      {ultima.codigo} · {cuando(ultima.created_at)}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      s.chip,
+                      { backgroundColor: estadoSolicitud(ultima.estado).bg },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        s.chipTexto,
+                        { color: estadoSolicitud(ultima.estado).color },
+                      ]}
+                    >
+                      {estadoSolicitud(ultima.estado).text}
+                    </Text>
+                  </View>
+                </View>
+
+                <Seguimiento solicitud={ultima} />
+
+                <View style={s.ultimaPie}>
+                  <Text style={s.ultimaPieTexto}>Ver detalle y comprobante</Text>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={14}
+                    color={COLORS.primary}
+                  />
+                </View>
+              </Pulsable>
+            </Aparece>
+          )}
+
+
           {/* ── Lo que falta para operar ── */}
           {datos && !perfilCompleto && (
             <Aparece retraso={240}>
@@ -690,64 +768,6 @@ export default function InicioScreen() {
             </Aparece>
           )}
 
-          {/* ── Ultima operacion ── */}
-          {datos && ultima && (
-            <Aparece retraso={280}>
-              <View style={s.tarjeta}>
-                <View style={s.seccionCabecera}>
-                  <Text style={s.seccionTitulo}>Última operación</Text>
-                  <TouchableOpacity
-                    onPress={() => router.push("/(tabs)/solicitudes")}
-                    hitSlop={10}
-                  >
-                    <Text style={s.verTodo}>Ver historial</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={s.ultimaFila}>
-                  <View
-                    style={[
-                      s.movIcono,
-                      { backgroundColor: estadoSolicitud(ultima.estado).bg },
-                    ]}
-                  >
-                    <Ionicons
-                      name={estadoSolicitud(ultima.estado).icon}
-                      size={18}
-                      color={estadoSolicitud(ultima.estado).color}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.movTitulo}>
-                      {ultima.banco}
-                      {ultima.ultimos_4 ? ` •••• ${ultima.ultimos_4}` : ""}
-                    </Text>
-                    <Text style={s.movSub}>
-                      {ultima.codigo} · {cuando(ultima.created_at)}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      s.chip,
-                      { backgroundColor: estadoSolicitud(ultima.estado).bg },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        s.chipTexto,
-                        { color: estadoSolicitud(ultima.estado).color },
-                      ]}
-                    >
-                      {estadoSolicitud(ultima.estado).text}
-                    </Text>
-                  </View>
-                </View>
-
-                <Seguimiento solicitud={ultima} />
-              </View>
-            </Aparece>
-          )}
-
           {/* ── Sin operaciones todavia ── */}
           {datos && !ultima && perfilCompleto && (
             <Aparece retraso={280}>
@@ -771,45 +791,6 @@ export default function InicioScreen() {
                   <Ionicons name="paper-plane" size={16} color={COLORS.white} />
                   <Text style={s.primeraBtnTexto}>Enviar mi comprobante</Text>
                 </TouchableOpacity>
-              </View>
-            </Aparece>
-          )}
-
-          {/* ── Movimientos recientes ── */}
-          {recientes.length > 1 && (
-            <Aparece retraso={320}>
-              <View style={s.tarjeta}>
-                <View style={s.seccionCabecera}>
-                  <Text style={s.seccionTitulo}>Movimientos recientes</Text>
-                </View>
-                {recientes.slice(1).map((m, i, lista) => {
-                  const e = estadoSolicitud(m.estado);
-                  return (
-                    <TouchableOpacity
-                      key={m.id}
-                      style={[
-                        s.mov,
-                        i < lista.length - 1 && s.movBorde,
-                      ]}
-                      onPress={() => router.push("/(tabs)/solicitudes")}
-                      activeOpacity={0.6}
-                    >
-                      <View style={[s.movIcono, { backgroundColor: e.bg }]}>
-                        <Ionicons name={e.icon} size={17} color={e.color} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.movTitulo}>
-                          {m.banco}
-                          {m.ultimos_4 ? ` •••• ${m.ultimos_4}` : ""}
-                        </Text>
-                        <Text style={s.movSub}>{cuando(m.created_at)}</Text>
-                      </View>
-                      <Text style={[s.movEstado, { color: e.color }]}>
-                        {e.text}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
               </View>
             </Aparece>
           )}
@@ -985,6 +966,8 @@ export default function InicioScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      <DetalleSolicitud solicitud={detalle} onCerrar={() => setDetalle(null)} />
 
       <MenuLateral
         visible={menuVisible}
@@ -1369,9 +1352,18 @@ const s = StyleSheet.create({
   segTituloHecho: { color: COLORS.text },
   segFecha: { fontSize: 11, color: COLORS.textLight, marginTop: 1, ...CIFRAS },
 
-  // Movimientos
-  mov: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 },
-  movBorde: { borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  ultimaPie: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  ultimaPieTexto: { fontSize: 13, fontWeight: "700", color: COLORS.primary },
+
   movIcono: {
     width: 38,
     height: 38,
@@ -1381,7 +1373,6 @@ const s = StyleSheet.create({
   },
   movTitulo: { fontSize: 14, fontWeight: "600", color: COLORS.text },
   movSub: { ...TIPO.micro, marginTop: 2, ...CIFRAS },
-  movEstado: { fontSize: 12, fontWeight: "700" },
 
   primera: { alignItems: "center", paddingVertical: 22 },
   primeraIcono: {

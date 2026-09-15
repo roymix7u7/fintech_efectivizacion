@@ -1,16 +1,11 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   SectionList,
-  ScrollView,
   TouchableOpacity,
   RefreshControl,
-  Image,
-  Modal,
-  Pressable,
-  ActivityIndicator,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,46 +15,12 @@ import MenuLateral from "../../src/components/MenuLateral";
 import COLORS from "../../src/theme/colors";
 import TIPO, { CIFRAS } from "../../src/theme/tipografia";
 import { EsqueletoLista } from "../../src/components/Cargando";
-import { urlFirmada } from "../../src/lib/storage";
 import { agruparPorDia, hora } from "../../src/lib/fechas";
 import { estadoSolicitud } from "../../src/theme/estados";
-
-const BUCKET = "comprobantes";
-
-// Una URL firmada dura una hora. Se reutiliza durante 50 minutos para
-// que reabrir el mismo detalle sea inmediato y no quede a punto de
-// caducar mientras se mira.
-const FIRMA_VALIDA_MS = 50 * 60 * 1000;
+import DetalleSolicitud from "../../src/components/DetalleSolicitud";
 
 // Colores e iconos por estado: compartidos con el inicio.
 const estadoDe = estadoSolicitud;
-
-const fechaLarga = (iso) =>
-  new Date(iso).toLocaleDateString("es-PE", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }) +
-  " · " +
-  hora(iso);
-
-/** Paso del recorrido de una solicitud dentro del detalle. */
-function Paso({ icono, color, titulo, fecha, ultimo }) {
-  return (
-    <View style={s.paso}>
-      <View style={s.pasoRiel}>
-        <View style={[s.pasoPunto, { backgroundColor: color }]}>
-          <Ionicons name={icono} size={12} color={COLORS.white} />
-        </View>
-        {!ultimo && <View style={s.pasoLinea} />}
-      </View>
-      <View style={s.pasoTexto}>
-        <Text style={s.pasoTitulo}>{titulo}</Text>
-        {fecha ? <Text style={s.pasoFecha}>{fechaLarga(fecha)}</Text> : null}
-      </View>
-    </View>
-  );
-}
 
 export default function SolicitudesScreen() {
   const [solicitudes, setSolicitudes] = useState([]);
@@ -68,18 +29,10 @@ export default function SolicitudesScreen() {
   const [perfil, setPerfil] = useState(null);
   const [menuVisible, setMenuVisible] = useState(false);
 
+  // Solicitud abierta en la hoja de detalle, o null.
   const [detalle, setDetalle] = useState(null);
-  const [imagen, setImagen] = useState({ estado: "vacio", url: null });
-  const [ampliada, setAmpliada] = useState(false);
 
   const router = useRouter();
-
-  // Firmas ya pedidas: { path: { url, en } }. Vive mientras la pantalla.
-  const firmas = useRef(new Map());
-  // Detalle abierto ahora mismo. Si el cliente cierra y abre otro antes
-  // de que llegue la firma del primero, esa respuesta tardia no puede
-  // pintar la imagen equivocada.
-  const abierto = useRef(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -121,44 +74,6 @@ export default function SolicitudesScreen() {
   );
 
   const secciones = useMemo(() => agruparPorDia(solicitudes), [solicitudes]);
-
-  async function cargarImagen(sol) {
-    const path = sol.comprobante_url;
-    if (!path) {
-      setImagen({ estado: "sin", url: null });
-      return;
-    }
-
-    const guardada = firmas.current.get(path);
-    if (guardada && Date.now() - guardada.en < FIRMA_VALIDA_MS) {
-      setImagen({ estado: "listo", url: guardada.url });
-      return;
-    }
-
-    setImagen({ estado: "cargando", url: null });
-    const url = await urlFirmada(BUCKET, path);
-    if (abierto.current !== sol.id) return;
-
-    if (!url) {
-      setImagen({ estado: "error", url: null });
-      return;
-    }
-    firmas.current.set(path, { url, en: Date.now() });
-    setImagen({ estado: "listo", url });
-  }
-
-  function abrirDetalle(sol) {
-    abierto.current = sol.id;
-    setDetalle(sol);
-    cargarImagen(sol);
-  }
-
-  function cerrarDetalle() {
-    abierto.current = null;
-    setDetalle(null);
-    setAmpliada(false);
-    setImagen({ estado: "vacio", url: null });
-  }
 
   const cabecera = perfil ? (
     <TouchableOpacity
@@ -228,7 +143,7 @@ export default function SolicitudesScreen() {
             return (
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => abrirDetalle(item)}
+                onPress={() => setDetalle(item)}
                 style={[
                   s.fila,
                   index === 0 && s.filaPrimera,
@@ -269,212 +184,7 @@ export default function SolicitudesScreen() {
         />
       )}
 
-      {/* Detalle */}
-      <Modal
-        visible={Boolean(detalle)}
-        transparent
-        animationType="slide"
-        onRequestClose={() => (ampliada ? setAmpliada(false) : cerrarDetalle())}
-      >
-        <Pressable style={s.hojaFondo} onPress={cerrarDetalle}>
-          {/* Pressable interno: tocar la hoja no debe cerrarla. */}
-          <Pressable style={s.hoja} onPress={() => {}}>
-            {detalle && (
-              <>
-                <View style={s.hojaAsa} />
-
-                <View style={s.hojaCabecera}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.hojaEtiqueta}>Solicitud</Text>
-                    <Text style={s.hojaCodigo}>{detalle.codigo}</Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={cerrarDetalle}
-                    hitSlop={12}
-                    accessibilityRole="button"
-                    accessibilityLabel="Cerrar"
-                  >
-                    <Ionicons name="close" size={24} color={COLORS.textLight} />
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={{ paddingBottom: 12 }}
-                >
-                  <View
-                    style={[
-                      s.hojaEstado,
-                      { backgroundColor: estadoDe(detalle.estado).bg },
-                    ]}
-                  >
-                    <Ionicons
-                      name={estadoDe(detalle.estado).icon}
-                      size={18}
-                      color={estadoDe(detalle.estado).color}
-                    />
-                    <Text
-                      style={[
-                        s.hojaEstadoTexto,
-                        { color: estadoDe(detalle.estado).color },
-                      ]}
-                    >
-                      {estadoDe(detalle.estado).text}
-                    </Text>
-                  </View>
-
-                  <View style={s.datos}>
-                    <View style={s.dato}>
-                      <Text style={s.datoEtiqueta}>Tarjeta</Text>
-                      <Text style={s.datoValor}>
-                        {(detalle.tarjetas || {}).banco || detalle.banco}
-                        {detalle.tarjetas?.ultimos_4
-                          ? ` •••• ${detalle.tarjetas.ultimos_4}`
-                          : ""}
-                      </Text>
-                    </View>
-                    {detalle.nota_cliente ? (
-                      <View style={s.dato}>
-                        <Text style={s.datoEtiqueta}>Tu nota</Text>
-                        <Text style={s.datoValor}>{detalle.nota_cliente}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  {detalle.estado === "rechazado" && detalle.motivo_rechazo ? (
-                    <View style={s.rechazoBox}>
-                      <Text style={s.rechazoLabel}>Motivo del rechazo</Text>
-                      <Text style={s.rechazoTexto}>
-                        {detalle.motivo_rechazo}
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  {/* Recorrido */}
-                  <Text style={s.seccionTitulo}>Recorrido</Text>
-                  <View style={s.recorrido}>
-                    <Paso
-                      icono="paper-plane"
-                      color={COLORS.primaryLight}
-                      titulo="Enviada"
-                      fecha={detalle.created_at}
-                      ultimo={detalle.estado === "pendiente"}
-                    />
-                    {detalle.estado === "pendiente" ? null : (
-                      <Paso
-                        icono={
-                          detalle.estado === "rechazado"
-                            ? "close"
-                            : "checkmark"
-                        }
-                        color={
-                          detalle.estado === "rechazado"
-                            ? COLORS.error
-                            : COLORS.success
-                        }
-                        titulo={
-                          detalle.estado === "rechazado"
-                            ? "Rechazada"
-                            : "Aprobada"
-                        }
-                        fecha={detalle.fecha_revision}
-                        ultimo={detalle.estado !== "pagado"}
-                      />
-                    )}
-                    {detalle.estado === "pagado" && (
-                      <Paso
-                        icono="cash"
-                        color={COLORS.primary}
-                        titulo="Pago enviado"
-                        fecha={detalle.pagado_en}
-                        ultimo
-                      />
-                    )}
-                    {detalle.estado === "pendiente" && (
-                      <Text style={s.recorridoPista}>
-                        Estamos revisando tu comprobante. Te avisaremos en la
-                        campana cuando cambie.
-                      </Text>
-                    )}
-                  </View>
-
-                  {/* Comprobante: se carga recien ahora */}
-                  <Text style={s.seccionTitulo}>Comprobante</Text>
-                  {imagen.estado === "cargando" || imagen.estado === "vacio" ? (
-                    <View style={[s.comprobante, s.comprobanteCentro]}>
-                      <ActivityIndicator color={COLORS.primary} />
-                      <Text style={s.comprobanteAyuda}>
-                        Cargando comprobante…
-                      </Text>
-                    </View>
-                  ) : imagen.estado === "listo" ? (
-                    <TouchableOpacity
-                      activeOpacity={0.9}
-                      onPress={() => setAmpliada(true)}
-                    >
-                      <Image
-                        source={{ uri: imagen.url }}
-                        style={s.comprobante}
-                        resizeMode="contain"
-                      />
-                      <Text style={s.comprobanteAmpliar}>
-                        Toca para verlo en pantalla completa
-                      </Text>
-                    </TouchableOpacity>
-                  ) : imagen.estado === "sin" ? (
-                    <View style={[s.comprobante, s.comprobanteCentro]}>
-                      <Ionicons
-                        name="image-outline"
-                        size={28}
-                        color={COLORS.textLight}
-                      />
-                      <Text style={s.comprobanteAyuda}>
-                        Esta solicitud no tiene comprobante guardado.
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={[s.comprobante, s.comprobanteCentro]}>
-                      <Ionicons
-                        name="cloud-offline-outline"
-                        size={28}
-                        color={COLORS.textLight}
-                      />
-                      <Text style={s.comprobanteAyuda}>
-                        No pudimos cargar el comprobante.
-                      </Text>
-                      <TouchableOpacity
-                        style={s.reintentar}
-                        onPress={() => cargarImagen(detalle)}
-                      >
-                        <Text style={s.reintentarTexto}>Reintentar</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </ScrollView>
-              </>
-            )}
-          </Pressable>
-        </Pressable>
-
-        {/* Pantalla completa, dentro del mismo Modal: dos Modal de React
-            Native abiertos a la vez se comportan distinto en Android e
-            iOS, y uno puede quedar detras del otro. */}
-        {ampliada && imagen.url ? (
-          <Pressable
-            style={s.ampliadaFondo}
-            onPress={() => setAmpliada(false)}
-          >
-            <Image
-              source={{ uri: imagen.url }}
-              style={s.ampliadaImagen}
-              resizeMode="contain"
-            />
-            <View style={s.ampliadaCerrar}>
-              <Ionicons name="close" size={26} color={COLORS.white} />
-            </View>
-          </Pressable>
-        ) : null}
-      </Modal>
+      <DetalleSolicitud solicitud={detalle} onCerrar={() => setDetalle(null)} />
 
       <MenuLateral
         visible={menuVisible}
@@ -557,121 +267,4 @@ const s = StyleSheet.create({
   emptyTitle: { ...TIPO.seccion, marginTop: 12, marginBottom: 4 },
   empty: { ...TIPO.apoyo, textAlign: "center" },
 
-  // Hoja de detalle
-  hojaFondo: {
-    flex: 1,
-    backgroundColor: "rgba(15,27,51,0.55)",
-    justifyContent: "flex-end",
-  },
-  hoja: {
-    backgroundColor: COLORS.card,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingHorizontal: 20,
-    paddingBottom: 28,
-    maxHeight: "90%",
-  },
-  hojaAsa: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.border,
-    alignSelf: "center",
-    marginTop: 10,
-    marginBottom: 10,
-  },
-  hojaCabecera: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  hojaEtiqueta: { ...TIPO.micro, textTransform: "uppercase", letterSpacing: 0.6 },
-  hojaCodigo: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginTop: 2,
-    ...CIFRAS,
-  },
-  hojaEstado: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  hojaEstadoTexto: { fontSize: 14, fontWeight: "700" },
-
-  datos: { marginTop: 14, gap: 10 },
-  dato: {},
-  datoEtiqueta: { ...TIPO.micro, marginBottom: 2 },
-  datoValor: { fontSize: 14, color: COLORS.text, lineHeight: 20 },
-
-  rechazoBox: {
-    backgroundColor: COLORS.errorLight,
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 14,
-  },
-  rechazoLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.error,
-    marginBottom: 3,
-  },
-  rechazoTexto: { fontSize: 13.5, color: COLORS.error, lineHeight: 19 },
-
-  seccionTitulo: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginTop: 20,
-    marginBottom: 10,
-  },
-
-  recorrido: {},
-  recorridoPista: { ...TIPO.apoyo, marginTop: 6 },
-  paso: { flexDirection: "row", gap: 12 },
-  pasoRiel: { alignItems: "center", width: 22 },
-  pasoPunto: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pasoLinea: { width: 2, flex: 1, minHeight: 16, backgroundColor: COLORS.border },
-  pasoTexto: { flex: 1, paddingBottom: 14 },
-  pasoTitulo: { fontSize: 14, fontWeight: "600", color: COLORS.text },
-  pasoFecha: { ...TIPO.micro, marginTop: 2 },
-
-  comprobante: {
-    width: "100%",
-    height: 320,
-    borderRadius: 12,
-    backgroundColor: COLORS.inputBg,
-  },
-  comprobanteCentro: { alignItems: "center", justifyContent: "center", gap: 8 },
-  comprobanteAyuda: { ...TIPO.apoyo, textAlign: "center", paddingHorizontal: 20 },
-  comprobanteAmpliar: { ...TIPO.micro, textAlign: "center", marginTop: 8 },
-  reintentar: {
-    marginTop: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  reintentarTexto: { fontSize: 13, fontWeight: "600", color: COLORS.primary },
-
-  ampliadaFondo: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.95)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  ampliadaImagen: { width: "100%", height: "82%" },
-  ampliadaCerrar: { position: "absolute", top: 50, right: 20 },
 });
