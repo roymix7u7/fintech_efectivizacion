@@ -65,9 +65,11 @@ export default function RootLayout() {
           name="guia/[banco]"
           options={{ title: "Guía del banco" }}
         />
+        {/* Dibuja su propia cabecera azul, de flujo: sin esto salian la
+            nativa blanca y la de la pantalla, una encima de otra. */}
         <Stack.Screen
           name="nueva-solicitud"
-          options={{ title: "Nueva solicitud" }}
+          options={{ headerShown: false }}
         />
         <Stack.Screen name="notificaciones" options={{ title: "Avisos" }} />
       </Stack>

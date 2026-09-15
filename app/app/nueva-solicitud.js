@@ -26,6 +26,7 @@ import { prepararImagen } from "../src/lib/imagen";
 import { esFalloDeRed } from "../src/lib/conexion";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
 import { Esqueleto, Aparece } from "../src/components/Cargando";
+import CabeceraFlujo from "../src/components/CabeceraFlujo";
 import { useAlturaTeclado } from "../src/lib/teclado";
 import { alertasUrgentes, marcarVistas } from "../src/lib/alertas";
 
@@ -371,9 +372,12 @@ export default function NuevaSolicitudScreen() {
   if (cargando) {
     return (
       <View style={s.pantalla}>
+        <CabeceraFlujo
+          titulo="Nueva solicitud"
+          subtitulo="Envía tu comprobante"
+        />
         <View style={s.contenido}>
-          <Esqueleto alto={112} radio={16} />
-          <Esqueleto alto={150} radio={16} estilo={{ marginTop: 14 }} />
+          <Esqueleto alto={150} radio={16} />
           <Esqueleto alto={190} radio={16} estilo={{ marginTop: 14 }} />
           <Esqueleto alto={110} radio={16} estilo={{ marginTop: 14 }} />
         </View>
@@ -389,6 +393,33 @@ export default function NuevaSolicitudScreen() {
 
   return (
     <View style={s.pantalla}>
+      <CabeceraFlujo
+        titulo="Nueva solicitud"
+        subtitulo="Envía tu comprobante"
+        // Con el envio en marcha no se sale: el cliente creeria que lo
+        // cancelo, y la solicitud se crearia igual.
+        volverDeshabilitado={ocupado}
+      >
+        <View style={s.avanceFila}>
+          <View style={s.avancePista}>
+            <Animated.View
+              style={[
+                s.avanceRelleno,
+                {
+                  width: avance.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ["0%", "100%"],
+                  }),
+                },
+              ]}
+            />
+          </View>
+          <Text style={s.avanceTexto}>
+            {completos === 2 ? "Listo para enviar" : `${completos} de 2 pasos`}
+          </Text>
+        </View>
+      </CabeceraFlujo>
+
       <ScrollView
         contentContainerStyle={[
           s.contenido,
@@ -398,47 +429,6 @@ export default function NuevaSolicitudScreen() {
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Portada con avance ── */}
-        <Aparece>
-          <View style={s.portada}>
-            <View style={s.portadaHalo} />
-            <View style={s.portadaFila}>
-              <View style={s.portadaIcono}>
-                <Ionicons
-                  name="cloud-upload"
-                  size={22}
-                  color={COLORS.primaryDark}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.portadaTitulo}>Envía tu comprobante</Text>
-                <Text style={s.portadaTexto}>
-                  Lo revisamos y te avisamos en la campana.
-                </Text>
-              </View>
-            </View>
-
-            <View style={s.avanceFila}>
-              <View style={s.avancePista}>
-                <Animated.View
-                  style={[
-                    s.avanceRelleno,
-                    {
-                      width: avance.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ["0%", "100%"],
-                      }),
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={s.avanceTexto}>
-                {completos === 2 ? "Listo para enviar" : `${completos} de 2`}
-              </Text>
-            </View>
-          </View>
-        </Aparece>
-
         {/* ── Paso 1: tarjeta ── */}
         <Aparece retraso={80}>
           <View style={s.bloque}>
@@ -750,43 +740,11 @@ const s = StyleSheet.create({
   pantalla: { flex: 1, backgroundColor: COLORS.background },
   contenido: { padding: 20, gap: 14 },
 
-  // Portada
-  portada: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 18,
-    padding: 18,
-    overflow: "hidden",
-  },
-  portadaHalo: {
-    position: "absolute",
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: COLORS.primaryLight,
-    opacity: 0.45,
-    top: -80,
-    right: -50,
-  },
-  portadaFila: { flexDirection: "row", alignItems: "center", gap: 12 },
-  portadaIcono: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.secondary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  portadaTitulo: { fontSize: 17, fontWeight: "700", color: COLORS.white },
-  portadaTexto: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.72)",
-    marginTop: 2,
-  },
+  // Avance, dentro de la cabecera
   avanceFila: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginTop: 16,
   },
   avancePista: {
     flex: 1,
