@@ -1,39 +1,42 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   ScrollView,
   Image,
   ActivityIndicator,
   Modal,
+  Animated,
+  Easing,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../src/lib/supabase";
 import COLORS from "../src/theme/colors";
+import TIPO, { CIFRAS } from "../src/theme/tipografia";
 import { mensajeError } from "../src/lib/ui";
 import { useAviso } from "../src/components/Avisos";
 import { pedirPermiso } from "../src/lib/permisos";
 import { prepararImagen } from "../src/lib/imagen";
 import { esFalloDeRed } from "../src/lib/conexion";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
-import { Esqueleto } from "../src/components/Cargando";
+import { Esqueleto, Aparece } from "../src/components/Cargando";
 import { useAlturaTeclado } from "../src/lib/teclado";
 import { alertasUrgentes, marcarVistas } from "../src/lib/alertas";
 
 const BUCKET = "comprobantes";
 const MAX_NOTA = 300;
 
-/** Opciones del selector. base64 es obligatorio para que la subida no llegue vacia. */
+/** Opciones del selector. El base64 lo entrega prepararImagen, ya achicada. */
 const OPCIONES_FOTO = {
   mediaTypes: ["images"],
   quality: 1,
   allowsEditing: true,
-  // El base64 lo entrega prepararImagen, ya achicada.
 };
 
 /**
@@ -63,12 +66,93 @@ function haceCuanto(iso) {
   return d === 1 ? "Ayer" : `Hace ${d} días`;
 }
 
+// ── Piezas ────────────────────────────────────────────────────
+
+/**
+ * Encabezado de un paso. El numero se vuelve una marca verde al
+ * completarse: el cliente ve de un vistazo que le falta, sin leer.
+ */
+function EncabezadoPaso({ numero, titulo, detalle, listo, opcional }) {
+  return (
+    <View style={s.pasoCabecera}>
+      <View style={[s.pasoNumero, listo && s.pasoNumeroListo]}>
+        {listo ? (
+          <Ionicons name="checkmark" size={15} color={COLORS.white} />
+        ) : (
+          <Text style={s.pasoNumeroTexto}>{numero}</Text>
+        )}
+      </View>
+      <View style={{ flex: 1 }}>
+        <View style={s.pasoTituloFila}>
+          <Text style={s.pasoTitulo}>{titulo}</Text>
+          {opcional && <Text style={s.opcional}>Opcional</Text>}
+        </View>
+        {detalle ? <Text style={s.pasoDetalle}>{detalle}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Tarjeta elegible, dibujada como una tarjeta de verdad. Se hunde un
+ * poco al presionarla: la respuesta llega antes de soltar el dedo.
+ */
+function TarjetaMini({ tarjeta, activa, onPress, disabled }) {
+  const escala = useRef(new Animated.Value(1)).current;
+  const animar = (valor) =>
+    Animated.spring(escala, {
+      toValue: valor,
+      speed: 40,
+      bounciness: 6,
+      useNativeDriver: true,
+    }).start();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => animar(0.95)}
+      onPressOut={() => animar(1)}
+      disabled={disabled}
+      accessibilityRole="radio"
+      accessibilityState={{ selected: activa, disabled }}
+      accessibilityLabel={`Tarjeta ${tarjeta.banco} terminada en ${tarjeta.ultimos_4}`}
+    >
+      <Animated.View
+        style={[
+          s.tarjeta,
+          activa && s.tarjetaActiva,
+          { transform: [{ scale: escala }] },
+        ]}
+      >
+        <View style={s.tarjetaBrillo} />
+        <View style={s.tarjetaArriba}>
+          <Text style={s.tarjetaBanco} numberOfLines={1}>
+            {tarjeta.banco}
+          </Text>
+          <View style={s.tarjetaChip} />
+        </View>
+        <Text style={s.tarjetaNumero}>•••• {tarjeta.ultimos_4}</Text>
+
+        {activa && (
+          <View style={s.tarjetaCheck}>
+            <Ionicons name="checkmark" size={13} color={COLORS.primaryDark} />
+          </View>
+        )}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ── Pantalla ──────────────────────────────────────────────────
+
 export default function NuevaSolicitudScreen() {
   const [perfil, setPerfil] = useState(null);
   const [tarjetas, setTarjetas] = useState([]);
   const [tarjetaSeleccionada, setTarjetaSeleccionada] = useState(null);
   const [comprobante, setComprobante] = useState(null);
+  const [procesando, setProcesando] = useState(false);
   const [nota, setNota] = useState("");
+  const [notaEnfocada, setNotaEnfocada] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [verificando, setVerificando] = useState(false);
@@ -78,9 +162,30 @@ export default function NuevaSolicitudScreen() {
   // deshabilitar el boton, y en ese intervalo un segundo toque lanzaba
   // otra verificacion y otro envio.
   const enCurso = useRef(false);
+  // Solo la primera carga muestra el esqueleto. Al volver a esta
+  // pantalla se refresca en silencio: tapar con esqueletos un formulario
+  // ya lleno haria parpadear lo que el cliente estaba haciendo.
+  const yaCargo = useRef(false);
+
   const altoTeclado = useAlturaTeclado();
   const { mostrar } = useAviso();
   const router = useRouter();
+
+  const listo = Boolean(tarjetaSeleccionada && comprobante);
+  const ocupado = enviando || verificando;
+
+  // Barra de avance: se llena a medida que se completan los pasos
+  // obligatorios. Anima el ancho, asi que no puede usar el driver nativo.
+  const avance = useRef(new Animated.Value(0)).current;
+  const completos = (tarjetaSeleccionada ? 1 : 0) + (comprobante ? 1 : 0);
+  useEffect(() => {
+    Animated.timing(avance, {
+      toValue: completos / 2,
+      duration: 380,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [completos, avance]);
 
   useFocusEffect(
     useCallback(() => {
@@ -89,7 +194,7 @@ export default function NuevaSolicitudScreen() {
   );
 
   async function cargarDatos() {
-    setCargando(true);
+    if (!yaCargo.current) setCargando(true);
     try {
       const {
         data: { user },
@@ -118,36 +223,43 @@ export default function NuevaSolicitudScreen() {
         mostrar(mensajeError(error), "error");
         return;
       }
-      setTarjetas(tarjetasData || []);
+      const lista = tarjetasData || [];
+      setTarjetas(lista);
 
-      // Si la tarjeta elegida ya no esta disponible, se limpia.
-      setTarjetaSeleccionada((actual) =>
-        actual && (tarjetasData || []).some((t) => t.id === actual.id)
-          ? actual
-          : null,
-      );
+      // Si la tarjeta elegida ya no esta disponible, se limpia. Y si solo
+      // hay una, se elige sola: preguntar cuando no hay nada que decidir
+      // es un paso de mas.
+      setTarjetaSeleccionada((actual) => {
+        if (actual && lista.some((t) => t.id === actual.id)) return actual;
+        return lista.length === 1 ? lista[0] : null;
+      });
     } finally {
+      yaCargo.current = true;
       setCargando(false);
     }
   }
 
-  async function tomarFoto() {
-    if (!(await pedirPermiso("camara"))) return;
-    const r = await ImagePicker.launchCameraAsync(OPCIONES_FOTO);
-    if (!r.canceled && r.assets?.[0]) guardarComprobante(r.assets[0]);
-  }
+  async function elegirFoto(desdeCamara) {
+    if (ocupado || procesando) return;
+    if (!(await pedirPermiso(desdeCamara ? "camara" : "galeria"))) return;
+    const r = desdeCamara
+      ? await ImagePicker.launchCameraAsync(OPCIONES_FOTO)
+      : await ImagePicker.launchImageLibraryAsync(OPCIONES_FOTO);
+    if (r.canceled || !r.assets?.[0]) return;
 
-  async function seleccionarDeGaleria() {
-    if (!(await pedirPermiso("galeria"))) return;
-    const r = await ImagePicker.launchImageLibraryAsync(OPCIONES_FOTO);
-    if (!r.canceled && r.assets?.[0]) guardarComprobante(r.assets[0]);
-  }
-
-  async function guardarComprobante(asset) {
-    const lista = await prepararImagen(asset);
-    if (!lista.base64)
-      return mostrar("No pudimos leer la imagen. Intentalo otra vez.", "error");
-    setComprobante(lista);
+    // Reducir una foto de camara tarda un momento: sin indicador, parece
+    // que el toque no hizo nada y el cliente vuelve a intentarlo.
+    setProcesando(true);
+    try {
+      const lista = await prepararImagen(r.assets[0]);
+      if (!lista?.base64) {
+        mostrar("No pudimos leer la imagen. Inténtalo otra vez.", "error");
+        return;
+      }
+      setComprobante(lista);
+    } finally {
+      setProcesando(false);
+    }
   }
 
   /**
@@ -189,9 +301,6 @@ export default function NuevaSolicitudScreen() {
   }
 
   async function enviarSolicitud() {
-    // Sin comprobaciones de tarjeta ni comprobante: el botón de enviar
-    // está deshabilitado hasta tener ambos, así que avisarlo aquí sería
-    // repetir lo que la pantalla ya muestra.
     if (!perfil) return mostrar("No pudimos cargar tu perfil. Reintenta.", "error");
     // El boton ya exige ambas cosas, pero el envio puede llegar desde el
     // modal despues de que algo cambio: se comprueba de nuevo.
@@ -258,180 +367,331 @@ export default function NuevaSolicitudScreen() {
     }
   }
 
+  // ── Carga ──
   if (cargando) {
     return (
-      <View style={s.container}>
-        <View style={s.content}>
-          <Esqueleto alto={18} ancho="70%" />
-          <Esqueleto alto={13} ancho="50%" estilo={{ marginTop: 10 }} />
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
-            <Esqueleto alto={86} ancho={140} radio={14} />
-            <Esqueleto alto={86} ancho={140} radio={14} />
-          </View>
-          <Esqueleto alto={18} ancho="60%" estilo={{ marginTop: 28 }} />
-          <Esqueleto alto={200} radio={14} estilo={{ marginTop: 14 }} />
+      <View style={s.pantalla}>
+        <View style={s.contenido}>
+          <Esqueleto alto={112} radio={16} />
+          <Esqueleto alto={150} radio={16} estilo={{ marginTop: 14 }} />
+          <Esqueleto alto={190} radio={16} estilo={{ marginTop: 14 }} />
+          <Esqueleto alto={110} radio={16} estilo={{ marginTop: 14 }} />
         </View>
       </View>
     );
   }
 
-  const listo = Boolean(tarjetaSeleccionada && comprobante);
+  const textoBoton = verificando
+    ? "Verificando…"
+    : enviando
+      ? "Enviando…"
+      : "Enviar solicitud";
 
   return (
-    <ScrollView
-      style={s.container}
-      contentContainerStyle={[s.content, { paddingBottom: 60 + altoTeclado }]}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-    >
-      {/* Paso 1: Seleccionar tarjeta */}
-      <Text style={s.stepTitle}>
-        1. Con que tarjeta realizaste la operacion?
-      </Text>
-      <Text style={s.stepSub}>
-        Solo puedes enviar comprobantes de tus tarjetas verificadas
-      </Text>
-
-      {tarjetas.length === 0 ? (
-        <TouchableOpacity
-          style={s.warningBox}
-          onPress={() => router.dismissTo("/(tabs)/tarjetas")}
-        >
-          <Text style={s.warningText}>
-            No tienes tarjetas verificadas. Toca aqui para registrar una.
-          </Text>
-        </TouchableOpacity>
-      ) : (
-        <View style={s.tarjetasGrid}>
-          {tarjetas.map((t) => {
-            const activa = tarjetaSeleccionada?.id === t.id;
-            return (
-              <TouchableOpacity
-                key={t.id}
-                style={[s.tarjetaCard, activa && s.tarjetaCardActive]}
-                onPress={() => setTarjetaSeleccionada(activa ? null : t)}
-              >
-                <Text
-                  style={[s.tarjetaBanco, activa && s.tarjetaTextActive]}
-                >
-                  {t.banco}
+    <View style={s.pantalla}>
+      <ScrollView
+        contentContainerStyle={[
+          s.contenido,
+          { paddingBottom: 24 + altoTeclado },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Portada con avance ── */}
+        <Aparece>
+          <View style={s.portada}>
+            <View style={s.portadaHalo} />
+            <View style={s.portadaFila}>
+              <View style={s.portadaIcono}>
+                <Ionicons
+                  name="cloud-upload"
+                  size={22}
+                  color={COLORS.primaryDark}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.portadaTitulo}>Envía tu comprobante</Text>
+                <Text style={s.portadaTexto}>
+                  Lo revisamos y te avisamos en la campana.
                 </Text>
-                <Text
-                  style={[s.tarjetaNumero, activa && s.tarjetaTextActive]}
-                >
-                  {"•••• "}
-                  {t.ultimos_4}
-                </Text>
-                {activa && <Text style={s.tarjetaCheck}>{"✓"}</Text>}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
+              </View>
+            </View>
 
-      {/* Paso 2: Comprobante */}
-      <Text style={s.stepTitle}>2. Adjunta el comprobante</Text>
-      <Text style={s.stepSub}>
-        Foto clara del voucher o captura de la transferencia
-      </Text>
-
-      {comprobante ? (
-        <View style={s.comprobantePreview}>
-          <Image source={{ uri: comprobante.uri }} style={s.comprobanteImage} />
-          <TouchableOpacity
-            onPress={() => setComprobante(null)}
-            disabled={enviando}
-          >
-            <Text style={s.cambiarFoto}>Cambiar comprobante</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={s.fotoBtns}>
-          <TouchableOpacity
-            style={s.fotoBtn}
-            onPress={tomarFoto}
-            disabled={enviando}
-          >
-            <Text style={s.fotoBtnIcon}>{"📷"}</Text>
-            <Text style={s.fotoBtnText}>Tomar foto</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={s.fotoBtn}
-            onPress={seleccionarDeGaleria}
-            disabled={enviando}
-          >
-            <Text style={s.fotoBtnIcon}>{"🖼"}</Text>
-            <Text style={s.fotoBtnText}>Galeria</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Paso 3: Nota opcional */}
-      <Text style={s.stepTitle}>3. Nota adicional (opcional)</Text>
-      <TextInput
-        style={s.textArea}
-        placeholder="Algun detalle sobre la operacion..."
-        value={nota}
-        onChangeText={(v) => setNota(v.slice(0, MAX_NOTA))}
-        multiline
-        maxLength={MAX_NOTA}
-        placeholderTextColor={COLORS.textLight}
-      />
-      <Text style={s.contador}>
-        {nota.length} / {MAX_NOTA}
-      </Text>
-
-      {/* Resumen */}
-      {listo && (
-        <View style={s.resumen}>
-          <Text style={s.resumenTitle}>Resumen de solicitud</Text>
-          <View style={s.resumenRow}>
-            <Text style={s.resumenLabel}>Tarjeta</Text>
-            <Text style={s.resumenValue}>
-              {tarjetaSeleccionada.banco}
-              {" •••• "}
-              {tarjetaSeleccionada.ultimos_4}
-            </Text>
-          </View>
-          <View style={s.resumenRow}>
-            <Text style={s.resumenLabel}>Comprobante</Text>
-            <Text style={[s.resumenValue, { color: COLORS.success }]}>
-              Adjunto
-            </Text>
-          </View>
-          {nota.trim() ? (
-            <View style={s.resumenRow}>
-              <Text style={s.resumenLabel}>Nota</Text>
-              <Text style={s.resumenValue} numberOfLines={1}>
-                {nota.trim()}
+            <View style={s.avanceFila}>
+              <View style={s.avancePista}>
+                <Animated.View
+                  style={[
+                    s.avanceRelleno,
+                    {
+                      width: avance.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ["0%", "100%"],
+                      }),
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={s.avanceTexto}>
+                {completos === 2 ? "Listo para enviar" : `${completos} de 2`}
               </Text>
             </View>
-          ) : null}
+          </View>
+        </Aparece>
+
+        {/* ── Paso 1: tarjeta ── */}
+        <Aparece retraso={80}>
+          <View style={s.bloque}>
+            <EncabezadoPaso
+              numero={1}
+              titulo="¿Con qué tarjeta hiciste la operación?"
+              detalle="Solo aparecen tus tarjetas verificadas."
+              listo={Boolean(tarjetaSeleccionada)}
+            />
+
+            {tarjetas.length === 0 ? (
+              <View style={s.sinTarjetas}>
+                <Ionicons
+                  name="card-outline"
+                  size={26}
+                  color={COLORS.warning}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.sinTarjetasTitulo}>
+                    Aún no tienes tarjetas verificadas
+                  </Text>
+                  <Text style={s.sinTarjetasTexto}>
+                    Regístrala primero. La verificamos en pocas horas.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={s.sinTarjetasBtn}
+                  onPress={() => router.dismissTo("/(tabs)/tarjetas")}
+                >
+                  <Text style={s.sinTarjetasBtnTexto}>Registrar</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.tarjetasFila}
+                // Las tarjetas quedan pegadas al borde del bloque, sin
+                // que el padding corte la sombra de la primera.
+                style={s.tarjetasScroll}
+              >
+                {tarjetas.map((t) => {
+                  const activa = tarjetaSeleccionada?.id === t.id;
+                  return (
+                    <TarjetaMini
+                      key={t.id}
+                      tarjeta={t}
+                      activa={activa}
+                      disabled={ocupado}
+                      onPress={() => setTarjetaSeleccionada(activa ? null : t)}
+                    />
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </Aparece>
+
+        {/* ── Paso 2: comprobante ── */}
+        <Aparece retraso={160}>
+          <View style={s.bloque}>
+            <EncabezadoPaso
+              numero={2}
+              titulo="Adjunta el comprobante"
+              detalle="Foto clara del voucher o captura de la transferencia."
+              listo={Boolean(comprobante)}
+            />
+
+            {procesando ? (
+              <View style={[s.zona, s.zonaCentro]}>
+                <ActivityIndicator color={COLORS.primary} />
+                <Text style={s.zonaAyuda}>Preparando la imagen…</Text>
+              </View>
+            ) : comprobante ? (
+              <Aparece key={comprobante.uri}>
+                <View style={s.vista}>
+                  <Image
+                    source={{ uri: comprobante.uri }}
+                    style={s.vistaImagen}
+                    resizeMode="contain"
+                  />
+                  <View style={s.vistaListo}>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={14}
+                      color={COLORS.success}
+                    />
+                    <Text style={s.vistaListoTexto}>Comprobante listo</Text>
+                  </View>
+                </View>
+                <View style={s.vistaAcciones}>
+                  <TouchableOpacity
+                    style={s.vistaAccion}
+                    onPress={() => elegirFoto(true)}
+                    disabled={ocupado}
+                  >
+                    <Ionicons
+                      name="camera-outline"
+                      size={16}
+                      color={COLORS.primary}
+                    />
+                    <Text style={s.vistaAccionTexto}>Otra foto</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={s.vistaAccion}
+                    onPress={() => elegirFoto(false)}
+                    disabled={ocupado}
+                  >
+                    <Ionicons
+                      name="images-outline"
+                      size={16}
+                      color={COLORS.primary}
+                    />
+                    <Text style={s.vistaAccionTexto}>Galería</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={s.vistaAccion}
+                    onPress={() => setComprobante(null)}
+                    disabled={ocupado}
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={16}
+                      color={COLORS.error}
+                    />
+                    <Text style={[s.vistaAccionTexto, { color: COLORS.error }]}>
+                      Quitar
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </Aparece>
+            ) : (
+              <View style={s.zona}>
+                <View style={s.zonaIcono}>
+                  <Ionicons
+                    name="receipt-outline"
+                    size={26}
+                    color={COLORS.primaryLight}
+                  />
+                </View>
+                <Text style={s.zonaAyuda}>
+                  Que se lean el monto, la fecha y el número de operación.
+                </Text>
+                <View style={s.zonaBotones}>
+                  <TouchableOpacity
+                    style={[s.zonaBtn, s.zonaBtnPrincipal]}
+                    onPress={() => elegirFoto(true)}
+                    disabled={ocupado}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="camera" size={18} color={COLORS.white} />
+                    <Text style={s.zonaBtnPrincipalTexto}>Tomar foto</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={s.zonaBtn}
+                    onPress={() => elegirFoto(false)}
+                    disabled={ocupado}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons
+                      name="images-outline"
+                      size={18}
+                      color={COLORS.primary}
+                    />
+                    <Text style={s.zonaBtnTexto}>Galería</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        </Aparece>
+
+        {/* ── Paso 3: nota ── */}
+        <Aparece retraso={240}>
+          <View style={s.bloque}>
+            <EncabezadoPaso
+              numero={3}
+              titulo="Nota adicional"
+              detalle="Algo que debamos saber sobre la operación."
+              listo={Boolean(nota.trim())}
+              opcional
+            />
+            <TextInput
+              style={[s.nota, notaEnfocada && s.notaEnfocada]}
+              placeholder="Ej: la hice desde la app del banco a las 3 p. m."
+              value={nota}
+              onChangeText={(v) => setNota(v.slice(0, MAX_NOTA))}
+              onFocus={() => setNotaEnfocada(true)}
+              onBlur={() => setNotaEnfocada(false)}
+              multiline
+              maxLength={MAX_NOTA}
+              editable={!ocupado}
+              placeholderTextColor={COLORS.textLight}
+            />
+            <Text
+              style={[
+                s.contador,
+                nota.length > MAX_NOTA * 0.9 && { color: COLORS.warning },
+              ]}
+            >
+              {nota.length} / {MAX_NOTA}
+            </Text>
+          </View>
+        </Aparece>
+      </ScrollView>
+
+      {/* ── Pie fijo con el envío ──
+          Se oculta con el teclado abierto: en Android la pantalla se
+          encoge y el pie taparia justo la nota que se esta escribiendo. */}
+      {altoTeclado === 0 && (
+        <View style={s.pie}>
+          <View style={s.pieResumen}>
+            <Ionicons
+              name={listo ? "checkmark-circle" : "information-circle-outline"}
+              size={16}
+              color={listo ? COLORS.success : COLORS.textLight}
+            />
+            <Text style={s.pieResumenTexto} numberOfLines={1}>
+              {listo
+                ? `${tarjetaSeleccionada.banco} •••• ${tarjetaSeleccionada.ultimos_4} · comprobante adjunto`
+                : !tarjetaSeleccionada && !comprobante
+                  ? "Elige la tarjeta y adjunta el comprobante"
+                  : !tarjetaSeleccionada
+                    ? "Falta elegir la tarjeta"
+                    : "Falta adjuntar el comprobante"}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={[s.btnEnviar, (!listo || ocupado) && s.btnDeshabilitado]}
+            onPress={alPresionarEnviar}
+            disabled={!listo || ocupado || procesando}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !listo || ocupado }}
+          >
+            {ocupado ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Ionicons
+                name="paper-plane"
+                size={17}
+                color={listo ? COLORS.white : COLORS.textLight}
+              />
+            )}
+            <Text style={[s.btnEnviarTexto, !listo && !ocupado && s.btnEnviarTextoOff]}>
+              {textoBoton}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 
-      {/* Enviar */}
-      <TouchableOpacity
-        style={[
-          s.btnEnviar,
-          (!listo || enviando || verificando) && s.btnDisabled,
-        ]}
-        onPress={alPresionarEnviar}
-        disabled={enviando || verificando || !listo}
-      >
-        {(enviando || verificando) && (
-          <ActivityIndicator size="small" color={COLORS.white} />
-        )}
-        <Text style={s.btnEnviarText}>
-          {verificando
-            ? "Verificando..."
-            : enviando
-              ? "Enviando..."
-              : "Enviar solicitud"}
-        </Text>
-      </TouchableOpacity>
-
-      {/* Alerta urgente antes de enviar */}
+      {/* ── Alerta urgente antes de enviar ── */}
       <Modal
         visible={Boolean(urgentes?.length)}
         transparent
@@ -448,9 +708,7 @@ export default function NuevaSolicitudScreen() {
                 ? "Hay avisos urgentes"
                 : "Hay un aviso urgente"}
             </Text>
-            <Text style={s.modalTexto}>
-              Léelo antes de enviar tu solicitud.
-            </Text>
+            <Text style={s.modalTexto}>Léelo antes de enviar tu solicitud.</Text>
 
             <ScrollView
               style={s.modalLista}
@@ -484,121 +742,328 @@ export default function NuevaSolicitudScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
+
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  centrado: { justifyContent: "center", alignItems: "center" },
-  contador: { fontSize: 12, color: COLORS.textLight, textAlign: "right", marginTop: 6 },
-  content: { padding: 20, paddingBottom: 60 },
-  stepTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginTop: 20,
-    marginBottom: 4,
+  pantalla: { flex: 1, backgroundColor: COLORS.background },
+  contenido: { padding: 20, gap: 14 },
+
+  // Portada
+  portada: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 18,
+    padding: 18,
+    overflow: "hidden",
   },
-  stepSub: { fontSize: 13, color: COLORS.textSecondary, marginBottom: 14 },
-  warningBox: {
-    backgroundColor: "#FFF8E1",
-    borderRadius: 12,
-    padding: 14,
+  portadaHalo: {
+    position: "absolute",
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: COLORS.primaryLight,
+    opacity: 0.45,
+    top: -80,
+    right: -50,
+  },
+  portadaFila: { flexDirection: "row", alignItems: "center", gap: 12 },
+  portadaIcono: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.secondary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  portadaTitulo: { fontSize: 17, fontWeight: "700", color: COLORS.white },
+  portadaTexto: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.72)",
+    marginTop: 2,
+  },
+  avanceFila: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 16,
+  },
+  avancePista: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    overflow: "hidden",
+  },
+  avanceRelleno: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: COLORS.secondary,
+  },
+  avanceTexto: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.85)",
+    ...CIFRAS,
+  },
+
+  // Bloques de paso
+  bloque: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: "#FFE082",
+    borderColor: COLORS.borderLight,
   },
-  warningText: { fontSize: 14, color: "#F57F17" },
-  tarjetasGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  tarjetaCard: {
+  pasoCabecera: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 14,
+  },
+  pasoNumero: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     borderWidth: 1.5,
     borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  pasoNumeroListo: {
+    backgroundColor: COLORS.success,
+    borderColor: COLORS.success,
+  },
+  pasoNumeroTexto: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+  },
+  pasoTituloFila: { flexDirection: "row", alignItems: "center", gap: 8 },
+  pasoTitulo: { ...TIPO.tarjeta, flexShrink: 1 },
+  pasoDetalle: { ...TIPO.apoyo, marginTop: 2 },
+  opcional: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    color: COLORS.textLight,
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: "hidden",
+  },
+
+  // Tarjetas
+  tarjetasScroll: { marginHorizontal: -16 },
+  tarjetasFila: { paddingHorizontal: 16, gap: 10, paddingVertical: 2 },
+  tarjeta: {
+    width: 150,
+    height: 92,
     borderRadius: 14,
-    padding: 16,
-    minWidth: 140,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.primaryLight,
+    padding: 12,
+    justifyContent: "space-between",
+    borderWidth: 2,
+    borderColor: "transparent",
+    overflow: "hidden",
   },
-  tarjetaCardActive: {
-    borderColor: COLORS.primary,
+  tarjetaActiva: {
     backgroundColor: COLORS.primary,
+    borderColor: COLORS.secondary,
   },
-  tarjetaBanco: { fontSize: 16, fontWeight: "600", color: COLORS.text },
-  tarjetaNumero: { fontSize: 14, color: COLORS.textSecondary, marginTop: 4 },
-  tarjetaTextActive: { color: COLORS.white },
+  tarjetaBrillo: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    bottom: -60,
+    right: -30,
+  },
+  tarjetaArriba: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  tarjetaBanco: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.white,
+    flexShrink: 1,
+  },
+  tarjetaChip: {
+    width: 22,
+    height: 16,
+    borderRadius: 4,
+    backgroundColor: COLORS.secondary,
+    opacity: 0.85,
+  },
+  tarjetaNumero: {
+    fontSize: 14,
+    letterSpacing: 1.5,
+    color: "rgba(255,255,255,0.9)",
+    ...CIFRAS,
+  },
   tarjetaCheck: {
     position: "absolute",
-    top: 8,
+    bottom: 10,
     right: 10,
-    fontSize: 16,
-    color: COLORS.secondary,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.secondary,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  comprobantePreview: { alignItems: "center", gap: 10 },
-  comprobanteImage: {
-    width: "100%",
-    height: 250,
-    borderRadius: 14,
-    backgroundColor: COLORS.inputBg,
+
+  sinTarjetas: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: COLORS.warningLight,
+    borderRadius: 12,
+    padding: 13,
   },
-  cambiarFoto: { fontSize: 14, color: COLORS.primary, fontWeight: "500" },
-  fotoBtns: { flexDirection: "row", gap: 12 },
-  fotoBtn: {
-    flex: 1,
-    borderWidth: 1,
+  sinTarjetasTitulo: { fontSize: 14, fontWeight: "700", color: COLORS.text },
+  sinTarjetasTexto: { ...TIPO.apoyo, fontSize: 12, marginTop: 1 },
+  sinTarjetasBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  sinTarjetasBtnTexto: { color: COLORS.white, fontSize: 13, fontWeight: "700" },
+
+  // Comprobante
+  zona: {
+    borderWidth: 1.5,
+    borderStyle: "dashed",
     borderColor: COLORS.border,
     borderRadius: 14,
-    padding: 20,
+    backgroundColor: COLORS.inputBg,
+    padding: 18,
     alignItems: "center",
-    backgroundColor: COLORS.white,
   },
-  fotoBtnIcon: { fontSize: 32, marginBottom: 8 },
-  fotoBtnText: { fontSize: 14, color: COLORS.text, fontWeight: "500" },
-  textArea: {
+  zonaCentro: { minHeight: 170, justifyContent: "center", gap: 10 },
+  zonaIcono: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: COLORS.card,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  zonaAyuda: { ...TIPO.apoyo, textAlign: "center", marginTop: 10 },
+  zonaBotones: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 14,
+    alignSelf: "stretch",
+  },
+  zonaBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderRadius: 11,
+    paddingVertical: 12,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  zonaBtnPrincipal: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  zonaBtnTexto: { fontSize: 14, fontWeight: "600", color: COLORS.primary },
+  zonaBtnPrincipalTexto: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.white,
+  },
+
+  vista: {
+    borderRadius: 14,
+    backgroundColor: COLORS.inputBg,
+    overflow: "hidden",
+  },
+  vistaImagen: { width: "100%", height: 240 },
+  vistaListo: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  vistaListoTexto: { fontSize: 11, fontWeight: "700", color: COLORS.success },
+  vistaAcciones: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 10,
+  },
+  vistaAccion: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  vistaAccionTexto: { fontSize: 13, fontWeight: "600", color: COLORS.primary },
+
+  // Nota
+  nota: {
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 12,
-    padding: 14,
+    padding: 13,
     fontSize: 15,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.inputBg,
     color: COLORS.text,
-    minHeight: 80,
+    minHeight: 88,
     textAlignVertical: "top",
   },
-  resumen: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    padding: 18,
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  notaEnfocada: {
+    borderColor: COLORS.primaryLight,
+    backgroundColor: COLORS.card,
   },
-  resumenTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginBottom: 12,
+  contador: { ...TIPO.micro, textAlign: "right", marginTop: 6, ...CIFRAS },
+
+  // Pie
+  pie: {
+    backgroundColor: COLORS.card,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 22,
+    gap: 10,
   },
-  resumenRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 6,
-  },
-  resumenLabel: { fontSize: 14, color: COLORS.textSecondary },
-  resumenValue: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.text,
-    maxWidth: "60%",
-    textAlign: "right",
-  },
+  pieResumen: { flexDirection: "row", alignItems: "center", gap: 6 },
+  pieResumenTexto: { ...TIPO.micro, flex: 1, color: COLORS.textSecondary },
   btnEnviar: {
     backgroundColor: COLORS.primary,
     borderRadius: 12,
-    padding: 16,
+    paddingVertical: 15,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 10,
-    marginTop: 24,
+    gap: 9,
   },
+  btnDeshabilitado: { backgroundColor: COLORS.border },
+  btnEnviarTexto: { color: COLORS.white, fontSize: 16, fontWeight: "700" },
+  btnEnviarTextoOff: { color: COLORS.textLight },
+
+  // Modal de alerta urgente
   modalFondo: {
     flex: 1,
     backgroundColor: "rgba(15,27,51,0.72)",
@@ -664,6 +1129,4 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
-  btnDisabled: { backgroundColor: COLORS.textLight },
-  btnEnviarText: { color: COLORS.white, fontSize: 16, fontWeight: "600" },
 });
