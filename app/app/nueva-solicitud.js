@@ -13,7 +13,8 @@ import {
   Animated,
   Easing,
 } from "react-native";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useNavigation } from "expo-router";
+import { usePreventRemove } from "expo-router/react-navigation";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../src/lib/supabase";
@@ -171,9 +172,74 @@ export default function NuevaSolicitudScreen() {
   const altoTeclado = useAlturaTeclado();
   const { mostrar } = useAviso();
   const router = useRouter();
+  const navigation = useNavigation();
 
   const listo = Boolean(tarjetaSeleccionada && comprobante);
   const ocupado = enviando || verificando;
+
+  // ── Salir sin perder lo cargado ──
+  //
+  // Lo que cuesta rehacer es el comprobante (volver a fotografiarlo) y
+  // la nota. La tarjeta no cuenta: se elige con un toque, y si el
+  // cliente tiene una sola ya viene elegida sin que haya hecho nada.
+  const tieneDatos = Boolean(comprobante) || nota.trim().length > 0;
+
+  // Salida pendiente de confirmar: { continuar } o null.
+  const [salida, setSalida] = useState(null);
+  // Cuando la salida la decide el propio flujo (se envio, o el cliente
+  // ya confirmo), el aviso no debe volver a aparecer.
+  const salidaPermitida = useRef(false);
+  const ocupadoRef = useRef(ocupado);
+  ocupadoRef.current = ocupado;
+
+  /**
+   * Intercepta TODAS las salidas, no solo la flecha de la cabecera: el
+   * boton atras de Android, el gesto de deslizar en iPhone y el atras
+   * del navegador. Cubrir solo la flecha dejaba perder el comprobante
+   * con el gesto mas comun, que es el boton del telefono.
+   */
+  usePreventRemove(tieneDatos || ocupado, ({ data }) => {
+    const accion = data.action;
+
+    // Salidas que no son del cliente: la sesion vencio y se le manda al
+    // login. Retenerlo en un formulario que ya no puede enviar no sirve.
+    if (
+      salidaPermitida.current ||
+      accion.type === "REPLACE" ||
+      accion.type === "RESET"
+    ) {
+      navigation.dispatch(accion);
+      return;
+    }
+
+    // Con el envio en marcha no se sale: la solicitud se crearia igual y
+    // el cliente creeria que la cancelo.
+    if (ocupadoRef.current) {
+      mostrar("Espera a que termine el envío.", "info");
+      return;
+    }
+
+    setSalida({ continuar: () => navigation.dispatch(accion) });
+  });
+
+  function confirmarSalida() {
+    const pendiente = salida;
+    salidaPermitida.current = true;
+    setSalida(null);
+    pendiente?.continuar();
+  }
+
+  /** Flecha de la cabecera. */
+  function volver() {
+    const irse = () => {
+      salidaPermitida.current = true;
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)/solicitudes");
+    };
+    if (ocupado) return;
+    if (tieneDatos) setSalida({ continuar: irse });
+    else irse();
+  }
 
   // Barra de avance: se llena a medida que se completan los pasos
   // obligatorios. Anima el ancho, asi que no puede usar el driver nativo.
@@ -349,6 +415,9 @@ export default function NuevaSolicitudScreen() {
       if (auditError) console.warn("Auditoria:", auditError.message);
 
       mostrar(`Solicitud ${codigo} enviada`, "exito");
+      // Ya se envio: el comprobante sigue en el estado, pero no hay nada
+      // que perder, asi que no debe saltar el aviso de salida.
+      salidaPermitida.current = true;
       // dismissTo y no replace. Esta pantalla esta encima de las
       // pestanas; replace creaba una segunda copia de ellas, con una
       // segunda burbuja de alertas escuchando el mismo canal, y eso
@@ -399,6 +468,7 @@ export default function NuevaSolicitudScreen() {
         // Con el envio en marcha no se sale: el cliente creeria que lo
         // cancelo, y la solicitud se crearia igual.
         volverDeshabilitado={ocupado}
+        onVolver={volver}
       >
         <View style={s.avanceFila}>
           <View style={s.avancePista}>
@@ -680,6 +750,81 @@ export default function NuevaSolicitudScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* ── Aviso al salir con informacion cargada ── */}
+      <Modal
+        visible={Boolean(salida)}
+        transparent
+        animationType="fade"
+        // El boton atras con el aviso abierto lo cierra y se queda: es
+        // la opcion segura.
+        onRequestClose={() => setSalida(null)}
+      >
+        <View style={s.modalFondo}>
+          <View style={s.modalCaja}>
+            <View style={[s.modalIcono, { backgroundColor: COLORS.warningLight }]}>
+              <Ionicons name="alert-circle" size={28} color={COLORS.warning} />
+            </View>
+            <Text style={s.modalTitulo}>¿Salir sin enviar?</Text>
+            <Text style={s.modalTexto}>
+              Tu solicitud todavía no se envió. Si sales, se pierde lo que
+              cargaste:
+            </Text>
+
+            <View style={s.perdida}>
+              {comprobante ? (
+                <View style={s.perdidaFila}>
+                  <Image
+                    source={{ uri: comprobante.uri }}
+                    style={s.perdidaMini}
+                    resizeMode="cover"
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.perdidaTitulo}>Comprobante adjunto</Text>
+                    <Text style={s.perdidaDetalle}>
+                      Tendrás que volver a subirlo
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+              {nota.trim() ? (
+                <View style={s.perdidaFila}>
+                  <View style={s.perdidaIcono}>
+                    <Ionicons
+                      name="chatbox-ellipses-outline"
+                      size={18}
+                      color={COLORS.primaryLight}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.perdidaTitulo}>Tu nota</Text>
+                    <Text style={s.perdidaDetalle} numberOfLines={2}>
+                      “{nota.trim()}”
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+
+            {/* La opcion segura va primero y es la mas visible. */}
+            <TouchableOpacity
+              style={s.modalBtn}
+              onPress={() => setSalida(null)}
+              activeOpacity={0.85}
+            >
+              <Text style={s.modalBtnText}>Seguir con mi solicitud</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.modalBtnSecundario}
+              onPress={confirmarSalida}
+            >
+              <Text style={[s.modalBtnSecundarioText, { color: COLORS.error }]}>
+                Salir y descartar
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Alerta urgente antes de enviar ── */}
       <Modal
@@ -1058,6 +1203,31 @@ const s = StyleSheet.create({
     marginBottom: 14,
   },
   modalLista: { flexGrow: 0 },
+  perdida: {
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 12,
+    padding: 12,
+    gap: 12,
+  },
+  perdidaFila: { flexDirection: "row", alignItems: "center", gap: 12 },
+  perdidaMini: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: COLORS.border,
+  },
+  perdidaIcono: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: COLORS.card,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  perdidaTitulo: { fontSize: 14, fontWeight: "700", color: COLORS.text },
+  perdidaDetalle: { ...TIPO.micro, marginTop: 1 },
   modalAlerta: {
     backgroundColor: COLORS.errorLight,
     borderRadius: 12,
