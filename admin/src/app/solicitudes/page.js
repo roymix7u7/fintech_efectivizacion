@@ -38,6 +38,9 @@ const MIN_MOTIVO = 10;
 const FILTROS = [
   { clave: "pendiente", etiqueta: "Por revisar" },
   { clave: "aprobado", etiqueta: "Aprobadas" },
+  // Sin esta pestaña, una solicitud desaparecia de "Aprobadas" en cuanto
+  // Pagos la pagaba, y el revisor no tenia donde encontrarla.
+  { clave: "pagado", etiqueta: "Pagadas" },
   { clave: "rechazado", etiqueta: "Rechazadas" },
 ];
 

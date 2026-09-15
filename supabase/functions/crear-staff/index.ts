@@ -23,7 +23,7 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ROLES_VALIDOS = ["gestor", "supervisor", "admin"];
+const ROLES_VALIDOS = ["gestor", "supervisor", "admin", "pagos"];
 
 function responder(cuerpo: unknown, status = 200) {
   return new Response(JSON.stringify(cuerpo), {

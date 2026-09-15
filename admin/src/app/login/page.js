@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { login } from "@/lib/auth";
+import { login, inicioDe } from "@/lib/auth";
 import { Aviso } from "@/components/marca";
 import { Flecha } from "@/components/shell";
 
@@ -21,9 +21,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { rol } = await login(email, password);
-      // Los roles verificador y tesoreria correspondian al flujo de
-      // operaciones con montos, que ya no existe.
-      router.push(rol === "gestor" ? "/kyc" : "/dashboard");
+      router.push(inicioDe(rol));
     } catch (err) {
       setError(err.message);
       setLoading(false);
@@ -65,9 +63,7 @@ export default function LoginPage() {
             <p className="text-sm font-bold tracking-[0.16em] text-oro-500">
               ALTOQUE PERÚ
             </p>
-            <p className="text-[11px] tracking-[0.24em] text-white/45">
-              WK
-            </p>
+            <p className="text-[11px] tracking-[0.24em] text-white/45">WK</p>
           </div>
         </div>
 

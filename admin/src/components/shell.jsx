@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { logout } from "@/lib/auth";
@@ -13,6 +13,13 @@ import { Logo } from "@/components/marca";
  * abrir, y las politicas RLS deciden que se puede tocar de verdad.
  */
 export const SECCIONES = [
+  {
+    ruta: "/pagos",
+    titulo: "Pagos",
+    detalle: "Envíos por banco",
+    roles: ["admin", "pagos"],
+    icono: Billete,
+  },
   {
     ruta: "/dashboard",
     titulo: "Resumen",
@@ -92,12 +99,30 @@ export const SECCIONES = [
  * Armazon de todas las pantallas: barra lateral con la marca, cabecera
  * con el titulo y el area de contenido.
  */
-export default function Shell({ session, titulo, descripcion, acciones, contadores = {}, children }) {
+export default function Shell({
+  session,
+  titulo,
+  descripcion,
+  acciones,
+  contadores = {},
+  children,
+}) {
   const [abierto, setAbierto] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
 
   const visibles = SECCIONES.filter((s) => s.roles.includes(session.rol));
+
+  // Guardia de rutas. Esconder un enlace no impide escribir la
+  // direccion a mano: alguien de Pagos que abra /kyc veria una pantalla
+  // rota con listas vacias. Se le devuelve a lo suyo. Los datos igual
+  // estan protegidos por las politicas; esto evita la pantalla confusa.
+  const permitida = visibles.some(
+    (s) => pathname === s.ruta || pathname.startsWith(s.ruta + "/"),
+  );
+  useEffect(() => {
+    if (!permitida && visibles.length > 0) router.replace(visibles[0].ruta);
+  }, [permitida, visibles, router]);
 
   async function salir() {
     await logout();
@@ -357,6 +382,16 @@ export function Porcentaje(p) {
       <path d="M19 5 5 19" />
       <circle cx="7.5" cy="7.5" r="2.5" />
       <circle cx="16.5" cy="16.5" r="2.5" />
+    </svg>
+  );
+}
+
+export function Billete(p) {
+  return (
+    <svg {...base(p)}>
+      <rect x="2.5" y="6" width="19" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M6 9.5v5M18 9.5v5" />
     </svg>
   );
 }

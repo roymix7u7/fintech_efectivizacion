@@ -56,6 +56,7 @@ const ESTADOS = {
   pendiente: { texto: "Pendiente", tono: "espera" },
   pendiente_kyc: { texto: "Por revisar", tono: "espera" },
   aprobado: { texto: "Aprobado", tono: "exito" },
+  pagado: { texto: "Pagado", tono: "info" },
   activo: { texto: "Activo", tono: "exito" },
   rechazado: { texto: "Rechazado", tono: "error" },
   observado: { texto: "Observado", tono: "error" },

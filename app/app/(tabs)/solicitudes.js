@@ -102,6 +102,14 @@ export default function SolicitudesScreen() {
       bg: COLORS.errorLight,
       icon: "close-circle-outline",
     },
+    // El ultimo paso: ya se le deposito. Es lo que el cliente espera
+    // desde que envio el comprobante, asi que se distingue de aprobado.
+    pagado: {
+      text: "Pago enviado",
+      color: COLORS.primary,
+      bg: "#E6ECF7",
+      icon: "cash-outline",
+    },
   };
 
   return (

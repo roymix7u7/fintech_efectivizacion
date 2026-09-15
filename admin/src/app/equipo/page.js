@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import Shell, { Lupa, Personas } from "@/components/shell";
 import { Vacio, Aviso, Estado } from "@/components/marca";
 import { EsqueletoFilas, BarraCarga } from "@/components/carga";
+import { BANCOS_TARJETA } from "@/lib/bancos";
 
 const ROLES = [
   {
@@ -17,6 +18,12 @@ const ROLES = [
     etiqueta: "Gestor",
     detalle:
       "Atiende la cola que se le asigna. No ve el trabajo de los demás ni los totales de la empresa.",
+  },
+  {
+    clave: "pagos",
+    etiqueta: "Pagos",
+    detalle:
+      "Solo entra a Pagos. Marca y confirma envíos de los bancos que se le asignan; ve los de sus compañeros sin poder tocarlos.",
   },
   {
     clave: "supervisor",
@@ -47,6 +54,8 @@ export default function EquipoPage() {
   const [creando, setCreando] = useState(false);
   const [nuevo, setNuevo] = useState({ email: "", rol: "gestor", sede_id: "" });
   const [credencial, setCredencial] = useState(null);
+  // Bancos de cada encargado de pagos: { user_id: ["BCP", ...] }
+  const [bancosPago, setBancosPago] = useState({});
   const router = useRouter();
 
   const cargar = useCallback(async () => {
@@ -60,6 +69,13 @@ export default function EquipoPage() {
       return;
     }
     setEquipo(data || []);
+
+    const { data: asignados } = await supabase
+      .from("pagos_bancos")
+      .select("user_id, banco");
+    const mapa = {};
+    for (const a of asignados || []) (mapa[a.user_id] ||= []).push(a.banco);
+    setBancosPago(mapa);
 
     const { data: sedesData } = await supabase
       .from("sedes")
@@ -125,8 +141,7 @@ export default function EquipoPage() {
 
       // Cada motivo tiene un arreglo distinto, así que se dice cuál.
       const ayudas = {
-        sesion_invalida:
-          "Tu sesión caducó. Cierra sesión y vuelve a entrar.",
+        sesion_invalida: "Tu sesión caducó. Cierra sesión y vuelve a entrar.",
         sin_fila:
           "Tu cuenta de acceso no tiene fila en la tabla de usuarios. Escríbeme el identificador que aparece arriba.",
         rol_insuficiente:
@@ -180,6 +195,46 @@ export default function EquipoPage() {
     });
     setOk(`${persona.email} ahora es ${rol}.`);
     cargar();
+  }
+
+  /**
+   * Asigna o quita un banco a un encargado de pagos.
+   *
+   * Un banco puede tener varios encargados y una persona varios bancos:
+   * para cubrir una ausencia basta con sumarle el banco del compañero.
+   */
+  async function alternarBancoPago(persona, banco) {
+    const tiene = (bancosPago[persona.id] || []).includes(banco);
+    setGuardando(persona.id);
+    setError("");
+
+    const { error: e } = tiene
+      ? await supabase
+          .from("pagos_bancos")
+          .delete()
+          .eq("user_id", persona.id)
+          .eq("banco", banco)
+      : await supabase
+          .from("pagos_bancos")
+          .insert({ user_id: persona.id, banco });
+
+    setGuardando(null);
+    if (e) return setError(explicarError(e, "No se pudo cambiar el banco."));
+
+    setBancosPago((m) => ({
+      ...m,
+      [persona.id]: tiene
+        ? (m[persona.id] || []).filter((b) => b !== banco)
+        : [...(m[persona.id] || []), banco],
+    }));
+
+    await registrarAuditoria({
+      usuario_id: session.user.id,
+      accion: tiene ? "QUITAR_BANCO_PAGOS" : "ASIGNAR_BANCO_PAGOS",
+      entidad: "pagos_bancos",
+      entidad_id: persona.id,
+      datos_despues: { banco },
+    });
   }
 
   async function cambiarSede(persona, sedeId) {
@@ -244,7 +299,11 @@ export default function EquipoPage() {
     const t = busqueda.trim().toLowerCase();
     if (!t) return base;
     return base.filter((p) =>
-      [p.email, p.rol, p.sede].filter(Boolean).join(" ").toLowerCase().includes(t),
+      [p.email, p.rol, p.sede]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(t),
     );
   }, [equipo, busqueda, filtroSede]);
 
@@ -350,14 +409,18 @@ export default function EquipoPage() {
                   type="email"
                   autoFocus
                   value={nuevo.email}
-                  onChange={(e) => setNuevo({ ...nuevo, email: e.target.value })}
+                  onChange={(e) =>
+                    setNuevo({ ...nuevo, email: e.target.value })
+                  }
                   onKeyDown={(e) => e.key === "Enter" && crearStaff()}
                   placeholder="nombre@altoqueperu.com"
                   className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none transition focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[12px] font-medium">Rol</label>
+                <label className="mb-1 block text-[12px] font-medium">
+                  Rol
+                </label>
                 <select
                   value={nuevo.rol}
                   onChange={(e) => setNuevo({ ...nuevo, rol: e.target.value })}
@@ -486,8 +549,8 @@ export default function EquipoPage() {
                       {m && m.resueltas > 0 && (
                         <>
                           {" · "}
-                          <span className="cifras">{m.resueltas}</span> resueltas
-                          esta semana
+                          <span className="cifras">{m.resueltas}</span>{" "}
+                          resueltas esta semana
                         </>
                       )}
                     </p>
@@ -569,6 +632,44 @@ export default function EquipoPage() {
                   >
                     {bloqueado ? "Desbloquear" : "Bloquear"}
                   </button>
+
+                  {/* Bancos de un encargado de pagos */}
+                  {p.rol === "pagos" && (
+                    <div className="basis-full pl-[52px]">
+                      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Bancos que paga
+                        {!(bancosPago[p.id] || []).length && (
+                          <span className="ml-2 normal-case tracking-normal text-amber-700">
+                            · ninguno: no podrá marcar nada
+                          </span>
+                        )}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {BANCOS_TARJETA.map((b) => {
+                          const activo = (bancosPago[p.id] || []).includes(b);
+                          if (!esAdmin && !activo) return null;
+                          return (
+                            <button
+                              key={b}
+                              onClick={() => esAdmin && alternarBancoPago(p, b)}
+                              disabled={!esAdmin || guardando === p.id}
+                              aria-pressed={activo}
+                              className={cn(
+                                "rounded-full px-2.5 py-1 text-[12px] font-medium ring-1 ring-inset transition",
+                                activo
+                                  ? "bg-marca-700 text-white ring-marca-700"
+                                  : "bg-card text-muted-foreground ring-border hover:text-foreground",
+                                esAdmin ? "pulsable" : "cursor-default",
+                                "disabled:opacity-60",
+                              )}
+                            >
+                              {b}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </li>
               );
             })}

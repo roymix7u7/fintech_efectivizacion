@@ -1,7 +1,20 @@
 import { supabase } from "./supabase";
 
 /** Roles que tienen panel propio. */
-export const ROLES_STAFF = ["admin", "supervisor", "gestor"];
+export const ROLES_STAFF = ["admin", "supervisor", "gestor", "pagos"];
+
+/**
+ * Primera pantalla de cada rol al entrar.
+ *
+ * Pagos va directo a lo suyo: no tiene resumen de la empresa ni colas
+ * de revision, y mandarlo al dashboard seria mostrarle una pantalla
+ * vacia que no le sirve.
+ */
+export function inicioDe(rol) {
+  if (rol === "pagos") return "/pagos";
+  if (rol === "gestor") return "/kyc";
+  return "/dashboard";
+}
 
 /** Roles que pueden ver todas las colas y medir al equipo. */
 export const ROLES_SUPERVISION = ["admin", "supervisor"];
@@ -38,7 +51,7 @@ export async function login(email, password) {
   if (!ROLES_STAFF.includes(userData.rol)) {
     await supabase.auth.signOut();
     throw new Error(
-      `El rol "${userData.rol}" ya no tiene panel. Pide que te asignen admin o gestor.`,
+      `El rol "${userData.rol}" no tiene panel. Pide que te asignen un rol del equipo.`,
     );
   }
 

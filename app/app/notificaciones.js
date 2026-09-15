@@ -24,6 +24,8 @@ const ESTILOS = {
   tarjeta_rechazada: { icon: "close-circle", color: COLORS.error },
   solicitud_aprobada: { icon: "checkmark-done-circle", color: COLORS.success },
   solicitud_rechazada: { icon: "close-circle", color: COLORS.error },
+  pago_enviado: { icon: "cash", color: COLORS.success },
+  pago_en_revision: { icon: "time", color: COLORS.warning },
 };
 
 function estiloDe(tipo) {
