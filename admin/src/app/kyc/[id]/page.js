@@ -7,7 +7,7 @@ import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { urlsFirmadas, extraerPath } from "@/lib/storage";
 import { actualizar, registrarAuditoria } from "@/lib/acciones";
-import { resolverCaso } from "@/lib/casos";
+import { resolverCaso, tomarCaso } from "@/lib/casos";
 import { cn } from "@/lib/utils";
 import Shell, { Check, Cruz } from "@/components/shell";
 import Visor from "@/components/visor";
@@ -47,6 +47,8 @@ export default function KYCDetallePage() {
   const [bloques, setBloques] = useState([]);
   const [bloqueId, setBloqueId] = useState(null);
   const [conflicto, setConflicto] = useState(null);
+  // Quien la tiene, cuando la abre alguien que no es su dueño.
+  const [ajeno, setAjeno] = useState(null);
   const [loading, setLoading] = useState(true);
   const [accion, setAccion] = useState(null);
   const [error, setError] = useState("");
@@ -65,6 +67,14 @@ export default function KYCDetallePage() {
       return;
     }
     setCliente(user);
+
+    // Abrir una ficha libre la toma, igual que en solicitudes: hasta
+    // ahora se podía estar revisando a un cliente y, para el resto del
+    // equipo, la identidad seguía libre en la cola.
+    if (user.estado === "pendiente" || user.estado === "observado") {
+      const r = await tomarCaso("kyc", params.id);
+      if (!r.ok && r.motivo === "TOMADO") setAjeno(r);
+    }
 
     // Bloques de comision para elegir al aprobar. Los crea el admin.
     const { data: bloquesData } = await supabase.rpc("listar_bloques");
@@ -355,6 +365,17 @@ export default function KYCDetallePage() {
             </div>
           )}
 
+          {ajeno && (
+            <div className="flex items-start gap-3 rounded-xl border border-oro-300/60 bg-oro-50 p-4">
+              <span className="text-lg leading-none">👀</span>
+              <p className="text-[0.8667rem] leading-relaxed text-oro-700">
+                <strong>{ajeno.quien}</strong> está revisando a este cliente.
+                Puedes mirar sus documentos, pero resolverlo es suyo hasta que
+                pasen {ajeno.libre_en} min sin que lo haga.
+              </p>
+            </div>
+          )}
+
           {resoluble && (
             <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
               {!modoObservar ? (
@@ -410,7 +431,7 @@ export default function KYCDetallePage() {
                   <div className="space-y-2 border-t border-border pt-4">
                     <button
                       onClick={aprobar}
-                      disabled={accion !== null || !perfil || !bloqueId}
+                      disabled={accion !== null || !perfil || !bloqueId || Boolean(ajeno)}
                       className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40"
                     >
                       <Check className="h-4 w-4" />
@@ -420,7 +441,7 @@ export default function KYCDetallePage() {
                     </button>
                     <button
                       onClick={() => setModoObservar(true)}
-                      disabled={accion !== null || !perfil}
+                      disabled={accion !== null || !perfil || Boolean(ajeno)}
                       className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"
                     >
                       <Cruz className="h-4 w-4" />

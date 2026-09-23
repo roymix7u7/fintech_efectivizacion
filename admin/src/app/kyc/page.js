@@ -20,6 +20,7 @@ import { EsqueletoFilas, BarraCarga, Esqueleto } from "@/components/carga";
 import { Estado, Vacio, Aviso } from "@/components/marca";
 import Pista from "@/components/pista";
 import Revisor from "@/components/revisor";
+import { colorDe } from "@/lib/colores";
 import BotonRefrescar from "@/components/refrescar";
 
 /** Minutos que le quedan a una reserva, o 0 si ya vencio. */
@@ -383,7 +384,16 @@ export default function KYCPage() {
                   >
                     <Link
                       href={`/kyc/${c.id}`}
-                      className="flex items-center gap-4 px-4 py-3.5 transition hover:bg-muted/40"
+                      className={cn(
+                        "flex items-center gap-4 px-4 py-3.5 transition hover:bg-muted/40",
+                        // Franja del color de quien la atiende: se
+                        // reconoce sin leer fila por fila.
+                        c.asignado_a &&
+                          restan(c.asignado_en) > 0 &&
+                          (c.asignado_a === session.user.id
+                            ? "border-l-4 border-l-marca-600"
+                            : `border-l-4 ${colorDe(c.asignado_a).borde}`),
+                      )}
                     >
                       <span
                         className={cn(
@@ -421,7 +431,7 @@ export default function KYCPage() {
 
                       {/* Quien la tiene. Sin esto, en "Toda la cola" no
                           se sabia si un caso estaba repartido ni a quien. */}
-                      {filtro === "pendiente" && c.asignado_a && restan(c.asignado_en) > 0 && (
+                      {c.asignado_a && restan(c.asignado_en) > 0 && (
                         <Revisor
                           id={c.asignado_a}
                           persona={equipo[c.asignado_a]}
