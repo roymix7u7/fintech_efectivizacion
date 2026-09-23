@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import Shell, { Lupa, Documento, Check, Cruz, Manos } from "@/components/shell";
 import Visor from "@/components/visor";
 import Conflicto from "@/components/conflicto";
+import SinPendientes from "@/components/sinPendientes";
 import Pista from "@/components/pista";
 import Revisor from "@/components/revisor";
 import { colorDe } from "@/lib/colores";
@@ -107,6 +108,7 @@ export default function SolicitudesPage() {
   const [equipo, setEquipo] = useState({});
   // Quien tiene el caso abierto, cuando no es de quien mira.
   const [ajeno, setAjeno] = useState(null);
+  const [sinPendientes, setSinPendientes] = useState(false);
   const [contadores, setContadores] = useState({});
   const [cola, setCola] = useState(null);
   const [pidiendo, setPidiendo] = useState(false);
@@ -115,6 +117,11 @@ export default function SolicitudesPage() {
 
   const termino = useRetraso(busqueda, 350);
   const esCola = filtro === "pendiente";
+  // Revisar es del gestor. El supervisor entra a ver como va el trabajo
+  // y quien atiende cada caso, pero no aprueba ni rechaza. El admin
+  // conserva el mando como salida de emergencia.
+  const puedeResolver = ["gestor", "admin"].includes(session?.rol);
+  const esGestor = session?.rol === "gestor";
 
   // Evita que una respuesta lenta pise a otra mas reciente cuando el
   // usuario cambia de pestana o sigue escribiendo.
@@ -277,14 +284,17 @@ export default function SolicitudesPage() {
    * Pide el siguiente caso libre. El reparto lo hace Postgres, asi que
    * dos revisores nunca reciben el mismo aunque pulsen a la vez.
    */
-  async function atenderSiguiente() {
+  async function atenderSiguiente({ auto = false } = {}) {
     setPidiendo(true);
     setError("");
     const { id, vacia, error: e } = await tomarSiguiente("solicitud");
     setPidiendo(false);
     if (e) return setError("No se pudo tomar el siguiente caso: " + e);
     if (vacia) {
-      setError("No queda ningún caso libre en la cola por ahora.");
+      // Al encadenar casos se avisa con una ventana: cierra el ciclo de
+      // trabajo. Pedido a mano basta una línea.
+      if (auto) setSinPendientes(true);
+      else setError("No queda ningún caso libre en la cola por ahora.");
       await contarPendientes();
       return;
     }
@@ -387,8 +397,13 @@ export default function SolicitudesPage() {
       return;
     }
 
-    cargar(filtro, { silencioso: true });
-    contarPendientes();
+    // Terminado uno, va el siguiente sin pedirlo. Es el ritmo real de
+    // quien revisa cien al día.
+    setSeleccionada(null);
+    setAjeno(null);
+    await cargar(filtro, { silencioso: true });
+    await contarPendientes();
+    if (esCola && esGestor) await atenderSiguiente({ auto: true });
   }
 
   async function aprobar(sol) {
@@ -455,9 +470,9 @@ export default function SolicitudesPage() {
               </button>
             ))}
           </div>
-          {esCola && (
+          {esCola && puedeResolver && (
             <BotonAccion
-              onClick={atenderSiguiente}
+              onClick={() => atenderSiguiente()}
               cargando={pidiendo}
               disabled={Boolean(cola && cola.libres === 0)}
               icono={<Manos className="h-4 w-4" />}
@@ -506,30 +521,22 @@ export default function SolicitudesPage() {
         <section className="flex min-w-0 flex-col">
           {esCola && (
             <div className="mb-3 flex items-center gap-2">
-              <div className="inline-flex gap-1 rounded-lg border border-border bg-muted/60 p-1">
-                {[
-                  { v: true, t: "Míos", n: cola?.mios },
-                  { v: false, t: "Toda la cola", n: cola?.pendientes },
-                ].map((x) => (
-                  <button
-                    key={x.t}
-                    onClick={() => setSoloMias(x.v)}
-                    className={cn(
-                      "pulsable flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[0.8667rem] font-medium",
-                      soloMias === x.v
-                        ? "bg-card text-foreground shadow-panel"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {x.t}
-                    {x.n > 0 && (
-                      <span className="cifras rounded-full bg-muted px-1.5 text-[0.7333rem] font-semibold">
-                        {x.n}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
+              {/* El gestor solo ve lo suyo: la cola se la reparte el
+                  sistema y elegir de una lista comun seria volver a que
+                  varios abran el mismo caso. El supervisor ve todo, pero
+                  para mirar. */}
+              <span className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[0.8667rem] font-medium">
+                {esGestor ? "Tus casos" : "Toda la cola"}
+                <span className="cifras rounded-full bg-muted px-1.5 text-[0.7333rem] font-semibold">
+                  {esGestor ? cola?.mios || 0 : cola?.pendientes || 0}
+                </span>
+              </span>
+
+              {!puedeResolver && (
+                <span className="rounded-full bg-muted px-2.5 py-1 text-[0.7333rem] font-medium text-muted-foreground">
+                  Solo lectura
+                </span>
+              )}
 
               <span className="ml-auto">
                 <BotonRefrescar
@@ -866,7 +873,13 @@ export default function SolicitudesPage() {
                   </div>
 
                   {/* Resolución */}
-                  {seleccionada.estado === "pendiente" ? (
+                  {seleccionada.estado === "pendiente" && !puedeResolver ? (
+                    <div className="rounded-xl border border-border bg-muted/40 p-4 text-[0.8667rem] text-muted-foreground">
+                      Estás viendo la cola como supervisor: puedes revisar el
+                      trabajo y saber quién atiende cada caso, pero aprobar y
+                      rechazar es del gestor que lo tiene.
+                    </div>
+                  ) : seleccionada.estado === "pendiente" ? (
                     <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
                       {!modoRechazo ? (
                         <div className="space-y-2">
@@ -975,6 +988,11 @@ export default function SolicitudesPage() {
           )}
         </section>
       </div>
+      <SinPendientes
+        visible={sinPendientes}
+        onCerrar={() => setSinPendientes(false)}
+      />
+
       <Conflicto
         mensaje={conflicto?.mensaje}
         titulo={conflicto?.titulo}

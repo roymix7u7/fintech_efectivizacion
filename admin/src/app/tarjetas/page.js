@@ -6,11 +6,21 @@ import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { firmarCampo } from "@/lib/storage";
 import { explicarError } from "@/lib/acciones";
-import { resolverCaso } from "@/lib/casos";
+import { resolverCaso, tomarCaso } from "@/lib/casos";
+import { tomarSiguiente, minutosRestantes } from "@/lib/cola";
+import { colorDe } from "@/lib/colores";
 import { cn } from "@/lib/utils";
-import Shell, { Lupa, Tarjeta as IconoTarjeta, Check, Cruz } from "@/components/shell";
+import Shell, {
+  Lupa,
+  Tarjeta as IconoTarjeta,
+  Check,
+  Cruz,
+  Manos,
+} from "@/components/shell";
 import Visor from "@/components/visor";
 import Conflicto from "@/components/conflicto";
+import SinPendientes from "@/components/sinPendientes";
+import Revisor from "@/components/revisor";
 import BotonRefrescar from "@/components/refrescar";
 import { Estado, Dato, Vacio, Aviso } from "@/components/marca";
 import { EsqueletoCola, BarraCarga, Esqueleto } from "@/components/carga";
@@ -48,9 +58,18 @@ export default function TarjetasPage() {
   const [contadores, setContadores] = useState({});
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [cara, setCara] = useState("frente");
+  const [equipo, setEquipo] = useState({});
+  const [ajeno, setAjeno] = useState(null);
+  const [sinPendientes, setSinPendientes] = useState(false);
+  const [pidiendo, setPidiendo] = useState(false);
   const router = useRouter();
 
-  const cargar = useCallback(async (estado) => {
+  // Verificar es del gestor; el supervisor mira como va el trabajo. El
+  // admin conserva el mando.
+  const puedeResolver = ["gestor", "admin"].includes(session?.rol);
+  const esGestor = session?.rol === "gestor";
+
+  const cargar = useCallback(async (estado, mias, yo) => {
     setLoading(true);
     setError("");
     setFiltro(estado);
@@ -58,16 +77,26 @@ export default function TarjetasPage() {
     setModoRechazo(false);
     setMotivo("");
 
-    const { data, error: consultaError } = await supabase
+    let q = supabase
       .from("tarjetas")
       .select(
         `id, banco, ultimos_4, estado, foto_tarjeta, foto_reverso,
-         motivo_rechazo, created_at, fecha_revision,
+         motivo_rechazo, created_at, fecha_revision, asignado_a, asignado_en,
          perfiles_cliente (nombres, apellidos, dni, telefono, user_id)`,
       )
       .eq("estado", estado)
-      .eq("activa", true)
-      .order("created_at", { ascending: true });
+      .eq("activa", true);
+
+    // El gestor solo ve lo que el sistema le repartió. En las listas ya
+    // resueltas no hay reparto que respetar.
+    if (estado === "pendiente" && mias && yo) {
+      const vence = new Date(Date.now() - 10 * 60000).toISOString();
+      q = q.eq("asignado_a", yo).gt("asignado_en", vence);
+    }
+
+    const { data, error: consultaError } = await q.order("created_at", {
+      ascending: true,
+    });
 
     if (consultaError) {
       setError("No se pudieron cargar las tarjetas: " + consultaError.message);
@@ -88,10 +117,45 @@ export default function TarjetasPage() {
       if (!["gestor", "supervisor", "admin"].includes(s.rol))
         return router.push("/dashboard");
       setSession(s);
-      cargar("pendiente");
+      // El gestor abre viendo lo suyo; supervisor y admin, toda la cola.
+      const mias = s.rol === "gestor";
+      supabase
+        .from("users")
+        .select("id, email, rol")
+        .neq("rol", "cliente")
+        .then(({ data }) =>
+          setEquipo(
+            Object.fromEntries(
+              (data || []).map((u) => [u.id, { email: u.email, rol: u.rol }]),
+            ),
+          ),
+        );
+      cargar("pendiente", mias, s.user.id);
       contarPendientes();
     });
   }, [router, cargar]);
+
+  /** Vuelve a pedir la lista con el filtro y el rol actuales. */
+  function recargar() {
+    cargar(filtro, session?.rol === "gestor", session?.user.id);
+    contarPendientes();
+  }
+
+  /** Toma la siguiente tarjeta libre. Al encadenar avisa si no queda. */
+  async function atenderSiguiente({ auto = false } = {}) {
+    setPidiendo(true);
+    const { id, vacia, error: e } = await tomarSiguiente("tarjeta");
+    setPidiendo(false);
+    if (e) return setError("No se pudo tomar la siguiente: " + e);
+    if (vacia) {
+      if (auto) setSinPendientes(true);
+      else setError("No queda ninguna tarjeta libre por ahora.");
+      recargar();
+      return;
+    }
+    cargar("pendiente", session?.rol === "gestor", session?.user.id);
+    contarPendientes();
+  }
 
   async function contarPendientes() {
     const cuenta = async (tabla, filtros) => {
@@ -111,6 +175,14 @@ export default function TarjetasPage() {
     setSeleccionada(t);
     setMotivo("");
     setModoRechazo(false);
+    setAjeno(null);
+
+    // Abrirla es atenderla: así el resto del equipo la ve tomada.
+    if (t.estado === "pendiente") {
+      const r = await tomarCaso("tarjeta", t.id);
+      if (!r.ok && r.motivo === "TOMADO") setAjeno(r);
+      recargar();
+    }
     // Siempre se abre por el frente: es la cara obligatoria y la que
     // toda tarjeta tiene.
     setCara("frente");
@@ -162,8 +234,12 @@ export default function TarjetasPage() {
         setError(r.mensaje);
       }
     }
-    cargar(filtro);
-    contarPendientes();
+    setSeleccionada(null);
+    setAjeno(null);
+    recargar();
+    if (r.ok && filtro === "pendiente" && session?.rol === "gestor") {
+      await atenderSiguiente({ auto: true });
+    }
   }
 
   async function aprobar(t) {
@@ -218,16 +294,32 @@ export default function TarjetasPage() {
       }
       acciones={
         <>
+        {filtro === "pendiente" && puedeResolver && (
+          <button
+            onClick={() => atenderSiguiente()}
+            disabled={pidiendo}
+            title="Te asigna la tarjeta libre que más tiempo lleva esperando"
+            className="pulsable flex items-center gap-2 rounded-lg bg-marca-700 px-3.5 py-2 text-[0.8667rem] font-semibold text-white hover:bg-marca-600 disabled:opacity-50"
+          >
+            <Manos className="h-4 w-4" />
+            {pidiendo ? "Buscando…" : "Atender siguiente"}
+          </button>
+        )}
+        {!puedeResolver && (
+          <span className="rounded-full bg-muted px-2.5 py-1 text-[0.7333rem] font-medium text-muted-foreground">
+            Solo lectura
+          </span>
+        )}
         <BotonRefrescar
           girando={loading}
-          onClick={() => cargar(filtro)}
+          onClick={recargar}
           texto="Volver a pedir la lista de tarjetas"
         />
         <div className="hidden items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 sm:flex">
           {FILTROS.map((f) => (
             <button
               key={f.clave}
-              onClick={() => cargar(f.clave)}
+              onClick={() => cargar(f.clave, session?.rol === "gestor", session?.user.id)}
               className={cn(
                 "rounded-md px-3 py-1.5 text-[13px] font-medium transition",
                 filtro === f.clave
@@ -254,7 +346,7 @@ export default function TarjetasPage() {
         {FILTROS.map((f) => (
           <button
             key={f.clave}
-            onClick={() => cargar(f.clave)}
+            onClick={() => cargar(f.clave, session?.rol === "gestor", session?.user.id)}
             className={cn(
               "flex-1 rounded-md px-2 py-1.5 text-[13px] font-medium transition",
               filtro === f.clave ? "bg-card shadow-panel" : "text-muted-foreground",
@@ -301,6 +393,11 @@ export default function TarjetasPage() {
                     onClick={() => abrir(t)}
                     className={cn(
                       "w-full rounded-xl border bg-card p-3.5 text-left transition",
+                      t.asignado_a &&
+                        minutosRestantes(t.asignado_en) > 0 &&
+                        (t.asignado_a === session.user.id
+                          ? "border-l-4 border-l-marca-600"
+                          : `border-l-4 ${colorDe(t.asignado_a).borde}`),
                       activa
                         ? "border-marca-600 shadow-alzado ring-1 ring-marca-600"
                         : "border-border hover:border-marca-200 hover:shadow-panel",
@@ -323,11 +420,21 @@ export default function TarjetasPage() {
                         </span>
                       ) : null}
                     </div>
-                    <p className="mt-1.5 truncate text-[13px] text-muted-foreground">
-                      {t.perfiles_cliente
-                        ? `${t.perfiles_cliente.nombres} ${t.perfiles_cliente.apellidos}`
-                        : "Cliente sin perfil"}
-                    </p>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <p className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
+                        {t.perfiles_cliente
+                          ? `${t.perfiles_cliente.nombres} ${t.perfiles_cliente.apellidos}`
+                          : "Cliente sin perfil"}
+                      </p>
+                      {t.asignado_a && minutosRestantes(t.asignado_en) > 0 && (
+                        <Revisor
+                          id={t.asignado_a}
+                          persona={equipo[t.asignado_a]}
+                          minutos={minutosRestantes(t.asignado_en)}
+                          propio={t.asignado_a === session.user.id}
+                        />
+                      )}
+                    </div>
                   </button>
                 );
               })}
@@ -336,7 +443,18 @@ export default function TarjetasPage() {
         </section>
 
         {/* Detalle */}
-        <section className="min-w-0">
+        <section className="min-w-0 space-y-4">
+          {ajeno && (
+            <div className="flex items-start gap-3 rounded-xl border border-oro-300/60 bg-oro-50 p-4">
+              <span className="text-lg leading-none">👀</span>
+              <p className="text-[0.8667rem] leading-relaxed text-oro-700">
+                <strong>{ajeno.quien}</strong> está revisando esta tarjeta.
+                Puedes mirarla, pero verificarla es suyo hasta que pasen{" "}
+                {ajeno.libre_en} min.
+              </p>
+            </div>
+          )}
+
           {!seleccionada ? (
             <Vacio
               icono={<IconoTarjeta className="h-5 w-5" />}
@@ -455,13 +573,19 @@ export default function TarjetasPage() {
                     </dl>
                   </div>
 
-                  {seleccionada.estado === "pendiente" ? (
+                  {seleccionada.estado === "pendiente" && !puedeResolver ? (
+                    <div className="rounded-xl border border-border bg-muted/40 p-4 text-[0.8667rem] text-muted-foreground">
+                      Estás viendo la cola como supervisor: puedes revisar el
+                      trabajo y saber quién atiende cada tarjeta, pero
+                      verificarla es del gestor que la tiene.
+                    </div>
+                  ) : seleccionada.estado === "pendiente" ? (
                     <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
                       {!modoRechazo ? (
                         <div className="space-y-2">
                           <button
                             onClick={() => aprobar(seleccionada)}
-                            disabled={accion !== null}
+                            disabled={accion !== null || Boolean(ajeno)}
                             className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
                           >
                             <Check className="h-4 w-4" />
@@ -471,7 +595,7 @@ export default function TarjetasPage() {
                           </button>
                           <button
                             onClick={() => setModoRechazo(true)}
-                            disabled={accion !== null}
+                            disabled={accion !== null || Boolean(ajeno)}
                             className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
                           >
                             <Cruz className="h-4 w-4" />
@@ -561,6 +685,12 @@ export default function TarjetasPage() {
           )}
         </section>
       </div>
+      <SinPendientes
+        visible={sinPendientes}
+        onCerrar={() => setSinPendientes(false)}
+        texto="No hay tarjetas esperando verificación. Cuando entre una nueva, el sistema te la asigna solo."
+      />
+
       <Conflicto
         mensaje={conflicto?.mensaje}
         titulo={conflicto?.titulo}

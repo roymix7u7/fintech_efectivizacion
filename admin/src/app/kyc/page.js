@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import Shell, { Lupa, Persona, Flecha, Manos } from "@/components/shell";
 import Paginador from "@/components/paginador";
 import { EsqueletoFilas, BarraCarga, Esqueleto } from "@/components/carga";
+import SinPendientes from "@/components/sinPendientes";
 import { Estado, Vacio, Aviso } from "@/components/marca";
 import Pista from "@/components/pista";
 import Revisor from "@/components/revisor";
@@ -65,9 +66,21 @@ export default function KYCPage() {
   const [soloMias, setSoloMias] = useState(true);
   const [pidiendo, setPidiendo] = useState(false);
   const [equipo, setEquipo] = useState({});
+  const [sinPendientes, setSinPendientes] = useState(false);
   const router = useRouter();
 
   const termino = useRetraso(busqueda, 350);
+
+  // Se llega con ?vacia=1 desde la ficha cuando ya no queda ninguna.
+  // Se lee de la dirección y no con useSearchParams: ese hook obliga a
+  // envolver la página en Suspense y rompe la compilación estática.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("vacia")) {
+      setSinPendientes(true);
+      window.history.replaceState(null, "", "/kyc");
+    }
+  }, []);
   const peticion = useRef(0);
 
   const cargar = useCallback(async (estado, pag, buscar, silencioso, mias, yo) => {
@@ -223,12 +236,17 @@ export default function KYCPage() {
     setPidiendo(false);
     if (e) return setError("No se pudo tomar el siguiente caso: " + e);
     if (vacia) {
-      setError("No queda ninguna identidad libre en la cola por ahora.");
+      setSinPendientes(true);
       estadoCola().then(({ colas }) => setContadores(contadoresDe(colas)));
       return;
     }
     router.push(`/kyc/${id}`);
   }
+
+  // Revisar es del gestor; el supervisor mira. El admin conserva el
+  // mando como salida de emergencia.
+  const puedeResolver = ["gestor", "admin"].includes(session?.rol);
+  const esGestor = session?.rol === "gestor";
 
   if (!session) return null;
 
@@ -292,25 +310,21 @@ export default function KYCPage() {
 
       {filtro === "pendiente" && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <div className="inline-flex gap-1 rounded-lg border border-border bg-muted/60 p-1">
-            {[
-              { v: true, t: "Míos" },
-              { v: false, t: "Toda la cola" },
-            ].map((x) => (
-              <button
-                key={x.t}
-                onClick={() => setSoloMias(x.v)}
-                className={cn(
-                  "pulsable rounded-md px-3 py-1.5 text-[0.8667rem] font-medium",
-                  soloMias === x.v
-                    ? "bg-card text-foreground shadow-panel"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {x.t}
-              </button>
-            ))}
-          </div>
+          {/* El gestor solo ve lo suyo: el sistema le reparte la cola, y
+              elegir de una lista común llevaría a que varios abran el
+              mismo cliente. El supervisor ve todo, pero para mirar. */}
+          <span className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[0.8667rem] font-medium">
+            {esGestor ? "Tus casos" : "Toda la cola"}
+            <span className="cifras rounded-full bg-muted px-1.5 text-[0.7333rem] font-semibold">
+              {total}
+            </span>
+          </span>
+
+          {!puedeResolver && (
+            <span className="rounded-full bg-muted px-2.5 py-1 text-[0.7333rem] font-medium text-muted-foreground">
+              Solo lectura
+            </span>
+          )}
 
           <BotonRefrescar
             girando={refrescando}
@@ -321,6 +335,7 @@ export default function KYCPage() {
             texto="Volver a pedir la cola: identidades nuevas o ya tomadas por otros"
           />
 
+          {puedeResolver && (
           <button
             onClick={atenderSiguiente}
             disabled={pidiendo}
@@ -330,6 +345,7 @@ export default function KYCPage() {
             <Manos className="h-4 w-4" />
             {pidiendo ? "Buscando…" : "Tomar siguiente"}
           </button>
+          )}
         </div>
       )}
 
@@ -461,6 +477,11 @@ export default function KYCPage() {
           />
         </>
       )}
+      <SinPendientes
+        visible={sinPendientes}
+        onCerrar={() => setSinPendientes(false)}
+        texto="No hay identidades esperando revisión. Cuando entre una nueva, el sistema te la asigna solo."
+      />
     </Shell>
   );
 }

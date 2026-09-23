@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { urlsFirmadas, extraerPath } from "@/lib/storage";
 import { actualizar, registrarAuditoria } from "@/lib/acciones";
 import { resolverCaso, tomarCaso } from "@/lib/casos";
+import { tomarSiguiente } from "@/lib/cola";
 import { cn } from "@/lib/utils";
 import Shell, { Check, Cruz } from "@/components/shell";
 import Visor from "@/components/visor";
@@ -169,7 +170,7 @@ export default function KYCDetallePage() {
       datos_despues: { bloque_id: bloqueId },
     });
 
-    router.push("/kyc");
+    await siguienteOSalir();
   }
 
   async function observar() {
@@ -213,7 +214,18 @@ export default function KYCDetallePage() {
     });
     if (obsError) console.warn("Observaciones:", obsError.message);
 
-    router.push("/kyc");
+    await siguienteOSalir();
+  }
+
+  /**
+   * Terminada una ficha, se abre la siguiente sin volver a la lista. Si
+   * no queda ninguna, la lista lo dice con una ventana.
+   */
+  async function siguienteOSalir() {
+    if (session?.rol !== "gestor") return router.push("/kyc");
+    const { id, vacia } = await tomarSiguiente("kyc");
+    if (!vacia && id) return router.push(`/kyc/${id}`);
+    router.push("/kyc?vacia=1");
   }
 
   if (loading || !session)
@@ -227,7 +239,10 @@ export default function KYCDetallePage() {
     ? `${perfil.nombres} ${perfil.apellidos}`
     : "Registro sin completar";
   const docActual = DOCUMENTOS.find((d) => d.campo === documento);
-  const resoluble = cliente?.estado === "pendiente" || cliente?.estado === "observado";
+  const puedeResolver = ["gestor", "admin"].includes(session?.rol);
+  const resoluble =
+    puedeResolver &&
+    (cliente?.estado === "pendiente" || cliente?.estado === "observado");
 
   return (
     <Shell
