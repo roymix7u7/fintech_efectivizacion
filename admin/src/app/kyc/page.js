@@ -18,6 +18,14 @@ import Shell, { Lupa, Persona, Flecha, Manos } from "@/components/shell";
 import Paginador from "@/components/paginador";
 import { EsqueletoFilas, BarraCarga, Esqueleto } from "@/components/carga";
 import { Estado, Vacio, Aviso } from "@/components/marca";
+import Pista from "@/components/pista";
+
+/** Minutos que le quedan a una reserva, o 0 si ya vencio. */
+function restan(asignadoEn) {
+  if (!asignadoEn) return 0;
+  const pasados = (Date.now() - new Date(asignadoEn).getTime()) / 60000;
+  return Math.max(0, Math.ceil(RESERVA_MINUTOS - pasados));
+}
 
 const POR_PAGINA = 25;
 
@@ -53,6 +61,7 @@ export default function KYCPage() {
   // cliente aunque la cola ya lo hubiera repartido.
   const [soloMias, setSoloMias] = useState(true);
   const [pidiendo, setPidiendo] = useState(false);
+  const [equipo, setEquipo] = useState({});
   const router = useRouter();
 
   const termino = useRetraso(busqueda, 350);
@@ -153,7 +162,17 @@ export default function KYCPage() {
       if (!["gestor", "supervisor", "admin"].includes(s.rol))
         return router.push("/dashboard");
       setSession(s);
-      cargar("pendiente", 0, "", false, true, s.user.id);
+      // Supervisor y admin no reciben casos: abren viendo toda la cola.
+      const mias = s.rol === "gestor";
+      setSoloMias(mias);
+      supabase
+        .from("users")
+        .select("id, email")
+        .neq("rol", "cliente")
+        .then(({ data }) =>
+          setEquipo(Object.fromEntries((data || []).map((u) => [u.id, u.email]))),
+        );
+      cargar("pendiente", 0, "", false, mias, s.user.id);
       estadoCola().then(({ colas }) => setContadores(contadoresDe(colas)));
     });
   }, [router, cargar]);
@@ -363,6 +382,33 @@ export default function KYCPage() {
                           <p className="t-micro">{espera(c.created_at)}</p>
                         )}
                       </div>
+
+                      {/* Quien la tiene. Sin esto, en "Toda la cola" no
+                          se sabia si un caso estaba repartido ni a quien. */}
+                      {filtro === "pendiente" && c.asignado_a && restan(c.asignado_en) > 0 && (
+                        <Pista
+                          fin
+                          className="shrink-0"
+                          texto={
+                            c.asignado_a === session.user.id
+                              ? `Tuya. Te quedan ${restan(c.asignado_en)} min antes de que vuelva a la cola.`
+                              : `La tiene ${equipo[c.asignado_a] || "otra persona"} · ${restan(c.asignado_en)} min`
+                          }
+                        >
+                          <span
+                            className={cn(
+                              "flex h-6 w-6 items-center justify-center rounded-full text-[0.6667rem] font-bold",
+                              c.asignado_a === session.user.id
+                                ? "bg-marca-600 text-white"
+                                : "bg-muted text-muted-foreground",
+                            )}
+                          >
+                            {c.asignado_a === session.user.id
+                              ? "Tú"
+                              : (equipo[c.asignado_a] || "?").charAt(0).toUpperCase()}
+                          </span>
+                        </Pista>
+                      )}
 
                       <Estado
                         valor={c.estado}

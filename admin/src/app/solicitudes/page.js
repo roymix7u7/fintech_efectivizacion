@@ -31,6 +31,11 @@ import {
 import { Estado, Dato, Vacio, Aviso } from "@/components/marca";
 
 const BUCKET = "comprobantes";
+/** Iniciales del correo de quien atiende, para la marca de la fila. */
+function inicial(email) {
+  return (email || "?").trim().charAt(0).toUpperCase();
+}
+
 const POR_PAGINA = 25;
 const MIN_MOTIVO = 10;
 
@@ -94,6 +99,9 @@ export default function SolicitudesPage() {
   const [error, setError] = useState("");
   // Mensaje de "lo tiene otro": se muestra en ventana, no en una linea.
   const [conflicto, setConflicto] = useState("");
+  // id -> correo de cada persona del equipo. Sirve para decir quién
+  // tiene cada caso sin pedir el dato fila por fila.
+  const [equipo, setEquipo] = useState({});
   const [contadores, setContadores] = useState({});
   const [cola, setCola] = useState(null);
   const [pidiendo, setPidiendo] = useState(false);
@@ -191,6 +199,16 @@ export default function SolicitudesPage() {
       if (!["gestor", "supervisor", "admin"].includes(s.rol))
         return router.push("/dashboard");
       setSession(s);
+      // Un supervisor o un admin no reciben casos: si abrieran en
+      // "Míos" verían la cola vacía y parecería que no se repartió nada.
+      if (s.rol !== "gestor") setSoloMias(false);
+      supabase
+        .from("users")
+        .select("id, email")
+        .neq("rol", "cliente")
+        .then(({ data }) =>
+          setEquipo(Object.fromEntries((data || []).map((u) => [u.id, u.email]))),
+        );
       cargar("pendiente");
       contarPendientes();
     });
@@ -579,18 +597,22 @@ export default function SolicitudesPage() {
                               className="ml-auto shrink-0"
                               texto={
                                 sol.asignado_a === session.user.id
-                                  ? `Asignada a ti. Te queda ${minutosRestantes(sol.asignado_en)} min antes de que vuelva a la cola.`
-                                  : "La está revisando otra persona del equipo."
+                                  ? `Tuya. Te quedan ${minutosRestantes(sol.asignado_en)} min antes de que vuelva a la cola.`
+                                  : `La tiene ${equipo[sol.asignado_a] || "otra persona"} · ${minutosRestantes(sol.asignado_en)} min`
                               }
                             >
                               <span
                                 className={cn(
-                                  "h-2 w-2 rounded-full",
+                                  "flex h-5 w-5 items-center justify-center rounded-full text-[0.6667rem] font-bold",
                                   sol.asignado_a === session.user.id
-                                    ? "bg-marca-600"
-                                    : "bg-muted-foreground/40",
+                                    ? "bg-marca-600 text-white"
+                                    : "bg-muted text-muted-foreground",
                                 )}
-                              />
+                              >
+                                {sol.asignado_a === session.user.id
+                                  ? "Tú"
+                                  : inicial(equipo[sol.asignado_a])}
+                              </span>
                             </Pista>
                           )}
                       </div>
