@@ -365,6 +365,9 @@ end;
 $$;
 
 /** Quita la especial: el cliente vuelve a la tarifa de su bloque. */
+-- Se borra primero: la version anterior tenia un valor por defecto en
+-- p_clientes, y "create or replace" no puede quitarlo.
+drop function if exists public.quitar_comision_especial(text, uuid[]);
 create or replace function public.quitar_comision_especial(
   p_banco    text,
   p_clientes uuid[]
