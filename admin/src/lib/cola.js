@@ -1,7 +1,7 @@
 import { supabase } from "./supabase";
 
 /** Minutos que dura la reserva de un caso. Debe coincidir con la base. */
-export const RESERVA_MINUTOS = 20;
+export const RESERVA_MINUTOS = 10;
 
 /**
  * Pide el siguiente caso libre de la cola.

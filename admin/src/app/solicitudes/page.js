@@ -5,12 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { firmarCampo } from "@/lib/storage";
-import {
-  cambiarEstado,
-  registrarAuditoria,
-  notificar,
-  explicarError,
-} from "@/lib/acciones";
+import { registrarAuditoria, explicarError } from "@/lib/acciones";
 import {
   tomarSiguiente,
   soltarCaso,
@@ -18,10 +13,12 @@ import {
   contadoresDe,
   minutosRestantes,
 } from "@/lib/cola";
+import { resolverCaso } from "@/lib/casos";
 import { useRetraso, idsDeClientes } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import Shell, { Lupa, Documento, Check, Cruz, Manos } from "@/components/shell";
 import Visor from "@/components/visor";
+import Conflicto from "@/components/conflicto";
 import Paginador from "@/components/paginador";
 import {
   EsqueletoCola,
@@ -93,6 +90,8 @@ export default function SolicitudesPage() {
   const [refrescando, setRefrescando] = useState(false);
   const [accion, setAccion] = useState(null);
   const [error, setError] = useState("");
+  // Mensaje de "lo tiene otro": se muestra en ventana, no en una linea.
+  const [conflicto, setConflicto] = useState("");
   const [contadores, setContadores] = useState({});
   const [cola, setCola] = useState(null);
   const [pidiendo, setPidiendo] = useState(false);
@@ -293,45 +292,38 @@ export default function SolicitudesPage() {
     setCargandoCuentas(false);
   }
 
-  async function aprobar(sol) {
-    setAccion("aprobando");
+  /**
+   * Aprobar y rechazar pasan por resolver_caso: una sola puerta que
+   * bloquea la fila, comprueba que siga pendiente y que la tenga quien
+   * la resuelve, cambia el estado, avisa al cliente y deja auditoria.
+   * Antes eso eran cuatro llamadas sueltas desde el navegador.
+   */
+  async function resolver(sol, aprobar, texto) {
+    setAccion(aprobar ? "aprobando" : "rechazando");
     setError("");
 
-    const r = await cambiarEstado({
-      tabla: "solicitudes",
+    const r = await resolverCaso({
+      tipo: "solicitud",
       id: sol.id,
-      estadoActual: "pendiente",
-      estadoNuevo: "aprobado",
-      campos: {
-        revisado_por: session.user.id,
-        fecha_revision: new Date().toISOString(),
-      },
+      aprobar,
+      motivo: texto,
     });
+    setAccion(null);
+
     if (!r.ok) {
-      setAccion(null);
-      setError(r.error);
+      if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") setConflicto(r.mensaje);
+      else setError(r.mensaje);
       cargar(filtro, { silencioso: true });
+      contarPendientes();
       return;
     }
 
-    await registrarAuditoria({
-      usuario_id: session.user.id,
-      accion: "APROBAR_SOLICITUD",
-      entidad: "solicitudes",
-      entidad_id: sol.id,
-      datos_antes: { estado: "pendiente" },
-      datos_despues: { estado: "aprobado", codigo: sol.codigo },
-    });
-    await notificar({
-      userId: sol.perfiles_cliente?.user_id,
-      tipo: "solicitud_aprobada",
-      titulo: "Solicitud aprobada",
-      cuerpo: `Revisamos el comprobante de tu solicitud ${sol.codigo} y quedó aprobada.`,
-    });
-
-    setAccion(null);
     cargar(filtro, { silencioso: true });
     contarPendientes();
+  }
+
+  async function aprobar(sol) {
+    await resolver(sol, true, null);
   }
 
   async function rechazar(sol) {
@@ -342,45 +334,7 @@ export default function SolicitudesPage() {
       );
       return;
     }
-    setAccion("rechazando");
-    setError("");
-
-    const r = await cambiarEstado({
-      tabla: "solicitudes",
-      id: sol.id,
-      estadoActual: "pendiente",
-      estadoNuevo: "rechazado",
-      campos: {
-        motivo_rechazo: texto,
-        revisado_por: session.user.id,
-        fecha_revision: new Date().toISOString(),
-      },
-    });
-    if (!r.ok) {
-      setAccion(null);
-      setError(r.error);
-      cargar(filtro, { silencioso: true });
-      return;
-    }
-
-    await registrarAuditoria({
-      usuario_id: session.user.id,
-      accion: "RECHAZAR_SOLICITUD",
-      entidad: "solicitudes",
-      entidad_id: sol.id,
-      datos_antes: { estado: "pendiente" },
-      datos_despues: { estado: "rechazado", motivo: texto },
-    });
-    await notificar({
-      userId: sol.perfiles_cliente?.user_id,
-      tipo: "solicitud_rechazada",
-      titulo: "Solicitud rechazada",
-      cuerpo: `Tu solicitud ${sol.codigo} fue rechazada. Motivo: ${texto}`,
-    });
-
-    setAccion(null);
-    cargar(filtro, { silencioso: true });
-    contarPendientes();
+    await resolver(sol, false, texto);
   }
 
   if (!session) return null;
@@ -896,6 +850,14 @@ export default function SolicitudesPage() {
           )}
         </section>
       </div>
+      <Conflicto
+        mensaje={conflicto}
+        onCerrar={() => setConflicto("")}
+        onSiguiente={() => {
+          setConflicto("");
+          atenderSiguiente();
+        }}
+      />
     </Shell>
   );
 }

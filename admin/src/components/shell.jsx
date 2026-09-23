@@ -47,7 +47,7 @@ export const SECCIONES = [
     ruta: "/tarjetas",
     titulo: "Tarjetas",
     detalle: "Altas por verificar",
-    roles: ["admin", "supervisor"],
+    roles: ["admin", "supervisor", "gestor"],
     icono: Tarjeta,
     contador: "tarjetasPendientes",
   },
@@ -68,8 +68,8 @@ export const SECCIONES = [
   {
     ruta: "/comisiones",
     titulo: "Comisiones",
-    detalle: "Tarifas por banco y cliente",
-    roles: ["admin"],
+    detalle: "Bloques de tarifas y excepciones",
+    roles: ["admin", "supervisor"],
     icono: Porcentaje,
   },
   {

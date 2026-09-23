@@ -6,10 +6,12 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { urlsFirmadas, extraerPath } from "@/lib/storage";
-import { actualizar, registrarAuditoria, notificar } from "@/lib/acciones";
+import { actualizar, registrarAuditoria } from "@/lib/acciones";
+import { resolverCaso } from "@/lib/casos";
 import { cn } from "@/lib/utils";
 import Shell, { Check, Cruz } from "@/components/shell";
 import Visor from "@/components/visor";
+import Conflicto from "@/components/conflicto";
 import { Estado, Dato, Aviso } from "@/components/marca";
 
 const BUCKET = "kyc-documentos";
@@ -39,7 +41,12 @@ export default function KYCDetallePage() {
   const [documento, setDocumento] = useState(DOCUMENTOS[0].campo);
   const [motivo, setMotivo] = useState("");
   const [modoObservar, setModoObservar] = useState(false);
-  const [tasa, setTasa] = useState("1.00");
+  // Bloques de comisión creados por el administrador. El gestor elige
+  // uno; ya no escribe un porcentaje suelto que no se conectaba con
+  // ninguna tarifa del sistema.
+  const [bloques, setBloques] = useState([]);
+  const [bloqueId, setBloqueId] = useState(null);
+  const [conflicto, setConflicto] = useState("");
   const [loading, setLoading] = useState(true);
   const [accion, setAccion] = useState(null);
   const [error, setError] = useState("");
@@ -58,6 +65,13 @@ export default function KYCDetallePage() {
       return;
     }
     setCliente(user);
+
+    // Bloques de comision para elegir al aprobar. Los crea el admin.
+    const { data: bloquesData } = await supabase.rpc("listar_bloques");
+    const lista = bloquesData || [];
+    setBloques(lista);
+    // Si el cliente no tiene bloque, se propone el predeterminado.
+    setBloqueId((actual) => actual || lista.find((b) => b.es_default)?.id || null);
 
     const { data: perfilData } = await supabase
       .from("perfiles_cliente")
@@ -83,7 +97,7 @@ export default function KYCDetallePage() {
             : fallos[path] || "No se pudo firmar el archivo."
           : null;
       }
-      if (perfilData.tasa_comision) setTasa(String(perfilData.tasa_comision));
+      setBloqueId(perfilData.bloque_id || null);
     }
 
     setPerfil(perfilData);
@@ -101,59 +115,48 @@ export default function KYCDetallePage() {
   }, [router, cargar]);
 
   async function aprobar() {
-    // Sin esta validacion, un campo vacio mandaba NaN a la base de datos.
-    const valorTasa = parseFloat(tasa);
-    if (!Number.isFinite(valorTasa) || valorTasa < 0 || valorTasa > 100) {
-      setError("La comisión debe ser un número entre 0 y 100.");
-      return;
-    }
     if (!perfil) {
       setError("Este cliente aún no subió sus documentos, así que no se puede aprobar.");
+      return;
+    }
+    if (!bloqueId) {
+      setError("Elige el bloque de comisiones que le corresponde.");
       return;
     }
 
     setAccion("aprobando");
     setError("");
 
-    const rPerfil = await actualizar(
+    // El bloque primero: si el estado cambiara antes y esto fallara, el
+    // cliente quedaria activo sin tarifa asignada.
+    const rBloque = await actualizar(
       "perfiles_cliente",
       { user_id: params.id },
-      {
-        validado_por: session.user.id,
-        fecha_validacion: new Date().toISOString(),
-        tasa_comision: valorTasa,
-        motivo_observacion: null,
-      },
+      { bloque_id: bloqueId },
     );
-    if (!rPerfil.ok) {
+    if (!rBloque.ok) {
       setAccion(null);
-      setError("No se pudo actualizar el perfil: " + rPerfil.error);
+      setError("No se pudo asignar el bloque: " + rBloque.error);
       return;
     }
 
-    // El estado se cambia al final: si fallara antes, el cliente
-    // quedaria activo sin estar marcado como validado.
-    const rUser = await actualizar("users", { id: params.id }, { estado: "activo" });
-    if (!rUser.ok) {
-      setAccion(null);
-      setError("No se pudo activar la cuenta: " + rUser.error);
+    // resolver_caso comprueba que nadie más lo esté revisando, activa la
+    // cuenta, marca quién validó y avisa al cliente, todo de una vez.
+    const r = await resolverCaso({ tipo: "kyc", id: params.id, aprobar: true });
+    setAccion(null);
+
+    if (!r.ok) {
+      if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") setConflicto(r.mensaje);
+      else setError(r.mensaje);
       return;
     }
 
     await registrarAuditoria({
       usuario_id: session.user.id,
-      accion: "APROBAR_KYC",
+      accion: "ASIGNAR_BLOQUE",
       entidad: "perfiles_cliente",
       entidad_id: perfil.id,
-      datos_antes: { estado: cliente?.estado },
-      datos_despues: { estado: "activo", tasa_comision: valorTasa },
-    });
-    await notificar({
-      userId: params.id,
-      tipo: "kyc_aprobado",
-      titulo: "Cuenta verificada",
-      cuerpo:
-        "Revisamos tus documentos y tu cuenta quedó activa. Ya puedes registrar tus tarjetas y operar.",
+      datos_despues: { bloque_id: bloqueId },
     });
 
     router.push("/kyc");
@@ -177,24 +180,21 @@ export default function KYCDetallePage() {
     setAccion("observando");
     setError("");
 
-    const rPerfil = await actualizar(
-      "perfiles_cliente",
-      { user_id: params.id },
-      { motivo_observacion: texto },
-    );
-    if (!rPerfil.ok) {
-      setAccion(null);
-      setError("No se pudo guardar la observación: " + rPerfil.error);
+    const r = await resolverCaso({
+      tipo: "kyc",
+      id: params.id,
+      aprobar: false,
+      motivo: texto,
+    });
+    setAccion(null);
+
+    if (!r.ok) {
+      if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") setConflicto(r.mensaje);
+      else setError(r.mensaje);
       return;
     }
 
-    const rUser = await actualizar("users", { id: params.id }, { estado: "observado" });
-    if (!rUser.ok) {
-      setAccion(null);
-      setError("No se pudo cambiar el estado: " + rUser.error);
-      return;
-    }
-
+    // Historial de observaciones, aparte de la auditoría.
     const { error: obsError } = await supabase.from("observaciones").insert({
       entidad: "perfiles_cliente",
       entidad_id: perfil.id,
@@ -202,21 +202,6 @@ export default function KYCDetallePage() {
       creado_por: session.user.id,
     });
     if (obsError) console.warn("Observaciones:", obsError.message);
-
-    await registrarAuditoria({
-      usuario_id: session.user.id,
-      accion: "OBSERVAR_KYC",
-      entidad: "perfiles_cliente",
-      entidad_id: perfil.id,
-      datos_antes: { estado: cliente?.estado },
-      datos_despues: { estado: "observado", motivo: texto },
-    });
-    await notificar({
-      userId: params.id,
-      tipo: "kyc_observado",
-      titulo: "Necesitamos corregir tus documentos",
-      cuerpo: `Revisa tus documentos y vuelve a enviarlos. Motivo: ${texto}`,
-    });
 
     router.push("/kyc");
   }
@@ -363,10 +348,8 @@ export default function KYCDetallePage() {
                 <Dato etiqueta="Validado el">
                   {fechaLarga(perfil?.fecha_validacion)}
                 </Dato>
-                <Dato etiqueta="Comisión asignada" mono>
-                  {perfil?.tasa_comision != null
-                    ? `${perfil.tasa_comision} %`
-                    : null}
+                <Dato etiqueta="Bloque de comisiones">
+                  {bloques.find((b) => b.id === perfil?.bloque_id)?.nombre}
                 </Dato>
               </dl>
             </div>
@@ -377,36 +360,57 @@ export default function KYCDetallePage() {
               {!modoObservar ? (
                 <div className="space-y-4">
                   <div>
-                    <label
-                      htmlFor="tasa"
-                      className="block text-[13px] font-semibold"
-                    >
-                      Comisión del cliente
-                    </label>
-                    <p className="mt-0.5 text-[12px] text-muted-foreground">
-                      Queda registrada en su perfil.
+                    <p className="text-[13px] font-semibold">
+                      Bloque de comisiones
                     </p>
-                    <div className="relative mt-2">
-                      <input
-                        id="tasa"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        value={tasa}
-                        onChange={(e) => setTasa(e.target.value)}
-                        className="cifras w-full rounded-lg border border-input bg-card px-3 py-2.5 pr-8 text-sm font-mono outline-none transition focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                        %
-                      </span>
+                    <p className="mt-0.5 text-[12px] text-muted-foreground">
+                      Define su tarifa en cada banco. Las crea el
+                      administrador; aquí solo eliges cuál le toca.
+                    </p>
+
+                    <div className="mt-2 space-y-1.5">
+                      {bloques.length === 0 ? (
+                        <p className="rounded-lg bg-muted px-3 py-2 text-[12.5px] text-muted-foreground">
+                          Todavía no hay bloques creados. Pídele al
+                          administrador que cree al menos uno.
+                        </p>
+                      ) : (
+                        bloques.map((b) => (
+                          <button
+                            key={b.id}
+                            onClick={() => setBloqueId(b.id)}
+                            className={cn(
+                              "pulsable w-full rounded-lg border p-2.5 text-left",
+                              bloqueId === b.id
+                                ? "border-marca-400 bg-marca-50"
+                                : "border-border hover:bg-muted",
+                            )}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span className="text-[0.8667rem] font-semibold text-foreground">
+                                {b.nombre}
+                              </span>
+                              {b.es_default && (
+                                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                  por defecto
+                                </span>
+                              )}
+                            </span>
+                            <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
+                              {(b.bancos || [])
+                                .map((x) => `${x.banco} ${x.porcentaje}%`)
+                                .join(" · ") || "Sin tarifas cargadas"}
+                            </span>
+                          </button>
+                        ))
+                      )}
                     </div>
                   </div>
 
                   <div className="space-y-2 border-t border-border pt-4">
                     <button
                       onClick={aprobar}
-                      disabled={accion !== null || !perfil}
+                      disabled={accion !== null || !perfil || !bloqueId}
                       className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40"
                     >
                       <Check className="h-4 w-4" />
@@ -481,6 +485,7 @@ export default function KYCDetallePage() {
           )}
         </section>
       </div>
+      <Conflicto mensaje={conflicto} onCerrar={() => setConflicto("")} />
     </Shell>
   );
 }

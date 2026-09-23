@@ -27,10 +27,9 @@ const POR_PAGINA_HISTORIAL = 15;
 // de marcar hasta que recargara a mano.
 const REFRESCO_MS = 20 * 1000;
 
-// Las marcas duran 30 minutos en el servidor. Mientras la pantalla esta
-// abierta se renuevan cada 10, para que un lote grande no pierda sus
-// reservas a mitad de las transferencias.
-const RENOVAR_MS = 10 * 60 * 1000;
+// Las marcas no caducan: hacer transferencias lleva el tiempo que lleve,
+// y que vencieran a mitad de una tanda obligaba a marcar otra vez lo ya
+// pagado. Lo marcado espera hasta que se confirme o se quite.
 
 const ESTADOS = [
   { clave: "aprobado", titulo: "Por pagar", campo: "por_pagar" },
@@ -434,26 +433,6 @@ export default function PagosPage() {
     return () => clearInterval(t);
   }, [session, vista, cargarResumen, cargarLista, cargarLote]);
 
-  // Renovar las reservas del lote mientras la pantalla esta abierta.
-  const loteRef = useRef(lote);
-  loteRef.current = lote;
-  useEffect(() => {
-    if (!session) return;
-    const t = setInterval(async () => {
-      const ids = loteRef.current.map((f) => f.id);
-      if (!ids.length) return;
-      const { data } = await supabase.rpc("pagos_marcar", { p_ids: ids });
-      if (data?.rechazadas?.length) {
-        setError(
-          `${data.rechazadas.length} solicitud(es) de tu lote ya no están disponibles y se quitaron.`,
-        );
-        cargarLote();
-        cargarLista({ silencioso: true });
-      }
-    }, RENOVAR_MS);
-    return () => clearInterval(t);
-  }, [session, cargarLote, cargarLista]);
-
   // ── Acciones ──
 
   async function alternarMarca(fila) {
@@ -856,8 +835,9 @@ export default function PagosPage() {
                 )}
 
                 <p className="mt-3 border-t border-border pt-3 text-[11px] leading-relaxed text-muted-foreground">
-                  Lo marcado queda reservado para ti mientras tengas esta
-                  pantalla abierta. Si la cierras, se libera a los 30 minutos.
+                  Lo marcado queda guardado para ti hasta que confirmes el
+                  envío o lo quites. Puedes cerrar la pantalla y seguir
+                  después.
                 </p>
               </div>
             </aside>

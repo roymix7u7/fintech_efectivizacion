@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { firmarCampo } from "@/lib/storage";
-import { cambiarEstado, registrarAuditoria, notificar } from "@/lib/acciones";
+import { explicarError } from "@/lib/acciones";
+import { resolverCaso } from "@/lib/casos";
 import { cn } from "@/lib/utils";
 import Shell, { Lupa, Tarjeta as IconoTarjeta, Check, Cruz } from "@/components/shell";
 import Visor from "@/components/visor";
+import Conflicto from "@/components/conflicto";
 import { Estado, Dato, Vacio, Aviso } from "@/components/marca";
 import { EsqueletoCola, BarraCarga, Esqueleto } from "@/components/carga";
 
@@ -41,6 +43,7 @@ export default function TarjetasPage() {
   const [loading, setLoading] = useState(true);
   const [accion, setAccion] = useState(null);
   const [error, setError] = useState("");
+  const [conflicto, setConflicto] = useState("");
   const [contadores, setContadores] = useState({});
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [cara, setCara] = useState("frente");
@@ -80,7 +83,8 @@ export default function TarjetasPage() {
   useEffect(() => {
     getSession().then((s) => {
       if (!s) return router.push("/login");
-      if (!["supervisor", "admin"].includes(s.rol))
+      // Las tarjetas las verifican tambien los gestores.
+      if (!["gestor", "supervisor", "admin"].includes(s.rol))
         return router.push("/dashboard");
       setSession(s);
       cargar("pendiente");
@@ -129,42 +133,34 @@ export default function TarjetasPage() {
     setCargandoDetalle(false);
   }
 
-  async function aprobar(t) {
-    setAccion("aprobando");
+  /**
+   * Una sola puerta para verificar o rechazar: resolver_caso bloquea la
+   * fila, comprueba que nadie más la tenga tomada, cambia el estado,
+   * avisa al cliente y deja auditoría. Si otro llegó antes, lo dice con
+   * nombre en vez de pisar su decisión.
+   */
+  async function resolver(t, aprobar, texto) {
+    setAccion(aprobar ? "aprobando" : "rechazando");
     setError("");
-    const r = await cambiarEstado({
-      tabla: "tarjetas",
+
+    const r = await resolverCaso({
+      tipo: "tarjeta",
       id: t.id,
-      estadoActual: "pendiente",
-      estadoNuevo: "aprobado",
-      campos: {
-        revisado_por: session.user.id,
-        fecha_revision: new Date().toISOString(),
-      },
-    });
-    if (!r.ok) {
-      setAccion(null);
-      setError(r.error);
-      cargar(filtro);
-      return;
-    }
-    await registrarAuditoria({
-      usuario_id: session.user.id,
-      accion: "APROBAR_TARJETA",
-      entidad: "tarjetas",
-      entidad_id: t.id,
-      datos_antes: { estado: "pendiente" },
-      datos_despues: { estado: "aprobado", banco: t.banco, ultimos_4: t.ultimos_4 },
-    });
-    await notificar({
-      userId: t.perfiles_cliente?.user_id,
-      tipo: "tarjeta_aprobada",
-      titulo: "Tarjeta verificada",
-      cuerpo: `Tu tarjeta ${t.banco} terminada en ${t.ultimos_4} quedó verificada. Ya puedes enviar comprobantes con ella.`,
+      aprobar,
+      motivo: texto,
     });
     setAccion(null);
+
+    if (!r.ok) {
+      if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") setConflicto(r.mensaje);
+      else setError(r.mensaje);
+    }
     cargar(filtro);
     contarPendientes();
+  }
+
+  async function aprobar(t) {
+    await resolver(t, true, null);
   }
 
   async function rechazar(t) {
@@ -175,43 +171,9 @@ export default function TarjetasPage() {
       );
       return;
     }
-    setAccion("rechazando");
-    setError("");
-    const r = await cambiarEstado({
-      tabla: "tarjetas",
-      id: t.id,
-      estadoActual: "pendiente",
-      estadoNuevo: "rechazado",
-      campos: {
-        motivo_rechazo: texto,
-        revisado_por: session.user.id,
-        fecha_revision: new Date().toISOString(),
-      },
-    });
-    if (!r.ok) {
-      setAccion(null);
-      setError(r.error);
-      cargar(filtro);
-      return;
-    }
-    await registrarAuditoria({
-      usuario_id: session.user.id,
-      accion: "RECHAZAR_TARJETA",
-      entidad: "tarjetas",
-      entidad_id: t.id,
-      datos_antes: { estado: "pendiente" },
-      datos_despues: { estado: "rechazado", motivo: texto },
-    });
-    await notificar({
-      userId: t.perfiles_cliente?.user_id,
-      tipo: "tarjeta_rechazada",
-      titulo: "Tarjeta rechazada",
-      cuerpo: `Tu tarjeta ${t.banco} terminada en ${t.ultimos_4} fue rechazada. Motivo: ${texto}`,
-    });
-    setAccion(null);
-    cargar(filtro);
-    contarPendientes();
+    await resolver(t, false, texto);
   }
+
 
   const visibles = useMemo(() => {
     const t = busqueda.trim().toLowerCase();
@@ -585,6 +547,7 @@ export default function TarjetasPage() {
           )}
         </section>
       </div>
+      <Conflicto mensaje={conflicto} onCerrar={() => setConflicto("")} />
     </Shell>
   );
 }
