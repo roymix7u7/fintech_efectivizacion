@@ -12,6 +12,7 @@ import {
   estadoCola,
   contadoresDe,
   minutosRestantes,
+  RESERVA_MINUTOS,
 } from "@/lib/cola";
 import { resolverCaso } from "@/lib/casos";
 import { useRetraso, idsDeClientes } from "@/lib/hooks";
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
 import Shell, { Lupa, Documento, Check, Cruz, Manos } from "@/components/shell";
 import Visor from "@/components/visor";
 import Conflicto from "@/components/conflicto";
+import Pista from "@/components/pista";
 import Paginador from "@/components/paginador";
 import {
   EsqueletoCola,
@@ -435,31 +437,42 @@ export default function SolicitudesPage() {
       <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
         {/* ══════════ Cola o historial ══════════ */}
         <section className="flex min-w-0 flex-col">
-          {esCola && cola && (
-            <div className="mb-3 rounded-lg border border-border bg-card p-3 shadow-panel">
-              <div className="flex items-center gap-4">
+          {esCola && (
+            <div className="mb-3 flex items-center gap-2">
+              <div className="inline-flex gap-1 rounded-lg border border-border bg-muted/60 p-1">
                 {[
-                  { n: cola.mios, l: "tuyas" },
-                  { n: cola.libres, l: "libres" },
-                  { n: cola.tomados, l: "en curso" },
+                  { v: true, t: "Míos", n: cola?.mios },
+                  { v: false, t: "Toda la cola", n: cola?.pendientes },
                 ].map((x) => (
-                  <span key={x.l} className="t-micro">
-                    <span className="cifras font-semibold text-foreground">
-                      {x.n}
-                    </span>{" "}
-                    {x.l}
-                  </span>
+                  <button
+                    key={x.t}
+                    onClick={() => setSoloMias(x.v)}
+                    className={cn(
+                      "pulsable flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[0.8667rem] font-medium",
+                      soloMias === x.v
+                        ? "bg-card text-foreground shadow-panel"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {x.t}
+                    {x.n > 0 && (
+                      <span className="cifras rounded-full bg-muted px-1.5 text-[0.7333rem] font-semibold">
+                        {x.n}
+                      </span>
+                    )}
+                  </button>
                 ))}
               </div>
-              <label className="t-micro mt-2 flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={soloMias}
-                  onChange={(e) => setSoloMias(e.target.checked)}
-                  className="h-3.5 w-3.5 accent-marca-700"
-                />
-                Ver solo las que tengo asignadas
-              </label>
+
+              {cola?.libres > 0 && (
+                <Pista
+                  texto={`${cola.libres} sin dueño ahora mismo: nadie las tomó o se les venció la reserva de ${RESERVA_MINUTOS} minutos.`}
+                >
+                  <span className="cifras rounded-full bg-oro-50 px-2 py-1 text-[0.7333rem] font-semibold text-oro-700">
+                    {cola.libres} libres
+                  </span>
+                </Pista>
+              )}
             </div>
           )}
 
@@ -490,11 +503,11 @@ export default function SolicitudesPage() {
                   ? "Ninguna solicitud coincide con lo que buscas."
                   : esCola && soloMias
                     ? cola && cola.libres > 0
-                      ? `Hay ${cola.libres} caso${cola.libres === 1 ? "" : "s"} libre${cola.libres === 1 ? "" : "s"}. Pulsa Atender siguiente para tomar uno.`
-                      : "No tienes casos asignados y la cola está vacía."
+                      ? `${cola.libres} libre${cola.libres === 1 ? "" : "s"} en la cola: pulsa Atender siguiente.`
+                      : "Nada asignado a ti."
                     : esCola
-                      ? "No queda ningún comprobante por revisar. Buen trabajo."
-                      : "Todavía no hay solicitudes con este estado."
+                      ? "Sin comprobantes por revisar."
+                      : "Sin solicitudes en este estado."
               }
             />
           ) : (
@@ -553,26 +566,32 @@ export default function SolicitudesPage() {
                           ···· {sol.tarjetas?.ultimos_4 || "····"}
                         </span>
                         {!sol.comprobante_url && (
-                          <span className="ml-auto text-red-600">
-                            sin adjunto
-                          </span>
+                          <Pista texto="El cliente envió esta solicitud sin comprobante." fin className="ml-auto">
+                            <span className="h-2 w-2 rounded-full bg-red-500" />
+                          </Pista>
                         )}
                         {esCola &&
                           !soloMias &&
                           sol.asignado_a &&
                           minutosRestantes(sol.asignado_en) > 0 && (
-                            <span
-                              className={cn(
-                                "ml-auto shrink-0 rounded px-1.5 py-0.5 text-[0.6667rem] font-semibold uppercase",
+                            <Pista
+                              fin
+                              className="ml-auto shrink-0"
+                              texto={
                                 sol.asignado_a === session.user.id
-                                  ? "bg-marca-50 text-marca-700"
-                                  : "bg-muted text-muted-foreground",
-                              )}
+                                  ? `Asignada a ti. Te queda ${minutosRestantes(sol.asignado_en)} min antes de que vuelva a la cola.`
+                                  : "La está revisando otra persona del equipo."
+                              }
                             >
-                              {sol.asignado_a === session.user.id
-                                ? "tuya"
-                                : "en curso"}
-                            </span>
+                              <span
+                                className={cn(
+                                  "h-2 w-2 rounded-full",
+                                  sol.asignado_a === session.user.id
+                                    ? "bg-marca-600"
+                                    : "bg-muted-foreground/40",
+                                )}
+                              />
+                            </Pista>
                           )}
                       </div>
                     </button>
@@ -623,25 +642,35 @@ export default function SolicitudesPage() {
                     </h2>
                     <Estado valor={seleccionada.estado} />
                   </div>
-                  <p className="t-micro mt-1">
-                    Enviada el {fechaLarga(seleccionada.created_at)}
-                  </p>
+                  <Pista
+                    texto={`Enviada el ${fechaLarga(seleccionada.created_at)}`}
+                  >
+                    <span className="t-micro mt-1">
+                      {espera(seleccionada.created_at).texto}
+                    </span>
+                  </Pista>
                 </div>
 
                 {seleccionada.estado === "pendiente" &&
                   seleccionada.asignado_a === session.user.id &&
                   minutosRestantes(seleccionada.asignado_en) > 0 && (
                     <div className="flex shrink-0 items-center gap-2">
-                      <span className="rounded-md bg-oro-50 px-2 py-1 text-[0.7333rem] font-semibold text-oro-700">
-                        Reservada {minutosRestantes(seleccionada.asignado_en)}{" "}
-                        min
-                      </span>
-                      <button
-                        onClick={() => soltar(seleccionada)}
-                        className="pulsable rounded-lg border border-border px-3 py-1.5 text-[0.8rem] font-medium text-muted-foreground hover:bg-muted"
+                      <Pista
+                        fin
+                        texto="Es tuya mientras dure la reserva. Al agotarse vuelve a la cola y cualquiera puede tomarla."
                       >
-                        Soltar
-                      </button>
+                        <span className="cifras rounded-md bg-oro-50 px-2 py-1 text-[0.7333rem] font-semibold text-oro-700">
+                          {minutosRestantes(seleccionada.asignado_en)} min
+                        </span>
+                      </Pista>
+                      <Pista fin texto="Devolverla a la cola para que la tome otra persona.">
+                        <button
+                          onClick={() => soltar(seleccionada)}
+                          className="pulsable rounded-lg border border-border px-2.5 py-1.5 text-[0.8rem] font-medium text-muted-foreground hover:bg-muted"
+                        >
+                          Soltar
+                        </button>
+                      </Pista>
                     </div>
                   )}
               </div>
@@ -695,45 +724,57 @@ export default function SolicitudesPage() {
 
                   {/* Cuentas para depositar */}
                   <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-                    <h3 className="t-seccion mb-3">Cuentas para depositar</h3>
+                    <div className="mb-3 flex items-center gap-1.5">
+                      <h3 className="t-seccion">Cuenta de destino</h3>
+                      <Pista texto="El pago se deposita en una cuenta del mismo banco de la tarjeta. Las de otros bancos salen atenuadas." />
+                    </div>
                     {cargandoCuentas ? (
                       <div className="space-y-2">
                         <Esqueleto className="h-12 w-full" />
                         <Esqueleto className="h-12 w-full" />
                       </div>
                     ) : cuentas.length === 0 ? (
-                      <p className="t-cuerpo rounded-lg bg-oro-50 px-3 py-2.5 text-oro-700">
-                        Este cliente no registró ninguna cuenta bancaria.
+                      <p className="t-cuerpo rounded-lg bg-red-50 px-3 py-2.5 text-red-700">
+                        Sin cuenta registrada: no hay dónde depositarle.
                       </p>
                     ) : (
                       <ul className="space-y-2">
-                        {cuentas.map((c, i) => (
-                          <li
-                            key={c.id}
-                            style={{ "--retraso": `${i * 50}ms` }}
-                            className="entra flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
-                          >
-                            <div className="min-w-0">
-                              <p className="truncate text-[0.8667rem] font-semibold">
-                                {c.banco}
-                              </p>
-                              <p className="t-etiqueta mt-0.5">
-                                {c.tipo === "interbancaria"
-                                  ? "Interbancaria CCI"
-                                  : "Cuenta de ahorros"}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() =>
-                                navigator.clipboard?.writeText(c.numero_cuenta)
-                              }
-                              title="Copiar número"
-                              className="pulsable cifras shrink-0 rounded-md px-2 py-1 font-mono text-[0.8667rem] font-semibold text-marca-700 hover:bg-marca-50"
+                        {cuentas.map((c, i) => {
+                          const mismoBanco =
+                            c.banco ===
+                            (seleccionada.tarjetas?.banco || seleccionada.banco);
+                          return (
+                            <li
+                              key={c.id}
+                              style={{ "--retraso": `${i * 50}ms` }}
+                              className={cn(
+                                "entra flex items-center justify-between gap-3 rounded-lg border px-3 py-2",
+                                mismoBanco
+                                  ? "border-emerald-200 bg-emerald-50/60"
+                                  : "border-border bg-muted/30 opacity-60",
+                              )}
                             >
-                              {c.numero_cuenta}
-                            </button>
-                          </li>
-                        ))}
+                              <div className="min-w-0">
+                                <p className="truncate text-[0.8667rem] font-semibold">
+                                  {c.banco}
+                                </p>
+                                <p className="t-etiqueta mt-0.5">
+                                  {c.tipo === "interbancaria" ? "CCI" : "Ahorros"}
+                                </p>
+                              </div>
+                              <Pista fin texto="Copiar el número">
+                                <button
+                                  onClick={() =>
+                                    navigator.clipboard?.writeText(c.numero_cuenta)
+                                  }
+                                  className="pulsable cifras shrink-0 rounded-md px-2 py-1 font-mono text-[0.8667rem] font-semibold text-marca-700 hover:bg-marca-50"
+                                >
+                                  {c.numero_cuenta}
+                                </button>
+                              </Pista>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>
@@ -767,16 +808,14 @@ export default function SolicitudesPage() {
                         </div>
                       ) : (
                         <div className="animate-aparecer space-y-3">
-                          <div>
-                            <label className="t-seccion">
+                          <div className="flex items-center gap-1.5">
+                            <label htmlFor="motivo" className="t-seccion">
                               Motivo del rechazo
                             </label>
-                            <p className="t-micro mt-0.5">
-                              El cliente lee este texto en su app. Dile qué
-                              tiene que corregir.
-                            </p>
+                            <Pista texto="El cliente lee este texto en su app. Dile exactamente qué corregir para que pueda volver a enviarlo." />
                           </div>
                           <textarea
+                            id="motivo"
                             autoFocus
                             value={motivo}
                             onChange={(e) => setMotivo(e.target.value)}
@@ -786,13 +825,13 @@ export default function SolicitudesPage() {
                           />
                           <span
                             className={cn(
-                              "block text-[0.8rem]",
+                              "cifras block text-right text-[0.8rem]",
                               motivo.trim().length >= MIN_MOTIVO
                                 ? "text-emerald-600"
                                 : "text-muted-foreground",
                             )}
                           >
-                            {motivo.trim().length} / {MIN_MOTIVO} mínimo
+                            {motivo.trim().length}/{MIN_MOTIVO}
                           </span>
                           <div className="flex gap-2">
                             <BotonAccion

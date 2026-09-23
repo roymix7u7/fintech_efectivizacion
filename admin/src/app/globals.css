@@ -273,3 +273,66 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+@layer components {
+  /**
+   * Pista: explicación que aparece al pasar el cursor o al enfocar con
+   * el teclado.
+   *
+   * Sustituye a los párrafos de ayuda que ocupaban sitio permanente
+   * para decir algo que se necesita una vez. El texto viaja en
+   * aria-label, así que un lector de pantalla lo anuncia igual.
+   */
+  .pista {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .pista::after {
+    content: attr(data-pista);
+    position: absolute;
+    bottom: calc(100% + 7px);
+    left: 50%;
+    transform: translateX(-50%) translateY(3px);
+    z-index: 40;
+    width: max-content;
+    max-width: 230px;
+    padding: 7px 9px;
+    border-radius: 7px;
+    background: hsl(219 47% 17%);
+    color: hsl(0 0% 100%);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.45;
+    text-align: left;
+    white-space: normal;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.14s ease, transform 0.14s ease;
+  }
+
+  .pista:hover::after,
+  .pista:focus-visible::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Cerca del borde derecho la burbuja se alinea a la derecha para no
+     salirse de la pantalla. */
+  .pista-fin::after {
+    left: auto;
+    right: 0;
+    transform: translateY(3px);
+  }
+  .pista-fin:hover::after,
+  .pista-fin:focus-visible::after {
+    transform: translateY(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pista::after {
+      transition: none;
+    }
+  }
+}

@@ -6,10 +6,15 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
-import { estadoCola, contadoresDe } from "@/lib/cola";
+import {
+  estadoCola,
+  contadoresDe,
+  tomarSiguiente,
+  RESERVA_MINUTOS,
+} from "@/lib/cola";
 import { useRetraso } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
-import Shell, { Lupa, Persona, Flecha } from "@/components/shell";
+import Shell, { Lupa, Persona, Flecha, Manos } from "@/components/shell";
 import Paginador from "@/components/paginador";
 import { EsqueletoFilas, BarraCarga, Esqueleto } from "@/components/carga";
 import { Estado, Vacio, Aviso } from "@/components/marca";
@@ -43,12 +48,17 @@ export default function KYCPage() {
   const [refrescando, setRefrescando] = useState(false);
   const [error, setError] = useState("");
   const [contadores, setContadores] = useState({});
+  // Cada gestor ve lo suyo. Antes la lista mostraba todos los
+  // pendientes a todo el mundo, asi que cinco personas abrian el mismo
+  // cliente aunque la cola ya lo hubiera repartido.
+  const [soloMias, setSoloMias] = useState(true);
+  const [pidiendo, setPidiendo] = useState(false);
   const router = useRouter();
 
   const termino = useRetraso(busqueda, 350);
   const peticion = useRef(0);
 
-  const cargar = useCallback(async (estado, pag, buscar, silencioso) => {
+  const cargar = useCallback(async (estado, pag, buscar, silencioso, mias, yo) => {
     const mia = ++peticion.current;
     if (silencioso) setRefrescando(true);
     else setPrimeraCarga(true);
@@ -72,9 +82,18 @@ export default function KYCPage() {
 
     let q = supabase
       .from("users")
-      .select("id, email, estado, created_at", { count: "exact" })
+      .select("id, email, estado, created_at, asignado_a, asignado_en", {
+        count: "exact",
+      })
       .eq("rol", "cliente")
       .eq("estado", estado);
+
+    // Solo en la cola: en los verificados u observados no hay reparto
+    // que respetar, son listas de consulta.
+    if (estado === "pendiente" && mias && yo) {
+      const vence = new Date(Date.now() - RESERVA_MINUTOS * 60000).toISOString();
+      q = q.eq("asignado_a", yo).gt("asignado_en", vence);
+    }
 
     if (t.length >= 2) {
       const patron = `%${t}%`;
@@ -134,20 +153,35 @@ export default function KYCPage() {
       if (!["gestor", "supervisor", "admin"].includes(s.rol))
         return router.push("/dashboard");
       setSession(s);
-      cargar("pendiente", 0, "", false);
+      cargar("pendiente", 0, "", false, true, s.user.id);
       estadoCola().then(({ colas }) => setContadores(contadoresDe(colas)));
     });
   }, [router, cargar]);
 
   useEffect(() => {
     if (!session) return;
-    cargar(filtro, pagina, termino, true);
+    cargar(filtro, pagina, termino, true, soloMias, session.user.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [termino, pagina, filtro]);
+  }, [termino, pagina, filtro, soloMias]);
 
   useEffect(() => {
     setPagina(0);
-  }, [termino, filtro]);
+  }, [termino, filtro, soloMias]);
+
+  /** Pide el siguiente caso libre y lo abre. */
+  async function atenderSiguiente() {
+    setPidiendo(true);
+    setError("");
+    const { id, vacia, error: e } = await tomarSiguiente("kyc");
+    setPidiendo(false);
+    if (e) return setError("No se pudo tomar el siguiente caso: " + e);
+    if (vacia) {
+      setError("No queda ninguna identidad libre en la cola por ahora.");
+      estadoCola().then(({ colas }) => setContadores(contadoresDe(colas)));
+      return;
+    }
+    router.push(`/kyc/${id}`);
+  }
 
   if (!session) return null;
 
@@ -160,7 +194,9 @@ export default function KYCPage() {
         primeraCarga
           ? "Cargando..."
           : filtro === "pendiente"
-            ? `${total} ${total === 1 ? "cliente espera" : "clientes esperan"} revisión`
+            ? soloMias
+              ? `${total} ${total === 1 ? "identidad asignada" : "identidades asignadas"} a ti`
+              : `${total} en la cola de todo el equipo`
             : `${total} en esta lista`
       }
       acciones={
@@ -207,6 +243,40 @@ export default function KYCPage() {
         ))}
       </div>
 
+      {filtro === "pendiente" && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="inline-flex gap-1 rounded-lg border border-border bg-muted/60 p-1">
+            {[
+              { v: true, t: "Míos" },
+              { v: false, t: "Toda la cola" },
+            ].map((x) => (
+              <button
+                key={x.t}
+                onClick={() => setSoloMias(x.v)}
+                className={cn(
+                  "pulsable rounded-md px-3 py-1.5 text-[0.8667rem] font-medium",
+                  soloMias === x.v
+                    ? "bg-card text-foreground shadow-panel"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {x.t}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={atenderSiguiente}
+            disabled={pidiendo}
+            title="Te asigna la identidad libre que más tiempo lleva esperando"
+            className="pulsable flex items-center gap-2 rounded-lg bg-marca-700 px-3.5 py-2 text-[0.8667rem] font-semibold text-white hover:bg-marca-600 disabled:opacity-50"
+          >
+            <Manos className="h-4 w-4" />
+            {pidiendo ? "Buscando…" : "Tomar siguiente"}
+          </button>
+        </div>
+      )}
+
       <div className="relative mb-4 max-w-md">
         <Lupa className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
@@ -233,7 +303,9 @@ export default function KYCPage() {
             termino
               ? "Ningún cliente de esta lista coincide con lo que buscas."
               : filtro === "pendiente"
-                ? "No queda ningún cliente por verificar."
+                ? soloMias
+                  ? "No tienes identidades asignadas. Pulsa «Tomar siguiente» o mira toda la cola."
+                  : "No queda ningún cliente por verificar."
                 : "No hay clientes con este estado."
           }
         />
