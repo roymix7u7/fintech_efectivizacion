@@ -50,6 +50,8 @@ export default function KYCDetallePage() {
   const [conflicto, setConflicto] = useState(null);
   // Quien la tiene, cuando la abre alguien que no es su dueño.
   const [ajeno, setAjeno] = useState(null);
+  const [modoBloqueo, setModoBloqueo] = useState(false);
+  const [motivoBloqueo, setMotivoBloqueo] = useState("");
   const [loading, setLoading] = useState(true);
   const [accion, setAccion] = useState(null);
   const [error, setError] = useState("");
@@ -218,6 +220,46 @@ export default function KYCDetallePage() {
   }
 
   /**
+   * Cierra o reabre la cuenta de un cliente.
+   *
+   * Es de supervisor y administrador: el gestor revisa documentos, pero
+   * cerrarle la cuenta a alguien es otra cosa. Sirve en cualquier
+   * estado, también con la cuenta ya aprobada, porque el motivo para
+   * cerrarla suele aparecer después de haberla abierto.
+   */
+  async function cambiarBloqueo(bloquear) {
+    const texto = motivoBloqueo.trim();
+    if (bloquear && texto.length < MIN_MOTIVO) {
+      setError(
+        `Explica el motivo con al menos ${MIN_MOTIVO} caracteres: el cliente lo va a leer al intentar entrar.`,
+      );
+      return;
+    }
+
+    setAccion(bloquear ? "bloqueando" : "desbloqueando");
+    setError("");
+
+    const { data, error: e } = await supabase.rpc("bloquear_cliente", {
+      p_id: params.id,
+      p_bloquear: bloquear,
+      p_motivo: bloquear ? texto : null,
+    });
+    setAccion(null);
+
+    if (e) {
+      setError(e.code === "P0001" ? e.message : "No se pudo completar: " + e.message);
+      return;
+    }
+    if (!data?.ok) {
+      setError("La cuenta ya estaba en ese estado. Se actualizó la ficha.");
+    }
+
+    setModoBloqueo(false);
+    setMotivoBloqueo("");
+    await cargar();
+  }
+
+  /**
    * Terminada una ficha, se abre la siguiente sin volver a la lista. Si
    * no queda ninguna, la lista lo dice con una ventana.
    */
@@ -240,6 +282,8 @@ export default function KYCDetallePage() {
     : "Registro sin completar";
   const docActual = DOCUMENTOS.find((d) => d.campo === documento);
   const puedeResolver = ["gestor", "admin"].includes(session?.rol);
+  // Cerrar una cuenta es del supervisor y del administrador.
+  const puedeBloquear = ["supervisor", "admin"].includes(session?.rol);
   const resoluble =
     puedeResolver &&
     (cliente?.estado === "pendiente" || cliente?.estado === "observado");
@@ -377,6 +421,95 @@ export default function KYCDetallePage() {
                   {bloques.find((b) => b.id === perfil?.bloque_id)?.nombre}
                 </Dato>
               </dl>
+            </div>
+          )}
+
+          {/* Cerrar la cuenta. Fuera del bloque de revisión a
+              propósito: no es parte de verificar la identidad, y sirve
+              también cuando ya está aprobada. */}
+          {puedeBloquear && cliente && (
+            <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
+              {cliente.estado === "bloqueado" ? (
+                <>
+                  <h3 className="text-[13px] font-semibold text-red-700">
+                    Cuenta bloqueada
+                  </h3>
+                  {perfil?.motivo_bloqueo && (
+                    <p className="mt-1.5 rounded-lg border-l-[3px] border-red-500 bg-red-50 px-3 py-2 text-[0.8667rem] text-red-900">
+                      {perfil.motivo_bloqueo}
+                    </p>
+                  )}
+                  <p className="mt-2 text-[12px] text-muted-foreground">
+                    No puede entrar al app ni enviar solicitudes.
+                    {perfil?.bloqueado_en &&
+                      ` Desde el ${fechaLarga(perfil.bloqueado_en)}.`}
+                  </p>
+                  <button
+                    onClick={() => cambiarBloqueo(false)}
+                    disabled={accion !== null}
+                    className="pulsable mt-3 w-full rounded-lg border border-emerald-300 px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
+                  >
+                    {accion === "desbloqueando"
+                      ? "Desbloqueando..."
+                      : "Desbloquear cuenta"}
+                  </button>
+                </>
+              ) : !modoBloqueo ? (
+                <>
+                  <h3 className="text-[13px] font-semibold">Acceso al app</h3>
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">
+                    Bloquear cierra su entrada al app y le impide enviar
+                    solicitudes. Se puede revertir.
+                  </p>
+                  <button
+                    onClick={() => setModoBloqueo(true)}
+                    disabled={accion !== null}
+                    className="pulsable mt-3 w-full rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"
+                  >
+                    Bloquear cuenta
+                  </button>
+                </>
+              ) : (
+                <div className="animate-aparecer space-y-3">
+                  <div>
+                    <label htmlFor="motivoBloqueo" className="text-[13px] font-semibold">
+                      Motivo del bloqueo
+                    </label>
+                    <p className="mt-0.5 text-[12px] text-muted-foreground">
+                      El cliente lo lee al intentar entrar. Queda registrado
+                      con tu nombre.
+                    </p>
+                  </div>
+                  <textarea
+                    id="motivoBloqueo"
+                    autoFocus
+                    rows={3}
+                    value={motivoBloqueo}
+                    onChange={(e) => setMotivoBloqueo(e.target.value)}
+                    placeholder="Ej: envió comprobantes que no corresponden a sus operaciones."
+                    className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2.5 text-[0.9333rem] outline-none focus:border-marca-500"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setModoBloqueo(false);
+                        setMotivoBloqueo("");
+                      }}
+                      disabled={accion !== null}
+                      className="pulsable flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => cambiarBloqueo(true)}
+                      disabled={accion !== null || motivoBloqueo.trim().length < MIN_MOTIVO}
+                      className="pulsable flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-40"
+                    >
+                      {accion === "bloqueando" ? "Bloqueando..." : "Bloquear"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

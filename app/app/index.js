@@ -15,7 +15,13 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
 import { hayConexion } from "../src/lib/conexion";
-import { sesionVencida, cerrarSesion, entrarA } from "../src/lib/sesion";
+import {
+  sesionVencida,
+  cerrarSesion,
+  entrarA,
+  motivoDelBloqueo,
+} from "../src/lib/sesion";
+import CuentaBloqueada from "../src/components/CuentaBloqueada";
 import COLORS from "../src/theme/colors";
 import TIPO from "../src/theme/tipografia";
 
@@ -32,6 +38,10 @@ import TIPO from "../src/theme/tipografia";
  */
 export default function Bienvenida() {
   const [fase, setFase] = useState("revisando");
+  // Quien vuelve con la sesión guardada y ya está bloqueado también
+  // merece saber por qué, en vez de aparecer en la bienvenida sin
+  // explicación y creer que se le borró la cuenta.
+  const [bloqueo, setBloqueo] = useState(null);
   const router = useRouter();
 
   // Entrada del contenido. Se anima una sola vez, cuando se decide
@@ -79,7 +89,11 @@ export default function Bienvenida() {
         return;
       }
       if (usuario.estado === "bloqueado") {
+        // El motivo se lee con la sesión todavía abierta: después RLS
+        // ya no deja ver el perfil.
+        const motivo = await motivoDelBloqueo(session.user.id);
         await cerrarSesion();
+        setBloqueo({ motivo });
         setFase("bienvenida");
         return;
       }
@@ -144,6 +158,12 @@ export default function Bienvenida() {
 
       {/* Halos de fondo. Dos círculos muy tenues dan profundidad sin
           necesitar una librería de degradados. */}
+      <CuentaBloqueada
+        visible={bloqueo !== null}
+        motivo={bloqueo?.motivo}
+        onCerrar={() => setBloqueo(null)}
+      />
+
       <View pointerEvents="none" style={[s.halo, s.haloOro]} />
       <View pointerEvents="none" style={[s.halo, s.haloAzul]} />
 

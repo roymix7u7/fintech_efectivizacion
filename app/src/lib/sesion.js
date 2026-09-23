@@ -85,3 +85,26 @@ export function entrarA(router, ruta) {
   } catch {}
   router.replace(ruta);
 }
+
+/**
+ * El motivo por el que se le cerro la cuenta a alguien.
+ *
+ * Se lee con la sesion todavia abierta: al cerrarla, RLS deja de
+ * dejarnos ver su perfil. Por eso quien la use tiene que llamarla
+ * antes del signOut, no despues.
+ *
+ * Si falla, devuelve null y la pantalla muestra el aviso sin motivo:
+ * vale mas decir que esta bloqueada que quedarse callado.
+ */
+export async function motivoDelBloqueo(userId) {
+  try {
+    const { data } = await supabase
+      .from("perfiles_cliente")
+      .select("motivo_bloqueo")
+      .eq("user_id", userId)
+      .maybeSingle();
+    return data?.motivo_bloqueo || null;
+  } catch {
+    return null;
+  }
+}

@@ -18,13 +18,21 @@ import { mensajeError } from "../src/lib/ui";
 import { useAviso } from "../src/components/Avisos";
 import { validarEmail } from "../src/lib/validaciones";
 import { hayConexion } from "../src/lib/conexion";
-import { marcarInicioSesion, entrarA } from "../src/lib/sesion";
+import {
+  marcarInicioSesion,
+  entrarA,
+  motivoDelBloqueo,
+} from "../src/lib/sesion";
+import CuentaBloqueada from "../src/components/CuentaBloqueada";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  // El bloqueo se muestra en ventana y no como aviso flotante: el
+  // motivo hay que poder leerlo con calma.
+  const [bloqueo, setBloqueo] = useState(null);
   const router = useRouter();
   const { mostrar } = useAviso();
 
@@ -87,8 +95,12 @@ export default function LoginScreen() {
       }
 
       if (userData.estado === "bloqueado") {
+        // El motivo se lee antes de cerrar la sesión: sin ella, RLS ya
+        // no deja ver el perfil y solo quedaría el mensaje genérico.
+        const motivo = await motivoDelBloqueo(data.user.id);
         await supabase.auth.signOut();
-        return mostrar("Tu cuenta está bloqueada. Contacta a soporte.", "error");
+        setBloqueo({ motivo });
+        return;
       }
 
       // Desde aquí empiezan a contar las dos horas de sesión.
@@ -113,6 +125,12 @@ export default function LoginScreen() {
       style={s.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      <CuentaBloqueada
+        visible={bloqueo !== null}
+        motivo={bloqueo?.motivo}
+        onCerrar={() => setBloqueo(null)}
+      />
+
       {/* Header azul */}
       <View style={s.header}>
         {/* Al ocultar la cabecera nativa, el botón de volver tiene que

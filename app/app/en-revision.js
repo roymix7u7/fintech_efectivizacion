@@ -15,7 +15,11 @@ import TIPO from "../src/theme/tipografia";
 import { confirmar, mensajeError } from "../src/lib/ui";
 import { useAviso } from "../src/components/Avisos";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
-import { cerrarSesion as cerrarSesionCompleta } from "../src/lib/sesion";
+import {
+  cerrarSesion as cerrarSesionCompleta,
+  motivoDelBloqueo,
+} from "../src/lib/sesion";
+import CuentaBloqueada from "../src/components/CuentaBloqueada";
 import SubidaDocumentos, {
   DOCUMENTOS,
   documentosCompletos,
@@ -33,6 +37,7 @@ export default function EnRevisionScreen() {
     selfie: null,
   });
   const [enviando, setEnviando] = useState(false);
+  const [bloqueo, setBloqueo] = useState(null);
   const router = useRouter();
   const { mostrar } = useAviso();
 
@@ -73,9 +78,12 @@ export default function EnRevisionScreen() {
         return;
       }
       if (userData?.estado === "bloqueado") {
+        // Igual que en login: el motivo se lee con la sesión abierta,
+        // porque después RLS ya no deja ver el perfil. Se sale al
+        // login recién cuando la persona cierra el aviso.
+        const motivo = await motivoDelBloqueo(user.id);
         await supabase.auth.signOut();
-        mostrar("Tu cuenta está bloqueada. Contacta a soporte.", "error");
-        router.replace("/login");
+        setBloqueo({ motivo });
         return;
       }
       if (avisar) {
@@ -161,6 +169,18 @@ export default function EnRevisionScreen() {
     if (!(await confirmar("Seguro que quieres cerrar sesion?"))) return;
     await cerrarSesionCompleta();
     router.replace("/login");
+  }
+
+  if (bloqueo) {
+    return (
+      <View style={[s.container, s.centrado]}>
+        <CuentaBloqueada
+          visible
+          motivo={bloqueo.motivo}
+          onCerrar={() => router.replace("/login")}
+        />
+      </View>
+    );
   }
 
   if (cargando) {
