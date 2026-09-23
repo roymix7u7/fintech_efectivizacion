@@ -177,8 +177,10 @@ export default function TarjetasPage() {
     setModoRechazo(false);
     setAjeno(null);
 
-    // Abrirla es atenderla: así el resto del equipo la ve tomada.
-    if (t.estado === "pendiente") {
+    // Abrirla es atenderla: así el resto del equipo la ve tomada. El
+    // supervisor solo mira, y tomarla se la quitaría al gestor.
+    const puedeTomar = ["gestor", "admin"].includes(session?.rol);
+    if (puedeTomar && t.estado === "pendiente") {
       const r = await tomarCaso("tarjeta", t.id);
       if (!r.ok && r.motivo === "TOMADO") setAjeno(r);
       recargar();

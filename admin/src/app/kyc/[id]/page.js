@@ -58,7 +58,7 @@ export default function KYCDetallePage() {
   const router = useRouter();
   const params = useParams();
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (rol) => {
     const { data: user } = await supabase
       .from("users")
       .select("*")
@@ -74,7 +74,19 @@ export default function KYCDetallePage() {
     // Abrir una ficha libre la toma, igual que en solicitudes: hasta
     // ahora se podía estar revisando a un cliente y, para el resto del
     // equipo, la identidad seguía libre en la cola.
-    if (user.estado === "pendiente" || user.estado === "observado") {
+    //
+    // El supervisor no: entra a mirar cómo va el trabajo, y si abrir le
+    // reservara el caso se lo quitaría al gestor que lo tiene entre
+    // manos, además de aparecerle a él como "tuya".
+    // El rol llega por argumento y no del estado: cargar() corre en
+    // el mismo tick en que se guarda la sesión, cuando session todavía
+    // es null. En las recargas posteriores no se pasa, y entonces no
+    // hay nada que tomar: el caso ya está en tus manos.
+    const puedeTomar = ["gestor", "admin"].includes(rol);
+    if (
+      puedeTomar &&
+      (user.estado === "pendiente" || user.estado === "observado")
+    ) {
       const r = await tomarCaso("kyc", params.id);
       if (!r.ok && r.motivo === "TOMADO") setAjeno(r);
     }
@@ -123,7 +135,7 @@ export default function KYCDetallePage() {
       if (!["gestor", "supervisor", "admin"].includes(s.rol))
         return router.push("/dashboard");
       setSession(s);
-      cargar();
+      cargar(s.rol);
     });
   }, [router, cargar]);
 
@@ -256,7 +268,7 @@ export default function KYCDetallePage() {
 
     setModoBloqueo(false);
     setMotivoBloqueo("");
-    await cargar();
+    await cargar(session?.rol);
   }
 
   /**

@@ -324,8 +324,10 @@ export default function SolicitudesPage() {
     setCargandoDetalle(true);
 
     // Abrir un caso libre lo toma. Antes se podia estar diez minutos
-    // con una solicitud en pantalla y para el resto seguia libre.
-    if (esCola && sol.estado === "pendiente") {
+    // con una solicitud en pantalla y para el resto seguia libre. El
+    // supervisor queda fuera: mirar la cola no debe vaciarsela al
+    // gestor que la esta atendiendo.
+    if (puedeResolver && esCola && sol.estado === "pendiente") {
       const r = await tomarCaso("solicitud", sol.id);
       if (!r.ok && r.motivo === "TOMADO") setAjeno(r);
       cargar(filtro, { silencioso: true });
