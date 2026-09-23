@@ -43,7 +43,7 @@ export default function TarjetasPage() {
   const [loading, setLoading] = useState(true);
   const [accion, setAccion] = useState(null);
   const [error, setError] = useState("");
-  const [conflicto, setConflicto] = useState("");
+  const [conflicto, setConflicto] = useState(null);
   const [contadores, setContadores] = useState({});
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [cara, setCara] = useState("frente");
@@ -152,8 +152,14 @@ export default function TarjetasPage() {
     setAccion(null);
 
     if (!r.ok) {
-      if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") setConflicto(r.mensaje);
-      else setError(r.mensaje);
+      if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") {
+        setConflicto(r);
+        setSeleccionada(null);
+        setModoRechazo(false);
+        setMotivo("");
+      } else {
+        setError(r.mensaje);
+      }
     }
     cargar(filtro);
     contarPendientes();
@@ -547,7 +553,11 @@ export default function TarjetasPage() {
           )}
         </section>
       </div>
-      <Conflicto mensaje={conflicto} onCerrar={() => setConflicto("")} />
+      <Conflicto
+        mensaje={conflicto?.mensaje}
+        titulo={conflicto?.titulo}
+        onCerrar={() => setConflicto(null)}
+      />
     </Shell>
   );
 }

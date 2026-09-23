@@ -9,7 +9,7 @@ import { BotonAccion } from "@/components/carga";
  * pulsar aprobar o rechazar, y tiene que enterarse de que su decision no
  * se guardo antes de seguir con lo siguiente.
  */
-export default function Conflicto({ mensaje, onCerrar, onSiguiente }) {
+export default function Conflicto({ mensaje, titulo, onCerrar, onSiguiente }) {
   if (!mensaje) return null;
 
   return (
@@ -29,7 +29,7 @@ export default function Conflicto({ mensaje, onCerrar, onSiguiente }) {
           </span>
           <div className="min-w-0">
             <h2 className="text-base font-semibold text-foreground">
-              Este caso ya está tomado
+              {titulo || "Este caso ya está tomado"}
             </h2>
             <p className="mt-1 text-[0.8667rem] leading-relaxed text-muted-foreground">
               {mensaje}
@@ -43,8 +43,8 @@ export default function Conflicto({ mensaje, onCerrar, onSiguiente }) {
               Atender el siguiente
             </BotonAccion>
           )}
-          <BotonAccion tono="neutro" onClick={onCerrar}>
-            Entendido
+          <BotonAccion tono="neutro" onClick={onCerrar} className={onSiguiente ? "" : "flex-1"}>
+            Volver a pendientes
           </BotonAccion>
         </div>
       </div>

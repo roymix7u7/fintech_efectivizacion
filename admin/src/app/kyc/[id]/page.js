@@ -46,7 +46,7 @@ export default function KYCDetallePage() {
   // ninguna tarifa del sistema.
   const [bloques, setBloques] = useState([]);
   const [bloqueId, setBloqueId] = useState(null);
-  const [conflicto, setConflicto] = useState("");
+  const [conflicto, setConflicto] = useState(null);
   const [loading, setLoading] = useState(true);
   const [accion, setAccion] = useState(null);
   const [error, setError] = useState("");
@@ -146,7 +146,7 @@ export default function KYCDetallePage() {
     setAccion(null);
 
     if (!r.ok) {
-      if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") setConflicto(r.mensaje);
+      if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") setConflicto(r);
       else setError(r.mensaje);
       return;
     }
@@ -189,7 +189,7 @@ export default function KYCDetallePage() {
     setAccion(null);
 
     if (!r.ok) {
-      if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") setConflicto(r.mensaje);
+      if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") setConflicto(r);
       else setError(r.mensaje);
       return;
     }
@@ -485,7 +485,15 @@ export default function KYCDetallePage() {
           )}
         </section>
       </div>
-      <Conflicto mensaje={conflicto} onCerrar={() => setConflicto("")} />
+      {/* Al cerrar se vuelve a la cola: esta ficha ya no es suya. */}
+      <Conflicto
+        mensaje={conflicto?.mensaje}
+        titulo={conflicto?.titulo}
+        onCerrar={() => {
+          setConflicto(null);
+          router.push("/kyc");
+        }}
+      />
     </Shell>
   );
 }

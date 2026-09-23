@@ -98,7 +98,7 @@ export default function SolicitudesPage() {
   const [accion, setAccion] = useState(null);
   const [error, setError] = useState("");
   // Mensaje de "lo tiene otro": se muestra en ventana, no en una linea.
-  const [conflicto, setConflicto] = useState("");
+  const [conflicto, setConflicto] = useState(null);
   // id -> correo de cada persona del equipo. Sirve para decir quién
   // tiene cada caso sin pedir el dato fila por fila.
   const [equipo, setEquipo] = useState({});
@@ -331,8 +331,16 @@ export default function SolicitudesPage() {
     setAccion(null);
 
     if (!r.ok) {
-      if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") setConflicto(r.mensaje);
-      else setError(r.mensaje);
+      if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") {
+        // Se cierra el caso abierto: ya no es suyo y dejarlo en pantalla
+        // invita a volver a intentarlo.
+        setConflicto(r);
+        setSeleccionada(null);
+        setModoRechazo(false);
+        setMotivo("");
+      } else {
+        setError(r.mensaje);
+      }
       cargar(filtro, { silencioso: true });
       contarPendientes();
       return;
@@ -912,10 +920,11 @@ export default function SolicitudesPage() {
         </section>
       </div>
       <Conflicto
-        mensaje={conflicto}
-        onCerrar={() => setConflicto("")}
+        mensaje={conflicto?.mensaje}
+        titulo={conflicto?.titulo}
+        onCerrar={() => setConflicto(null)}
         onSiguiente={() => {
-          setConflicto("");
+          setConflicto(null);
           atenderSiguiente();
         }}
       />
