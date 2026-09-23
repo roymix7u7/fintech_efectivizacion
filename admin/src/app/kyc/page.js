@@ -193,6 +193,27 @@ export default function KYCPage() {
     setPagina(0);
   }, [termino, filtro, soloMias]);
 
+  /**
+   * La cola se refresca sola mientras se mira: si otro gestor toma una
+   * identidad o la resuelve, desaparece o cambia de dueño en el momento.
+   */
+  useEffect(() => {
+    if (!session) return;
+    const canal = supabase
+      .channel(`cola-kyc-${Date.now().toString(36)}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "users" },
+        () => {
+          cargar(filtro, pagina, termino, true, soloMias, session.user.id);
+          estadoCola().then(({ colas }) => setContadores(contadoresDe(colas)));
+        },
+      )
+      .subscribe();
+    return () => supabase.removeChannel(canal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, filtro, pagina, termino, soloMias]);
+
   /** Pide el siguiente caso libre y lo abre. */
   async function atenderSiguiente() {
     setPidiendo(true);
@@ -402,6 +423,7 @@ export default function KYCPage() {
                           se sabia si un caso estaba repartido ni a quien. */}
                       {filtro === "pendiente" && c.asignado_a && restan(c.asignado_en) > 0 && (
                         <Revisor
+                          id={c.asignado_a}
                           persona={equipo[c.asignado_a]}
                           minutos={restan(c.asignado_en)}
                           propio={c.asignado_a === session.user.id}

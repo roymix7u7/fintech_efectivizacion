@@ -17,6 +17,10 @@ export default function Pista({ texto, children, fin = false, className }) {
     <span
       className={cn("pista", fin && "pista-fin", className)}
       data-pista={texto}
+      // El titulo nativo es el respaldo: dentro de una lista con
+      // desplazamiento propio, la burbuja dibujada con CSS se recorta
+      // en el borde y no se llega a leer.
+      title={texto}
       aria-label={texto}
       tabIndex={0}
       role="note"

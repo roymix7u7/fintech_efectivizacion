@@ -65,6 +65,24 @@ export function mensajeConflicto(d, tipo) {
   return "No se pudo resolver el caso.";
 }
 
+/**
+ * Toma un caso al abrirlo, para que los demás lo vean atendido.
+ *
+ * Antes, abrir no reservaba nada: alguien podía estar diez minutos con
+ * una solicitud en pantalla y para el resto seguía libre.
+ */
+export async function tomarCaso(tipo, id) {
+  const { data, error } = await supabase.rpc("tomar_caso", {
+    p_tipo: tipo,
+    p_id: id,
+  });
+  if (error) {
+    return { ok: false, motivo: "ERROR", mensaje: explicarError(error, "") };
+  }
+  if (data?.ok) return { ok: true };
+  return { ok: false, ...data, mensaje: mensajeConflicto(data, tipo) };
+}
+
 /** Cuantos casos tiene el gestor en su bandeja ahora mismo. */
 export async function misCasos() {
   const { data } = await supabase.rpc("mis_casos");

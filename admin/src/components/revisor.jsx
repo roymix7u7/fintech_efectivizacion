@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { colorDe } from "@/lib/colores";
 import Pista from "@/components/pista";
 
 const ROLES = {
@@ -20,7 +21,7 @@ const corto = (email) => (email || "").split("@")[0];
  * tomado no alcanza: hace falta saber por quien para no ir a
  * preguntar por el pasillo. Se muestra el nombre y el rol.
  */
-export default function Revisor({ persona, minutos, propio }) {
+export default function Revisor({ persona, minutos, propio, id }) {
   if (propio) {
     return (
       <Pista
@@ -40,6 +41,7 @@ export default function Revisor({ persona, minutos, propio }) {
 
   const email = persona?.email;
   const rol = ROLES[persona?.rol] || "Del equipo";
+  const color = colorDe(id);
 
   return (
     <Pista
@@ -47,11 +49,21 @@ export default function Revisor({ persona, minutos, propio }) {
       className="min-w-0 shrink-0"
       texto={`${rol} · ${email || "sin identificar"} · le quedan ${minutos} min`}
     >
-      <span className="flex min-w-0 items-center gap-1.5 rounded-full bg-muted py-0.5 pl-1 pr-2">
-        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-marca-100 text-[0.6667rem] font-bold text-marca-700">
+      <span
+        className={cn(
+          "flex min-w-0 items-center gap-1.5 rounded-full py-0.5 pl-1 pr-2",
+          color.chip,
+        )}
+      >
+        <span
+          className={cn(
+            "flex h-4 w-4 items-center justify-center rounded-full text-[0.6667rem] font-bold text-white",
+            color.punto,
+          )}
+        >
           {(corto(email) || "?").charAt(0).toUpperCase()}
         </span>
-        <span className="max-w-[92px] truncate text-[0.7333rem] font-medium text-muted-foreground">
+        <span className="max-w-[92px] truncate text-[0.7333rem] font-semibold">
           {corto(email) || "otra persona"}
         </span>
       </span>

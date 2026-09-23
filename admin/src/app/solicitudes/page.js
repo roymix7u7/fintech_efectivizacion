@@ -14,7 +14,7 @@ import {
   minutosRestantes,
   RESERVA_MINUTOS,
 } from "@/lib/cola";
-import { resolverCaso } from "@/lib/casos";
+import { resolverCaso, tomarCaso } from "@/lib/casos";
 import { useRetraso, idsDeClientes } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import Shell, { Lupa, Documento, Check, Cruz, Manos } from "@/components/shell";
@@ -22,6 +22,7 @@ import Visor from "@/components/visor";
 import Conflicto from "@/components/conflicto";
 import Pista from "@/components/pista";
 import Revisor from "@/components/revisor";
+import { colorDe } from "@/lib/colores";
 import BotonRefrescar from "@/components/refrescar";
 import Paginador from "@/components/paginador";
 import {
@@ -104,6 +105,8 @@ export default function SolicitudesPage() {
   // id -> correo de cada persona del equipo. Sirve para decir quién
   // tiene cada caso sin pedir el dato fila por fila.
   const [equipo, setEquipo] = useState({});
+  // Quien tiene el caso abierto, cuando no es de quien mira.
+  const [ajeno, setAjeno] = useState(null);
   const [contadores, setContadores] = useState({});
   const [cola, setCola] = useState(null);
   const [pidiendo, setPidiendo] = useState(false);
@@ -229,6 +232,28 @@ export default function SolicitudesPage() {
 
   // Al escribir algo nuevo se vuelve a la primera pagina: quedarse en
   // la cinco de un resultado distinto no tiene sentido.
+  /**
+   * Mientras la cola esta en pantalla, se actualiza sola: si otro toma
+   * un caso o lo resuelve, se ve en el momento y no despues de pulsar
+   * actualizar. Al salir de la pantalla la escucha se cierra.
+   */
+  useEffect(() => {
+    if (!session) return;
+    const canal = supabase
+      .channel(`cola-solicitudes-${Date.now().toString(36)}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "solicitudes" },
+        () => {
+          cargar(filtro, { silencioso: true });
+          contarPendientes();
+        },
+      )
+      .subscribe();
+    return () => supabase.removeChannel(canal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, filtro]);
+
   useEffect(() => {
     setPagina(0);
   }, [termino, filtro]);
@@ -285,7 +310,17 @@ export default function SolicitudesPage() {
     setSeleccionada(sol);
     setMotivo("");
     setModoRechazo(false);
+    setAjeno(null);
     setCargandoDetalle(true);
+
+    // Abrir un caso libre lo toma. Antes se podia estar diez minutos
+    // con una solicitud en pantalla y para el resto seguia libre.
+    if (esCola && sol.estado === "pendiente") {
+      const r = await tomarCaso("solicitud", sol.id);
+      if (!r.ok && r.motivo === "TOMADO") setAjeno(r);
+      cargar(filtro, { silencioso: true });
+      contarPendientes();
+    }
 
     const [firmadas] = await Promise.all([
       firmarCampo(BUCKET, [sol], "comprobante_url", "comprobante"),
@@ -574,6 +609,14 @@ export default function SolicitudesPage() {
                       style={{ "--retraso": `${Math.min(i, 12) * 28}ms` }}
                       className={cn(
                         "entra pulsable w-full rounded-xl border bg-card p-3.5 text-left",
+                        // Franja del color de quien lo atiende: se
+                        // reconoce de un vistazo sin leer cada fila.
+                        esCola &&
+                          sol.asignado_a &&
+                          minutosRestantes(sol.asignado_en) > 0 &&
+                          (sol.asignado_a === session.user.id
+                            ? "border-l-4 border-l-marca-600"
+                            : `border-l-4 ${colorDe(sol.asignado_a).borde}`),
                         activa
                           ? "border-marca-600 shadow-alzado ring-1 ring-marca-600"
                           : "border-border hover:border-marca-200 hover:shadow-panel",
@@ -618,6 +661,7 @@ export default function SolicitudesPage() {
                           minutosRestantes(sol.asignado_en) > 0 && (
                             <span className="ml-auto">
                               <Revisor
+                                id={sol.asignado_a}
                                 persona={equipo[sol.asignado_a]}
                                 minutos={minutosRestantes(sol.asignado_en)}
                                 propio={sol.asignado_a === session.user.id}
@@ -705,6 +749,17 @@ export default function SolicitudesPage() {
                     </div>
                   )}
               </div>
+
+              {ajeno && (
+                <div className="flex items-center gap-3 rounded-xl border border-oro-300/60 bg-oro-50 px-4 py-3">
+                  <span className="text-lg">👀</span>
+                  <p className="text-[0.8667rem] text-oro-700">
+                    <strong>{ajeno.quien}</strong> está revisando este caso.
+                    Puedes mirarlo, pero resolverlo es suyo hasta que pasen{" "}
+                    {ajeno.libre_en} min.
+                  </p>
+                </div>
+              )}
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
                 {/* Comprobante */}
@@ -818,7 +873,7 @@ export default function SolicitudesPage() {
                           <BotonAccion
                             onClick={() => aprobar(seleccionada)}
                             cargando={accion === "aprobando"}
-                            disabled={accion !== null}
+                            disabled={accion !== null || Boolean(ajeno)}
                             tono="exito"
                             icono={<Check className="h-4 w-4" />}
                             className="w-full py-3"
@@ -829,7 +884,7 @@ export default function SolicitudesPage() {
                           </BotonAccion>
                           <BotonAccion
                             onClick={() => setModoRechazo(true)}
-                            disabled={accion !== null}
+                            disabled={accion !== null || Boolean(ajeno)}
                             tono="neutro"
                             icono={<Cruz className="h-4 w-4" />}
                             className="w-full hover:border-red-300 hover:bg-red-50 hover:text-red-700"
