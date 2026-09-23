@@ -41,6 +41,21 @@ const BANCOS_TARJETA = [
 ];
 const BANCOS_CUENTA = ["BCP", "BBVA", "Interbank", "Scotiabank", "BanBif"];
 
+/**
+ * Bancos donde el deposito viaja dentro del mismo banco.
+ *
+ * La operacion se devuelve a una cuenta del MISMO banco de la tarjeta:
+ * es inmediato y no cuesta comision interbancaria. Por eso, con una
+ * tarjeta de estos bancos hace falta una cuenta de ese banco.
+ */
+const BANCOS_MISMO_BANCO = [
+  "BCP",
+  "BBVA",
+  "Interbank",
+  "Scotiabank",
+  "BanBif",
+];
+
 const BANCO_COLORS = {
   BCP: { bg: "#FFF3E0", border: "#E67E00", text: "#BF5F00" },
   BBVA: { bg: "#E3E8F4", border: "#004481", text: "#003366" },
@@ -317,6 +332,20 @@ export default function TarjetasScreen() {
       bg: COLORS.errorLight,
     },
   };
+
+  // Bancos donde tiene tarjeta pero no cuenta para recibir. Solo los
+  // bancos principales: con los demas el deposito es interbancario.
+  const faltanCuentas = [
+    ...new Set(
+      tarjetas
+        .filter(
+          (t) =>
+            BANCOS_MISMO_BANCO.includes(t.banco) &&
+            !cuentas.some((c) => c.banco === t.banco),
+        )
+        .map((t) => t.banco),
+    ),
+  ];
 
   const cuentasAgrupadas = {};
   cuentas.forEach((c) => {
@@ -606,12 +635,40 @@ export default function TarjetasScreen() {
           })
         )}
 
+        {/* Tarjetas sin cuenta del mismo banco.
+            Sin ella no se le puede depositar, y hoy se enteraba recien
+            al intentar enviar su comprobante. */}
+        {faltanCuentas.length > 0 && (
+          <TouchableOpacity
+            style={s.avisoCuenta}
+            activeOpacity={0.85}
+            onPress={() => {
+              setNuevaCuenta((c) => ({ ...c, banco: faltanCuentas[0] }));
+              setMostrarFormCuenta(true);
+            }}
+          >
+            <Ionicons name="alert-circle" size={20} color={COLORS.warning} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.avisoCuentaTitulo}>
+                {faltanCuentas.length === 1
+                  ? `Falta tu cuenta ${faltanCuentas[0]}`
+                  : `Faltan tus cuentas ${faltanCuentas.join(" y ")}`}
+              </Text>
+              <Text style={s.avisoCuentaTexto}>
+                El dinero se deposita en una cuenta del mismo banco de la
+                tarjeta. Toca para registrarla.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.warning} />
+          </TouchableOpacity>
+        )}
+
         {/* ══ CUENTAS ══ */}
         <View style={[s.sectionHeader, { marginTop: 36 }]}>
           <View>
             <Text style={s.sectionTitle}>Mis cuentas bancarias</Text>
             <Text style={s.sectionSub}>
-              Una cuenta de ahorros y una CCI por banco
+              Aquí recibes tu dinero, en el mismo banco de tu tarjeta
             </Text>
           </View>
           <TouchableOpacity
@@ -735,6 +792,19 @@ export default function TarjetasScreen() {
             </TouchableOpacity>
           </View>
         )}
+
+        <View style={s.notaBanco}>
+          <Ionicons
+            name="information-circle-outline"
+            size={17}
+            color={COLORS.primaryLight}
+          />
+          <Text style={s.notaBancoTexto}>
+            Cada operación se deposita en tu cuenta del mismo banco de la
+            tarjeta: si pagaste con tu tarjeta BCP, el dinero llega a tu
+            cuenta BCP.
+          </Text>
+        </View>
 
         {Object.keys(cuentasAgrupadas).length === 0 ? (
           <View style={s.emptyBox}>
@@ -946,6 +1016,39 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: 16,
+  },
+  avisoCuenta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    backgroundColor: COLORS.warningLight,
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: "#F2DFA8",
+  },
+  avisoCuentaTitulo: { fontSize: 14, fontWeight: "700", color: COLORS.text },
+  avisoCuentaTexto: {
+    fontSize: 12.5,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    lineHeight: 17,
+  },
+  notaBanco: {
+    flexDirection: "row",
+    gap: 9,
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  notaBancoTexto: {
+    flex: 1,
+    fontSize: 12.5,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
   },
   sectionTitle: { fontSize: 19, fontWeight: "700", color: COLORS.text },
   sectionSub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },

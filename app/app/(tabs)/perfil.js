@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  RefreshControl,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -12,76 +13,62 @@ import { supabase } from "../../src/lib/supabase";
 import Header from "../../src/components/Header";
 import MenuLateral from "../../src/components/MenuLateral";
 import COLORS from "../../src/theme/colors";
-import TIPO from "../../src/theme/tipografia";
-import { Aparece } from "../../src/components/Cargando";
-import { confirmar, mensajeError } from "../../src/lib/ui";
-import { useAviso } from "../../src/components/Avisos";
+import TIPO, { CIFRAS } from "../../src/theme/tipografia";
+import { Esqueleto, Aparece } from "../../src/components/Cargando";
+import { confirmar } from "../../src/lib/ui";
 import { cerrarSesion as cerrarSesionCompleta } from "../../src/lib/sesion";
 
 export default function PerfilScreen() {
   const [usuario, setUsuario] = useState(null);
   const [perfil, setPerfil] = useState(null);
+  const [comisiones, setComisiones] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [refrescando, setRefrescando] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
-  const [comisiones, setComisiones] = useState([]);
   const router = useRouter();
-  const { mostrar } = useAviso();
+
+  const cargar = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+      setUsuario(user);
+
+      // Las dos consultas en paralelo: no dependen una de otra.
+      const [{ data: perfilData }, { data: com }] = await Promise.all([
+        supabase
+          .from("perfiles_cliente")
+          .select("nombres, apellidos, dni, telefono, direccion, validado_por, fecha_validacion")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+        // La tarifa la calcula el servidor: manda la especial si la
+        // hay, si no la del bloque al que pertenece el cliente.
+        // Calcularla aqui a partir de las tarifas generales mostraria
+        // un numero que no es el que se le aplica.
+        supabase.rpc("mis_comisiones"),
+      ]);
+
+      setPerfil(perfilData);
+      setComisiones(com || { bloque: null, bancos: [] });
+    } finally {
+      setCargando(false);
+      setRefrescando(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      cargarPerfil();
-    }, []),
+      cargar();
+    }, [cargar]),
   );
 
-  async function cargarPerfil() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-    setUsuario(user);
-    const { data } = await supabase
-      .from("perfiles_cliente")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    setPerfil(data);
-    if (data) cargarComisiones(data);
-  }
-
-  /**
-   * Comision que aplica en cada banco. Lo especial gana sobre lo
-   * general, igual que en el panel.
-   */
-  async function cargarComisiones(perfilData) {
-    const [{ data: generales }, { data: especiales }] = await Promise.all([
-      supabase
-        .from("comisiones_banco")
-        .select("banco, porcentaje")
-        .eq("activa", true)
-        .order("banco"),
-      supabase
-        .from("comisiones_cliente")
-        .select("banco, porcentaje")
-        .eq("cliente_id", perfilData.id),
-    ]);
-
-    setComisiones(
-      (generales || []).map((g) => {
-        const especial = (especiales || []).find((e) => e.banco === g.banco);
-        return {
-          banco: g.banco,
-          porcentaje: especial ? especial.porcentaje : g.porcentaje,
-          especial: Boolean(especial),
-        };
-      }),
-    );
-  }
-
-  // window.confirm no existe en React Native: con el codigo anterior el
-  // boton de cerrar sesion no hacia nada en el telefono.
+  // window.confirm no existe en React Native: sin esto el boton de
+  // cerrar sesion no hacia nada en el telefono.
   async function cerrarSesion() {
-    if (!(await confirmar("Seguro que quieres cerrar sesion?"))) return;
-    // Borra la sesión, la marca de tiempo y los datos guardados, para
-    // que nada del usuario anterior quede en el teléfono.
+    if (!(await confirmar("¿Seguro que quieres cerrar sesión?"))) return;
+    // Borra la sesion, la marca de tiempo y los datos guardados, para
+    // que nada del usuario anterior quede en el telefono.
     await cerrarSesionCompleta();
     router.replace("/");
   }
@@ -91,105 +78,176 @@ export default function PerfilScreen() {
     ((perfil?.nombres || "").trim()[0] || "") +
       ((perfil?.apellidos || "").trim()[0] || "") || "?";
 
-  const campos = [
-    { label: "Nombres", valor: perfil?.nombres, icon: "person-outline" },
-    { label: "Apellidos", valor: perfil?.apellidos, icon: "person-outline" },
-    { label: "DNI", valor: perfil?.dni, icon: "id-card-outline" },
-    { label: "Teléfono", valor: perfil?.telefono, icon: "call-outline" },
-    { label: "Dirección", valor: perfil?.direccion, icon: "location-outline" },
+  const verificado = Boolean(perfil?.validado_por);
 
+  const datos = [
+    { etiqueta: "Nombres", valor: perfil?.nombres, icono: "person-outline" },
+    { etiqueta: "Apellidos", valor: perfil?.apellidos, icono: "people-outline" },
+    { etiqueta: "DNI", valor: perfil?.dni, icono: "card-outline", cifras: true },
+    { etiqueta: "Teléfono", valor: perfil?.telefono, icono: "call-outline", cifras: true },
+    { etiqueta: "Correo", valor: usuario?.email, icono: "mail-outline" },
+    { etiqueta: "Dirección", valor: perfil?.direccion, icono: "location-outline" },
   ];
 
+  const bancos = comisiones?.bancos || [];
+  const conTarjeta = bancos.filter((b) => b.con_tarjeta);
+  const otros = bancos.filter((b) => !b.con_tarjeta);
+
   return (
-    <View style={s.container}>
+    <View style={s.pantalla}>
       <Header onMenuPress={() => setMenuVisible(true)} titulo="Mi cuenta" />
 
-      <ScrollView contentContainerStyle={s.content}>
-        {/* Avatar */}
+      <ScrollView
+        contentContainerStyle={s.contenido}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refrescando}
+            onRefresh={() => {
+              setRefrescando(true);
+              cargar();
+            }}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
+      >
+        {/* ── Identidad ── */}
         <Aparece>
-          <View style={s.avatarSection}>
-          <View style={s.avatar}>
-            <Text style={s.avatarText}>
-              {iniciales}
-            </Text>
-          </View>
-          <Text style={s.nombre}>
-            {perfil ? `${perfil.nombres} ${perfil.apellidos}` : "Cargando..."}
-          </Text>
-          <Text style={s.email}>{usuario?.email}</Text>
-          <View
-            style={[
-              s.estadoPill,
-              perfil?.validado_por ? s.estadoActivo : s.estadoPendiente,
-            ]}
-          >
-            <Ionicons
-              name={perfil?.validado_por ? "checkmark-circle" : "time"}
-              size={14}
-              color={perfil?.validado_por ? COLORS.success : COLORS.warning}
-            />
-            <Text
-              style={[
-                s.estadoTexto,
-                {
-                  color: perfil?.validado_por ? COLORS.success : COLORS.warning,
-                },
-              ]}
-            >
-              {perfil?.validado_por ? "Cuenta verificada" : "En revisión"}
-            </Text>
-          </View>
+          <View style={s.cabecera}>
+            <View style={s.avatar}>
+              <Text style={s.avatarTexto}>{iniciales}</Text>
+            </View>
+            {cargando && !perfil ? (
+              <>
+                <Esqueleto alto={20} ancho={160} estilo={{ marginTop: 12 }} />
+                <Esqueleto alto={13} ancho={200} estilo={{ marginTop: 8 }} />
+              </>
+            ) : (
+              <>
+                <Text style={s.nombre}>
+                  {perfil ? `${perfil.nombres} ${perfil.apellidos}` : "Mi cuenta"}
+                </Text>
+                <Text style={s.correo}>{usuario?.email}</Text>
+                <View
+                  style={[
+                    s.estado,
+                    { backgroundColor: verificado ? COLORS.successLight : COLORS.warningLight },
+                  ]}
+                >
+                  <Ionicons
+                    name={verificado ? "shield-checkmark" : "time"}
+                    size={13}
+                    color={verificado ? COLORS.success : COLORS.warning}
+                  />
+                  <Text
+                    style={[
+                      s.estadoTexto,
+                      { color: verificado ? COLORS.success : COLORS.warning },
+                    ]}
+                  >
+                    {verificado ? "Identidad verificada" : "Identidad en revisión"}
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
         </Aparece>
 
-        {/* Datos */}
-        <View style={s.datosCard}>
-          {campos.map((c, i) => (
-            <View key={c.label}>
-              <View style={s.datoRow}>
-                <View style={s.datoLeft}>
-                  <Ionicons
-                    name={c.icon}
-                    size={18}
-                    color={COLORS.textLight}
-                    style={{ width: 24 }}
-                  />
-                  <Text style={s.datoLabel}>{c.label}</Text>
-                </View>
-                <Text style={s.datoValor}>{c.valor || "—"}</Text>
-              </View>
-              {i < campos.length - 1 && <View style={s.datoDivider} />}
-            </View>
-          ))}
-        </View>
-
-        {/* Cerrar sesión */}
-        <TouchableOpacity style={s.logoutBtn} onPress={cerrarSesion}>
-          <Ionicons name="log-out-outline" size={20} color={COLORS.error} />
-          <Text style={s.logoutText}>Cerrar sesión</Text>
-        </TouchableOpacity>
-        {comisiones.length > 0 && (
-          <View style={s.comisionesCard}>
-            <View style={s.comisionesHeader}>
-              <Ionicons name="cash-outline" size={18} color={COLORS.primary} />
-              <Text style={s.comisionesTitulo}>Mis comisiones</Text>
-            </View>
-            <Text style={s.comisionesSub}>
-              Porcentaje que se aplica según el banco de tu tarjeta
-            </Text>
-            {comisiones.map((c) => (
-              <View key={c.banco} style={s.comisionRow}>
-                <Text style={s.comisionBanco}>{c.banco}</Text>
-                {c.especial && (
-                  <View style={s.comisionTag}>
-                    <Text style={s.comisionTagTexto}>Especial</Text>
-                  </View>
-                )}
-                <Text style={s.comisionValor}>{c.porcentaje} %</Text>
+        {/* ── Datos personales ── */}
+        <Aparece retraso={80}>
+          <Text style={s.seccion}>Datos personales</Text>
+          <View style={s.tarjeta}>
+            {datos.map((d, i) => (
+              <View
+                key={d.etiqueta}
+                style={[s.fila, i < datos.length - 1 && s.filaBorde]}
+              >
+                <Ionicons
+                  name={d.icono}
+                  size={17}
+                  color={COLORS.textLight}
+                  style={{ width: 24 }}
+                />
+                <Text style={s.filaEtiqueta}>{d.etiqueta}</Text>
+                <Text
+                  style={[s.filaValor, d.cifras && CIFRAS]}
+                  numberOfLines={2}
+                >
+                  {cargando && !perfil ? "…" : d.valor || "—"}
+                </Text>
               </View>
             ))}
           </View>
-        )}
+          <Text style={s.pie}>
+            ¿Algún dato está mal? Escríbenos y lo corregimos: tus datos deben
+            coincidir con tu DNI.
+          </Text>
+        </Aparece>
+
+        {/* ── Comisiones ── */}
+        <Aparece retraso={160}>
+          <Text style={s.seccion}>Mis comisiones</Text>
+          <View style={s.tarjeta}>
+            <View style={s.comisionCabecera}>
+              <Text style={s.comisionIntro}>
+                Es el porcentaje que se descuenta de tu operación, según el
+                banco de la tarjeta que uses.
+              </Text>
+              {comisiones?.bloque ? (
+                <View style={s.plan}>
+                  <Ionicons name="pricetags-outline" size={13} color={COLORS.primary} />
+                  <Text style={s.planTexto}>{comisiones.bloque}</Text>
+                </View>
+              ) : null}
+            </View>
+
+            {cargando && !comisiones ? (
+              <View style={{ gap: 10, paddingTop: 12 }}>
+                <Esqueleto alto={16} />
+                <Esqueleto alto={16} />
+              </View>
+            ) : bancos.length === 0 ? (
+              <Text style={s.vacio}>
+                Cuando verifiquemos tu tarjeta verás aquí tu porcentaje.
+              </Text>
+            ) : (
+              <>
+                {conTarjeta.length > 0 && (
+                  <>
+                    <Text style={s.grupo}>Tus tarjetas</Text>
+                    {conTarjeta.map((b) => (
+                      <FilaComision key={b.banco} banco={b} destacada />
+                    ))}
+                  </>
+                )}
+                {otros.length > 0 && (
+                  <>
+                    <Text style={s.grupo}>Otros bancos</Text>
+                    {otros.map((b) => (
+                      <FilaComision key={b.banco} banco={b} />
+                    ))}
+                  </>
+                )}
+              </>
+            )}
+          </View>
+          <Text style={s.pie}>
+            El depósito llega a tu cuenta del mismo banco de la tarjeta.
+          </Text>
+        </Aparece>
+
+        {/* ── Salir ── */}
+        <Aparece retraso={240}>
+          <TouchableOpacity
+            style={s.salir}
+            onPress={cerrarSesion}
+            accessibilityRole="button"
+          >
+            <Ionicons name="log-out-outline" size={19} color={COLORS.error} />
+            <Text style={s.salirTexto}>Cerrar sesión</Text>
+          </TouchableOpacity>
+        </Aparece>
       </ScrollView>
 
       <MenuLateral
@@ -201,119 +259,135 @@ export default function PerfilScreen() {
   );
 }
 
+/** Una tarifa. La especial se marca: es un acuerdo aparte. */
+function FilaComision({ banco, destacada }) {
+  return (
+    <View style={[s.comision, destacada && s.comisionDestacada]}>
+      <Text style={s.comisionBanco}>{banco.banco}</Text>
+      {banco.especial ? (
+        <View style={s.etiquetaEspecial}>
+          <Text style={s.etiquetaEspecialTexto}>Especial</Text>
+        </View>
+      ) : null}
+      <Text style={s.comisionValor}>
+        {Number(banco.porcentaje).toFixed(2).replace(/\.00$/, "")} %
+      </Text>
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: 20 },
-  // Avatar
-  avatarSection: { alignItems: "center", marginBottom: 28 },
+  pantalla: { flex: 1, backgroundColor: COLORS.background },
+  contenido: { padding: 20, paddingBottom: 40 },
+
+  cabecera: { alignItems: "center", marginBottom: 24 },
   avatar: {
     width: 72,
     height: 72,
     borderRadius: 36,
     backgroundColor: COLORS.primary,
-    justifyContent: "center",
     alignItems: "center",
-    marginBottom: 12,
+    justifyContent: "center",
   },
-  avatarText: { color: COLORS.secondary, fontSize: 24, fontWeight: "700" },
-  nombre: { fontSize: 20, fontWeight: "700", color: COLORS.text },
-  email: { fontSize: 14, color: COLORS.textSecondary, marginTop: 4 },
-  estadoPill: {
+  avatarTexto: { color: COLORS.secondary, fontSize: 24, fontWeight: "800" },
+  nombre: { fontSize: 20, fontWeight: "700", color: COLORS.text, marginTop: 12 },
+  correo: { ...TIPO.apoyo, marginTop: 2 },
+  estado: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
+    gap: 5,
+    borderRadius: 20,
+    paddingHorizontal: 11,
     paddingVertical: 5,
-    borderRadius: 99,
     marginTop: 10,
   },
-  estadoActivo: { backgroundColor: COLORS.successLight },
-  estadoPendiente: { backgroundColor: COLORS.warningLight },
-  estadoTexto: { fontSize: 12, fontWeight: "600" },
-  // Datos
-  comisionesCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
+  estadoTexto: { fontSize: 12, fontWeight: "700" },
+
+  seccion: {
+    ...TIPO.etiqueta,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  tarjeta: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
     padding: 16,
-    marginTop: 16,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
   },
-  comisionesHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  comisionesTitulo: { fontSize: 15, fontWeight: "700", color: COLORS.text },
-  comisionesSub: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-    marginBottom: 10,
+  pie: { ...TIPO.micro, marginTop: 8, marginBottom: 20, lineHeight: 17 },
+
+  fila: { flexDirection: "row", alignItems: "center", paddingVertical: 11 },
+  filaBorde: { borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  filaEtiqueta: { ...TIPO.apoyo, width: 92 },
+  filaValor: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+    textAlign: "right",
   },
-  comisionRow: {
+
+  comisionCabecera: { gap: 8, marginBottom: 6 },
+  comisionIntro: { ...TIPO.apoyo },
+  plan: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  planTexto: { fontSize: 12, fontWeight: "700", color: COLORS.primary },
+  grupo: {
+    ...TIPO.micro,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginTop: 12,
+    marginBottom: 2,
+  },
+  comision: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
   },
-  comisionBanco: { fontSize: 14, color: COLORS.text, fontWeight: "500" },
-  comisionTag: {
+  comisionDestacada: { backgroundColor: "transparent" },
+  comisionBanco: { flex: 1, fontSize: 15, fontWeight: "600", color: COLORS.text },
+  comisionValor: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: COLORS.primary,
+    ...CIFRAS,
+  },
+  etiquetaEspecial: {
     backgroundColor: COLORS.secondaryLight,
     borderRadius: 6,
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     paddingVertical: 2,
   },
-  comisionTagTexto: {
+  etiquetaEspecialTexto: {
     fontSize: 10,
-    fontWeight: "700",
+    fontWeight: "800",
     color: COLORS.secondaryDark,
-    textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
-  comisionValor: {
-    marginLeft: "auto",
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.primary,
-  },
-  datosCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
-    paddingHorizontal: 4,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    marginBottom: 24,
-  },
-  datoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-  },
-  datoLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
-  datoLabel: { fontSize: 14, color: COLORS.textSecondary },
-  datoValor: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.text,
-    maxWidth: "55%",
-    textAlign: "right",
-  },
-  datoDivider: {
-    height: 1,
-    backgroundColor: COLORS.borderLight,
-    marginHorizontal: 14,
-  },
-  // Logout
-  logoutBtn: {
+  vacio: { ...TIPO.apoyo, paddingTop: 10 },
+
+  salir: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    borderWidth: 1.5,
-    borderColor: COLORS.error,
-    borderRadius: 12,
-    paddingVertical: 14,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    paddingVertical: 15,
+    borderWidth: 1,
+    borderColor: COLORS.errorLight,
   },
-  logoutText: { fontSize: 15, color: COLORS.error, fontWeight: "600" },
+  salirTexto: { color: COLORS.error, fontSize: 15, fontWeight: "700" },
 });

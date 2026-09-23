@@ -150,6 +150,7 @@ function TarjetaMini({ tarjeta, activa, onPress, disabled }) {
 export default function NuevaSolicitudScreen() {
   const [perfil, setPerfil] = useState(null);
   const [tarjetas, setTarjetas] = useState([]);
+  const [cuentas, setCuentas] = useState([]);
   const [tarjetaSeleccionada, setTarjetaSeleccionada] = useState(null);
   const [comprobante, setComprobante] = useState(null);
   const [procesando, setProcesando] = useState(false);
@@ -174,7 +175,14 @@ export default function NuevaSolicitudScreen() {
   const router = useRouter();
   const navigation = useNavigation();
 
-  const listo = Boolean(tarjetaSeleccionada && comprobante);
+  // El deposito viaja dentro del mismo banco de la tarjeta, asi que sin
+  // una cuenta de ese banco no hay a donde mandar el dinero.
+  const bancoTarjeta = tarjetaSeleccionada?.banco || null;
+  const tieneCuentaDelBanco = Boolean(
+    bancoTarjeta && cuentas.some((c) => c.banco === bancoTarjeta),
+  );
+
+  const listo = Boolean(tarjetaSeleccionada && comprobante && tieneCuentaDelBanco);
   const ocupado = enviando || verificando;
 
   // ── Salir sin perder lo cargado ──
@@ -293,6 +301,15 @@ export default function NuevaSolicitudScreen() {
       const lista = tarjetasData || [];
       setTarjetas(lista);
 
+      // Hacen falta para saber a donde se le depositaria: sin cuenta del
+      // mismo banco, la operacion no se puede pagar.
+      const { data: cuentasData } = await supabase
+        .from("cuentas_bancarias")
+        .select("banco")
+        .eq("cliente_id", perfilData.id)
+        .eq("activa", true);
+      setCuentas(cuentasData || []);
+
       // Si la tarjeta elegida ya no esta disponible, se limpia. Y si solo
       // hay una, se elige sola: preguntar cuando no hay nada que decidir
       // es un paso de mas.
@@ -373,6 +390,11 @@ export default function NuevaSolicitudScreen() {
     // modal despues de que algo cambio: se comprueba de nuevo.
     if (!tarjetaSeleccionada) return mostrar("Elige la tarjeta de la operación.", "error");
     if (!comprobante?.base64) return mostrar("Adjunta el comprobante otra vez.", "error");
+    if (!tieneCuentaDelBanco)
+      return mostrar(
+        `Registra tu cuenta ${bancoTarjeta} antes de enviar: ahí te depositamos.`,
+        "atencion",
+      );
 
     setEnviando(true);
     let pathSubido = null;
@@ -505,7 +527,7 @@ export default function NuevaSolicitudScreen() {
             <EncabezadoPaso
               numero={1}
               titulo="¿Con qué tarjeta hiciste la operación?"
-              detalle="Solo aparecen tus tarjetas verificadas."
+              detalle="Solo tus tarjetas verificadas. El pago llega a tu cuenta del mismo banco."
               listo={Boolean(tarjetaSeleccionada)}
             />
 
@@ -556,6 +578,31 @@ export default function NuevaSolicitudScreen() {
             )}
           </View>
         </Aparece>
+
+        {/* Falta la cuenta del banco de la tarjeta elegida */}
+        {tarjetaSeleccionada && !tieneCuentaDelBanco && (
+          <Aparece retraso={120}>
+            <TouchableOpacity
+              style={s.faltaCuenta}
+              activeOpacity={0.85}
+              onPress={() => router.dismissTo("/(tabs)/tarjetas")}
+            >
+              <View style={s.faltaCuentaIcono}>
+                <Ionicons name="wallet-outline" size={20} color={COLORS.error} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.faltaCuentaTitulo}>
+                  Falta tu cuenta {bancoTarjeta}
+                </Text>
+                <Text style={s.faltaCuentaTexto}>
+                  El dinero se deposita en una cuenta del mismo banco de la
+                  tarjeta. Regístrala y vuelve para enviar tu comprobante.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.error} />
+            </TouchableOpacity>
+          </Aparece>
+        )}
 
         {/* ── Paso 2: comprobante ── */}
         <Aparece retraso={160}>
@@ -718,12 +765,14 @@ export default function NuevaSolicitudScreen() {
             />
             <Text style={s.pieResumenTexto} numberOfLines={1}>
               {listo
-                ? `${tarjetaSeleccionada.banco} •••• ${tarjetaSeleccionada.ultimos_4} · comprobante adjunto`
+                ? `${tarjetaSeleccionada.banco} •••• ${tarjetaSeleccionada.ultimos_4} · se deposita en tu cuenta ${bancoTarjeta}`
                 : !tarjetaSeleccionada && !comprobante
                   ? "Elige la tarjeta y adjunta el comprobante"
                   : !tarjetaSeleccionada
                     ? "Falta elegir la tarjeta"
-                    : "Falta adjuntar el comprobante"}
+                    : !tieneCuentaDelBanco
+                      ? `Falta tu cuenta ${bancoTarjeta} para recibir el pago`
+                      : "Falta adjuntar el comprobante"}
             </Text>
           </View>
 
@@ -1009,6 +1058,32 @@ const s = StyleSheet.create({
     paddingVertical: 8,
   },
   sinTarjetasBtnTexto: { color: COLORS.white, fontSize: 13, fontWeight: "700" },
+
+  faltaCuenta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: COLORS.errorLight,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#F5C6C2",
+  },
+  faltaCuentaIcono: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: COLORS.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  faltaCuentaTitulo: { fontSize: 14, fontWeight: "700", color: COLORS.error },
+  faltaCuentaTexto: {
+    fontSize: 12.5,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    lineHeight: 17,
+  },
 
   // Comprobante
   zona: {

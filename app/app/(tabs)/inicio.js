@@ -324,12 +324,13 @@ export default function InicioScreen() {
       return router.push("/(tabs)/tarjetas");
     }
     if (!cuentaOk) {
-      // No se bloquea: puede registrarla despues. Pero sin cuenta no hay
-      // donde depositarle, y tiene que saberlo antes de enviar.
+      // Sin cuenta no hay donde depositarle: se detiene aqui en vez de
+      // dejarlo llenar un formulario que no va a poder enviar.
       mostrar(
-        "Recuerda registrar la cuenta donde recibirás tu pago.",
+        "Registra la cuenta donde recibirás tu pago antes de enviar.",
         "atencion",
       );
+      return router.push("/(tabs)/tarjetas");
     }
     router.push("/nueva-solicitud");
   }
@@ -361,7 +362,7 @@ export default function InicioScreen() {
       enCurso: false,
       detalle: cuentaOk
         ? "Registrada"
-        : "Sin ella no tenemos dónde depositarte",
+        : "Obligatoria: ahí se deposita tu pago",
       ruta: "/(tabs)/tarjetas",
     },
   ];
