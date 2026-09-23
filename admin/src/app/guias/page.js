@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import Shell from "@/components/shell";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 const BANCOS_DEFAULT = ["BCP", "BBVA", "Interbank", "Scotiabank", "BanBif"];
 
 export default function GuiasPage() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(sesionEnCache);
   const [guias, setGuias] = useState([]);
   const [editando, setEditando] = useState(null);
   const [loading, setLoading] = useState(true);

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
 import { estadoCola, contadoresDe } from "@/lib/cola";
@@ -41,7 +41,7 @@ function fechaLarga(iso) {
 }
 
 export default function AuditoriaPage() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(sesionEnCache);
   const [logs, setLogs] = useState([]);
   const [accion, setAccion] = useState("");
   const [fecha, setFecha] = useState("");

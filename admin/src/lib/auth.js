@@ -19,6 +19,23 @@ export function inicioDe(rol) {
 /** Roles que pueden ver todas las colas y medir al equipo. */
 export const ROLES_SUPERVISION = ["admin", "supervisor"];
 
+/**
+ * Ultima sesion confirmada, guardada en memoria.
+ *
+ * Sin esto, cada pantalla del panel esperaba a que el servidor
+ * confirmara la sesion antes de dibujar nada: al cambiar de seccion
+ * desaparecia hasta la barra lateral y volvia medio segundo despues.
+ * Ahora la pantalla nueva se dibuja de inmediato con lo ultimo
+ * confirmado, y la comprobacion real sigue corriendo por detras.
+ *
+ * Vive solo en memoria: al recargar la pagina se vuelve a comprobar.
+ */
+let enMemoria = null;
+
+export function sesionEnCache() {
+  return enMemoria;
+}
+
 export async function login(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({
     email: email.trim().toLowerCase(),
@@ -55,10 +72,12 @@ export async function login(email, password) {
     );
   }
 
-  return { user: data.user, rol: userData.rol };
+  enMemoria = { user: data.user, rol: userData.rol };
+  return enMemoria;
 }
 
 export async function logout() {
+  enMemoria = null;
   await supabase.auth.signOut();
 }
 
@@ -89,5 +108,6 @@ export async function getSession() {
     return null;
   }
 
-  return { user: data.session.user, rol: userData.rol };
+  enMemoria = { user: data.session.user, rol: userData.rol };
+  return enMemoria;
 }

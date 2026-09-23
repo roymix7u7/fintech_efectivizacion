@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { actualizar, registrarAuditoria, explicarError } from "@/lib/acciones";
 import { estadoCola, contadoresDe } from "@/lib/cola";
@@ -40,7 +40,7 @@ const ROLES = [
 ];
 
 export default function EquipoPage() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(sesionEnCache);
   const [equipo, setEquipo] = useState([]);
   const [sedes, setSedes] = useState([]);
   const [rendimiento, setRendimiento] = useState([]);

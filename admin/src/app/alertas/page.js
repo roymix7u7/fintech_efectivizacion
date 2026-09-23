@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { registrarAuditoria, explicarError } from "@/lib/acciones";
 import {
@@ -321,7 +321,7 @@ function VistaPrevia({ form, urls }) {
 // ── Pantalla ──────────────────────────────────────────────────
 
 export default function NoticiasPage() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(sesionEnCache);
   const [filas, setFilas] = useState([]);
   const [alcance, setAlcance] = useState({});
   const [loading, setLoading] = useState(true);

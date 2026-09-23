@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { firmarCampo } from "@/lib/storage";
 import { explicarError } from "@/lib/acciones";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import Shell, { Lupa, Tarjeta as IconoTarjeta, Check, Cruz } from "@/components/shell";
 import Visor from "@/components/visor";
 import Conflicto from "@/components/conflicto";
+import BotonRefrescar from "@/components/refrescar";
 import { Estado, Dato, Vacio, Aviso } from "@/components/marca";
 import { EsqueletoCola, BarraCarga, Esqueleto } from "@/components/carga";
 
@@ -33,7 +34,7 @@ function fechaLarga(iso) {
 }
 
 export default function TarjetasPage() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(sesionEnCache);
   const [tarjetas, setTarjetas] = useState([]);
   const [filtro, setFiltro] = useState("pendiente");
   const [seleccionada, setSeleccionada] = useState(null);
@@ -216,6 +217,12 @@ export default function TarjetasPage() {
             : `${tarjetas.length} en el historial`
       }
       acciones={
+        <>
+        <BotonRefrescar
+          girando={loading}
+          onClick={() => cargar(filtro)}
+          texto="Volver a pedir la lista de tarjetas"
+        />
         <div className="hidden items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 sm:flex">
           {FILTROS.map((f) => (
             <button
@@ -232,6 +239,7 @@ export default function TarjetasPage() {
             </button>
           ))}
         </div>
+        </>
       }
     >
       {error && (

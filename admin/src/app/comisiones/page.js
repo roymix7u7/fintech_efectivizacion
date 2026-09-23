@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
 import { BANCOS_TARJETA } from "@/lib/bancos";
@@ -37,7 +37,7 @@ const pct = (n) =>
   n === null || n === undefined ? "—" : `${Number(n).toFixed(2).replace(/\.00$/, "")} %`;
 
 export default function ComisionesPage() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(sesionEnCache);
   const [vista, setVista] = useState("bloques");
 
   const [bloques, setBloques] = useState([]);

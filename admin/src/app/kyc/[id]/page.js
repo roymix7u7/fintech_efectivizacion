@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { getSession } from "@/lib/auth";
+import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { urlsFirmadas, extraerPath } from "@/lib/storage";
 import { actualizar, registrarAuditoria } from "@/lib/acciones";
@@ -35,7 +35,7 @@ function fechaLarga(iso) {
 }
 
 export default function KYCDetallePage() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(sesionEnCache);
   const [cliente, setCliente] = useState(null);
   const [perfil, setPerfil] = useState(null);
   const [documento, setDocumento] = useState(DOCUMENTOS[0].campo);

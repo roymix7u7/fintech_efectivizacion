@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getSession } from "@/lib/auth";
+import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
 import {
@@ -19,6 +19,8 @@ import Paginador from "@/components/paginador";
 import { EsqueletoFilas, BarraCarga, Esqueleto } from "@/components/carga";
 import { Estado, Vacio, Aviso } from "@/components/marca";
 import Pista from "@/components/pista";
+import Revisor from "@/components/revisor";
+import BotonRefrescar from "@/components/refrescar";
 
 /** Minutos que le quedan a una reserva, o 0 si ya vencio. */
 function restan(asignadoEn) {
@@ -46,7 +48,7 @@ function espera(iso) {
 }
 
 export default function KYCPage() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(sesionEnCache);
   const [clientes, setClientes] = useState([]);
   const [filtro, setFiltro] = useState("pendiente");
   const [busqueda, setBusqueda] = useState("");
@@ -167,10 +169,14 @@ export default function KYCPage() {
       setSoloMias(mias);
       supabase
         .from("users")
-        .select("id, email")
+        .select("id, email, rol")
         .neq("rol", "cliente")
         .then(({ data }) =>
-          setEquipo(Object.fromEntries((data || []).map((u) => [u.id, u.email]))),
+          setEquipo(
+            Object.fromEntries(
+              (data || []).map((u) => [u.id, { email: u.email, rol: u.rol }]),
+            ),
+          ),
         );
       cargar("pendiente", 0, "", false, mias, s.user.id);
       estadoCola().then(({ colas }) => setContadores(contadoresDe(colas)));
@@ -284,6 +290,15 @@ export default function KYCPage() {
             ))}
           </div>
 
+          <BotonRefrescar
+            girando={refrescando}
+            onClick={() => {
+              cargar(filtro, pagina, termino, true, soloMias, session.user.id);
+              estadoCola().then(({ colas }) => setContadores(contadoresDe(colas)));
+            }}
+            texto="Volver a pedir la cola: identidades nuevas o ya tomadas por otros"
+          />
+
           <button
             onClick={atenderSiguiente}
             disabled={pidiendo}
@@ -386,28 +401,11 @@ export default function KYCPage() {
                       {/* Quien la tiene. Sin esto, en "Toda la cola" no
                           se sabia si un caso estaba repartido ni a quien. */}
                       {filtro === "pendiente" && c.asignado_a && restan(c.asignado_en) > 0 && (
-                        <Pista
-                          fin
-                          className="shrink-0"
-                          texto={
-                            c.asignado_a === session.user.id
-                              ? `Tuya. Te quedan ${restan(c.asignado_en)} min antes de que vuelva a la cola.`
-                              : `La tiene ${equipo[c.asignado_a] || "otra persona"} · ${restan(c.asignado_en)} min`
-                          }
-                        >
-                          <span
-                            className={cn(
-                              "flex h-6 w-6 items-center justify-center rounded-full text-[0.6667rem] font-bold",
-                              c.asignado_a === session.user.id
-                                ? "bg-marca-600 text-white"
-                                : "bg-muted text-muted-foreground",
-                            )}
-                          >
-                            {c.asignado_a === session.user.id
-                              ? "Tú"
-                              : (equipo[c.asignado_a] || "?").charAt(0).toUpperCase()}
-                          </span>
-                        </Pista>
+                        <Revisor
+                          persona={equipo[c.asignado_a]}
+                          minutos={restan(c.asignado_en)}
+                          propio={c.asignado_a === session.user.id}
+                        />
                       )}
 
                       <Estado

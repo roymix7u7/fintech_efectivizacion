@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { firmarCampo } from "@/lib/storage";
 import { registrarAuditoria, explicarError } from "@/lib/acciones";
@@ -21,6 +21,8 @@ import Shell, { Lupa, Documento, Check, Cruz, Manos } from "@/components/shell";
 import Visor from "@/components/visor";
 import Conflicto from "@/components/conflicto";
 import Pista from "@/components/pista";
+import Revisor from "@/components/revisor";
+import BotonRefrescar from "@/components/refrescar";
 import Paginador from "@/components/paginador";
 import {
   EsqueletoCola,
@@ -81,7 +83,7 @@ function espera(iso) {
 }
 
 export default function SolicitudesPage() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(sesionEnCache);
   const [solicitudes, setSolicitudes] = useState([]);
   const [filtro, setFiltro] = useState("pendiente");
   const [seleccionada, setSeleccionada] = useState(null);
@@ -204,10 +206,14 @@ export default function SolicitudesPage() {
       if (s.rol !== "gestor") setSoloMias(false);
       supabase
         .from("users")
-        .select("id, email")
+        .select("id, email, rol")
         .neq("rol", "cliente")
         .then(({ data }) =>
-          setEquipo(Object.fromEntries((data || []).map((u) => [u.id, u.email]))),
+          setEquipo(
+            Object.fromEntries(
+              (data || []).map((u) => [u.id, { email: u.email, rol: u.rol }]),
+            ),
+          ),
         );
       cargar("pendiente");
       contarPendientes();
@@ -490,6 +496,17 @@ export default function SolicitudesPage() {
                 ))}
               </div>
 
+              <span className="ml-auto">
+                <BotonRefrescar
+                  girando={refrescando}
+                  onClick={() => {
+                    cargar(filtro, { silencioso: true });
+                    contarPendientes();
+                  }}
+                  texto="Volver a pedir la cola: casos nuevos, tomados por otros o con la reserva vencida"
+                />
+              </span>
+
               {cola?.libres > 0 && (
                 <Pista
                   texto={`${cola.libres} sin dueño ahora mismo: nadie las tomó o se les venció la reserva de ${RESERVA_MINUTOS} minutos.`}
@@ -597,31 +614,15 @@ export default function SolicitudesPage() {
                           </Pista>
                         )}
                         {esCola &&
-                          !soloMias &&
                           sol.asignado_a &&
                           minutosRestantes(sol.asignado_en) > 0 && (
-                            <Pista
-                              fin
-                              className="ml-auto shrink-0"
-                              texto={
-                                sol.asignado_a === session.user.id
-                                  ? `Tuya. Te quedan ${minutosRestantes(sol.asignado_en)} min antes de que vuelva a la cola.`
-                                  : `La tiene ${equipo[sol.asignado_a] || "otra persona"} · ${minutosRestantes(sol.asignado_en)} min`
-                              }
-                            >
-                              <span
-                                className={cn(
-                                  "flex h-5 w-5 items-center justify-center rounded-full text-[0.6667rem] font-bold",
-                                  sol.asignado_a === session.user.id
-                                    ? "bg-marca-600 text-white"
-                                    : "bg-muted text-muted-foreground",
-                                )}
-                              >
-                                {sol.asignado_a === session.user.id
-                                  ? "Tú"
-                                  : inicial(equipo[sol.asignado_a])}
-                              </span>
-                            </Pista>
+                            <span className="ml-auto">
+                              <Revisor
+                                persona={equipo[sol.asignado_a]}
+                                minutos={minutosRestantes(sol.asignado_en)}
+                                propio={sol.asignado_a === session.user.id}
+                              />
+                            </span>
                           )}
                       </div>
                     </button>

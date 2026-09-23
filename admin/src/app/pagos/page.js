@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
 import { extraerPath } from "@/lib/storage";
@@ -292,7 +292,7 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar }) {
 
 export default function PagosPage() {
   const router = useRouter();
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(sesionEnCache);
   const [vista, setVista] = useState("cola");
 
   const [resumen, setResumen] = useState([]);

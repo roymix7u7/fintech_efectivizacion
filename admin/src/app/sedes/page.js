@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getSession } from "@/lib/auth";
+import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { registrarAuditoria, explicarError } from "@/lib/acciones";
 import { estadoCola, contadoresDe } from "@/lib/cola";
@@ -15,7 +15,7 @@ import { Esqueleto } from "@/components/carga";
 const VACIA = { nombre: "", ciudad: "", direccion: "", telefono: "" };
 
 export default function SedesPage() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(sesionEnCache);
   const [sedes, setSedes] = useState([]);
   const [equipo, setEquipo] = useState([]);
   const [nueva, setNueva] = useState(VACIA);

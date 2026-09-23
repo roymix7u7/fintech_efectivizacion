@@ -431,6 +431,15 @@ export function Check(p) {
   );
 }
 
+export function Refrescar(p) {
+  return (
+    <svg {...base(p)}>
+      <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+      <path d="M20 5v6h-6" />
+    </svg>
+  );
+}
+
 export function Cruz(p) {
   return (
     <svg {...base(p)}>

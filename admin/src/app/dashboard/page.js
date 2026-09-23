@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getSession } from "@/lib/auth";
+import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import Shell, { SECCIONES, Flecha } from "@/components/shell";
@@ -11,7 +11,7 @@ import { Aviso, Estado } from "@/components/marca";
 import { EsqueletoTarjetas, Rueda } from "@/components/carga";
 
 export default function DashboardPage() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(sesionEnCache);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [stats, setStats] = useState({});
