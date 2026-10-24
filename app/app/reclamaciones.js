@@ -20,6 +20,7 @@ import { Casilla } from "../src/components/ui/Casilla";
 import { Segmentado } from "../src/components/ui/Segmentado";
 import { Toque } from "../src/components/ui/Toque";
 import { colors, fonts } from "../src/theme/tokens";
+import { ScrollConTeclado } from "../src/components/ui/ScrollConTeclado";
 
 const LUCES = [
   { color: colors.glowGold, opacity: 0.32, size: 240, top: -60, right: -100 },
@@ -163,8 +164,8 @@ export default function ReclamacionesScreen() {
   return (
     <KeyboardAvoidingView style={s.pantalla} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <StatusBar style="light" />
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + 40 + altoTeclado }}
+      <ScrollConTeclado
+        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -349,7 +350,7 @@ export default function ReclamacionesScreen() {
             </Aparece>
           )}
         </View>
-      </ScrollView>
+      </ScrollConTeclado>
     </KeyboardAvoidingView>
   );
 }

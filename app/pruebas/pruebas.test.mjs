@@ -187,7 +187,7 @@ test("primerError devuelve el primer problema encontrado", () => {
 //  Las fechas se construyen en hora local, igual que las ve el
 //  telefono, para que la prueba no dependa de la zona horaria.
 // ─────────────────────────────────────────────────────────────
-const { claveDia, tituloDia, agruparPorDia, hora } = await cargar("fechas.js");
+const { claveDia, tituloDia, agruparPorDia, hora, horarioAtencion } = await cargar("fechas.js");
 
 // "Ahora" fijo: 15 de septiembre de 2026, 08:00 local.
 const AHORA = new Date(2026, 8, 15, 8, 0);
@@ -319,4 +319,17 @@ test("ubigeo: el listado completo del INEI", () => {
   }
   // Ordenado como lo lee una persona: Áncash va junto a Amazonas.
   assert.deepEqual(Object.keys(PERU).slice(0, 3), ["Amazonas", "Áncash", "Apurímac"]);
+});
+
+test("horario de atención: lunes a sábado de 9 a 6, hora de Lima", () => {
+  // Fechas en UTC: Lima es UTC-5. El 2026-10-19 es lunes.
+  const lima = (fecha, h) => new Date(`${fecha}T${String(h + 5).padStart(2, "0")}:00:00Z`);
+  assert.deepEqual(horarioAtencion(lima("2026-10-19", 10)), { abierto: true, cuando: "hoy" });
+  assert.deepEqual(horarioAtencion(lima("2026-10-19", 8)), { abierto: false, cuando: "hoy" });
+  assert.deepEqual(horarioAtencion(lima("2026-10-19", 18)), { abierto: false, cuando: "mañana" });
+  // Sábado 24: abierto de día, de noche pasa al lunes.
+  assert.deepEqual(horarioAtencion(lima("2026-10-24", 17)), { abierto: true, cuando: "hoy" });
+  assert.deepEqual(horarioAtencion(lima("2026-10-24", 19)), { abierto: false, cuando: "el lunes" });
+  // Domingo 25 al mediodía: el lunes.
+  assert.deepEqual(horarioAtencion(lima("2026-10-25", 12)), { abierto: false, cuando: "el lunes" });
 });

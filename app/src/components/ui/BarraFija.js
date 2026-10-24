@@ -25,8 +25,9 @@ export function BarraFija({ children }) {
     }).start();
   }, [entrada, reducir]);
 
-  // En iOS el teclado tapa la barra; se sube con él. En Android el
-  // sistema ya redimensiona la ventana (softwareKeyboardLayoutMode).
+  // En iOS el teclado tapa la barra; se sube con él. En Android las
+  // pantallas la ocultan mientras el teclado está abierto: con Expo 57
+  // la ventana ya no se achica sola (ver ScrollConTeclado).
   useEffect(() => {
     if (Platform.OS !== "ios") return;
     const a = Keyboard.addListener("keyboardWillShow", (e) => setTeclado(e.endCoordinates.height));

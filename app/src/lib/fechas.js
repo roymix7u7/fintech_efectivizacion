@@ -87,3 +87,30 @@ export function quedanTexto(fechaFin, ahora = Date.now()) {
   if (q === 1) return "Queda 1 día";
   return `Quedan ${q} días`;
 }
+
+/**
+ * Horario de atención: lunes a sábado, de 9:00 a. m. a 6:00 p. m., hora
+ * de Lima (UTC-5, sin horario de verano). Las solicitudes que llegan
+ * fuera de él se atienden en el transcurso de la mañana del siguiente
+ * día de atención.
+ *
+ * Devuelve { abierto, cuando }: cuando es "hoy", "mañana" o "el lunes".
+ */
+export function horarioAtencion(ahora = new Date()) {
+  const lima = new Date(new Date(ahora).getTime() - 5 * 3600 * 1000);
+  const dia = lima.getUTCDay(); // 0 domingo … 6 sábado
+  const hora = lima.getUTCHours();
+  const laborable = dia >= 1 && dia <= 6;
+  if (laborable && hora >= 9 && hora < 18) return { abierto: true, cuando: "hoy" };
+  if (laborable && hora < 9) return { abierto: false, cuando: "hoy" };
+  // Sábado después de las 6 p. m. o domingo: se atiende el lunes.
+  if (dia === 6 || dia === 0) return { abierto: false, cuando: "el lunes" };
+  return { abierto: false, cuando: "mañana" };
+}
+
+/** Lo que se le dice al cliente sobre cuándo le depositamos. */
+export function plazoDeposito(ahora = new Date()) {
+  const h = horarioAtencion(ahora);
+  if (h.abierto) return "Normalmente te depositamos en 1 hora.";
+  return `Estamos fuera de horario: la atendemos ${h.cuando} en el transcurso de la mañana.`;
+}

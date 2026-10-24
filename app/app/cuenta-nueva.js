@@ -24,6 +24,7 @@ import { BarraFija, ALTO_BARRA_FIJA } from "../src/components/ui/BarraFija";
 import { Consejo } from "../src/components/ui/Consejo";
 import { GrillaBancos } from "../src/components/ui/GrillaBancos";
 import { Segmentado } from "../src/components/ui/Segmentado";
+import { ScrollConTeclado } from "../src/components/ui/ScrollConTeclado";
 
 const LUCES = [
   { color: colors.glowGold, opacity: 0.38, size: 260, top: -40, right: -110 },
@@ -179,8 +180,8 @@ export default function CuentaNuevaScreen() {
   return (
     <KeyboardAvoidingView style={s.pantalla} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <StatusBar style="light" />
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: (conBarra ? ALTO_BARRA_FIJA : 0) + insets.bottom + 30 + altoTeclado }}
+      <ScrollConTeclado
+        contentContainerStyle={{ paddingBottom: (conBarra ? ALTO_BARRA_FIJA : 0) + insets.bottom + 30 }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
@@ -293,7 +294,7 @@ export default function CuentaNuevaScreen() {
             </Text>
           </View>
         </View>
-      </ScrollView>
+      </ScrollConTeclado>
 
       {conBarra ? (
         <BarraFija>

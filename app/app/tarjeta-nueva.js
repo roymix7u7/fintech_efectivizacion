@@ -25,6 +25,7 @@ import { Consejo } from "../src/components/ui/Consejo";
 import { GrillaBancos } from "../src/components/ui/GrillaBancos";
 import { HojaFoto } from "../src/components/ui/HojaFoto";
 import { PorQueFoto } from "../src/components/PorQueFoto";
+import { ScrollConTeclado } from "../src/components/ui/ScrollConTeclado";
 
 const BUCKET_TARJETAS = "tarjetas-fotos";
 
@@ -228,8 +229,8 @@ export default function TarjetaNuevaScreen() {
   return (
     <KeyboardAvoidingView style={s.pantalla} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <StatusBar style="light" />
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: (conBarra ? ALTO_BARRA_FIJA : 0) + insets.bottom + 30 + altoTeclado }}
+      <ScrollConTeclado
+        contentContainerStyle={{ paddingBottom: (conBarra ? ALTO_BARRA_FIJA : 0) + insets.bottom + 30 }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
@@ -331,7 +332,7 @@ export default function TarjetaNuevaScreen() {
             </View>
           </GlassPanel>
         </View>
-      </ScrollView>
+      </ScrollConTeclado>
 
       {conBarra ? (
         <BarraFija>

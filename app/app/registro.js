@@ -48,6 +48,7 @@ import { Hoja } from "../src/components/ui/Hoja";
 import { Segmentado } from "../src/components/ui/Segmentado";
 import { Casilla, Enlace } from "../src/components/ui/Casilla";
 import { documentosVigentes, aceptar } from "../src/lib/legal";
+import { ScrollConTeclado } from "../src/components/ui/ScrollConTeclado";
 import {
   Campo,
   CodigoSeisCajas,
@@ -601,11 +602,11 @@ export default function RegistroScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <StatusBar style="light" />
-      <ScrollView
+      <ScrollConTeclado
         ref={scrollRef}
         contentContainerStyle={{
           paddingBottom:
-            (conBarra ? ALTO_BARRA_FIJA : 0) + insets.bottom + 32 + altoTeclado,
+            (conBarra ? ALTO_BARRA_FIJA : 0) + insets.bottom + 32,
         }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -1035,7 +1036,7 @@ export default function RegistroScreen() {
             </Aparece>
           )}
         </View>
-      </ScrollView>
+      </ScrollConTeclado>
 
       {conBarra ? (
         <BarraFija>

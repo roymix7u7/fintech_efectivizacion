@@ -22,6 +22,7 @@ import { subirImagen, borrarImagenes } from "../src/lib/storage";
 import { cerrarSesion as cerrarSesionCompleta, motivoDelBloqueo, entrarA } from "../src/lib/sesion";
 import CuentaBloqueada from "../src/components/CuentaBloqueada";
 import AceptarCondiciones from "../src/components/AceptarCondiciones";
+import RegistroPush from "../src/components/RegistroPush";
 import SubidaDocumentos, {
   DOCUMENTOS,
   documentosCompletos,
@@ -216,6 +217,10 @@ export default function EnRevisionScreen() {
     <View style={s.pantalla}>
       <StatusBar style="light" />
       <AceptarCondiciones />
+      {/* Registra el teléfono aquí también: quien espera la aprobación
+          todavía no pasó por las pestañas, y sin token no le llegaría
+          "Cuenta verificada". */}
+      <RegistroPush />
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} showsVerticalScrollIndicator={false}>
         <CabeceraNoche style={s.cabecera} radio={36}>
           <View style={s.arriba}>

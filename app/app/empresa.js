@@ -38,6 +38,20 @@ const ETAPAS = [
   { clave: "deposito", titulo: "Te depositamos en tu cuenta", texto: "En tu cuenta de ahorros, a tu nombre." },
 ];
 
+// Locales y horario: los mismos de los términos (versión 1.0).
+const LOCALES = [
+  { distrito: "Lince", direccion: "Jr. Manuel Candamo 278, 2.° piso, Lince, Lima", referencia: "A media cuadra del Edificio El Almirante" },
+  { distrito: "San Juan de Miraflores", direccion: "Calle Algarrobos 103, San Juan de Miraflores, Lima", referencia: "Frente a la Estación Atocongo" },
+  { distrito: "Los Olivos", direccion: "Santa Cruz de Pachacútec 214, Los Olivos, Lima", referencia: "Frente a Mega Plaza" },
+];
+
+const PLAZOS = [
+  "Normalmente te depositamos en 1 hora.",
+  "En días de alta demanda, de 2 a 3 horas.",
+  "Si fallan los sistemas bancarios, hasta el siguiente día hábil.",
+  "Fuera de horario, en el transcurso de la mañana del siguiente día de atención.",
+];
+
 const GARANTIAS = [
   { clave: "cifrado", texto: "Documentos\ncifrados" },
   { clave: "nombre", texto: "Depósito\na tu nombre" },
@@ -262,6 +276,49 @@ export default function EmpresaScreen() {
               />
             </View>
           </Aparece>
+          <Aparece retraso={200}>
+            <Text style={s.seccion}>Horario y locales</Text>
+            <Tarjeta style={s.horario}>
+              <View style={s.horarioFila}>
+                <View style={s.horarioIcono}>
+                  <Ionicons name="time-outline" size={19} color={colors.navy} />
+                </View>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={s.horarioTitulo}>Lunes a sábado, de 9:00 a. m. a 6:00 p. m.</Text>
+                  <Text style={s.horarioTexto}>Refrigerio de 1:00 p. m. a 2:00 p. m. En la app y en los locales.</Text>
+                </View>
+              </View>
+              <View style={s.plazos}>
+                {PLAZOS.map((t) => (
+                  <View key={t} style={s.plazo}>
+                    <View style={s.plazoPunto} />
+                    <Text style={s.horarioTexto}>{t}</Text>
+                  </View>
+                ))}
+                <Text style={s.horarioNota}>Cualquier demora te la avisamos en Alertas.</Text>
+              </View>
+              {LOCALES.map((l) => (
+                <Toque
+                  key={l.distrito}
+                  onPress={() =>
+                    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l.direccion)}`)
+                  }
+                  accessibilityLabel={`Local ${l.distrito}: ${l.direccion}. Abrir en el mapa`}
+                  escala={0.99}
+                  style={s.local}
+                >
+                  <Ionicons name="location-outline" size={19} color={colors.goldText} />
+                  <View style={{ flex: 1, gap: 1 }}>
+                    <Text style={s.horarioTitulo}>{l.distrito}</Text>
+                    <Text style={s.horarioTexto}>{l.direccion}</Text>
+                    <Text style={s.horarioNota}>{l.referencia}</Text>
+                  </View>
+                  <Ionicons name="navigate-outline" size={16} color={colors.textFaint} />
+                </Toque>
+              ))}
+            </Tarjeta>
+          </Aparece>
+
           {/* Indecopi: el Libro de Reclamaciones tiene que estar a la vista. */}
           <Toque
             onPress={() => router.push("/reclamaciones")}
@@ -280,6 +337,16 @@ export default function EmpresaScreen() {
 }
 
 const s = StyleSheet.create({
+  horario: { borderRadius: 22, padding: 16, gap: 14 },
+  horarioFila: { flexDirection: "row", gap: 12, alignItems: "center" },
+  horarioIcono: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.infoBg, alignItems: "center", justifyContent: "center" },
+  horarioTitulo: { fontFamily: fonts.heavy, fontSize: 14, color: colors.text },
+  horarioTexto: { flex: 1, fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: colors.text2 },
+  horarioNota: { fontFamily: fonts.label, fontSize: 12, color: colors.text3 },
+  plazos: { gap: 6, padding: 12, borderRadius: 14, backgroundColor: colors.ground },
+  plazo: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
+  plazoPunto: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold, marginTop: 7 },
+  local: { flexDirection: "row", gap: 12, alignItems: "center", paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.lineSoft },
   libro: {
     flexDirection: "row",
     alignItems: "center",

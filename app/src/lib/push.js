@@ -38,6 +38,7 @@ const hayNotificaciones = Device.isDevice && !enExpoGo;
 
 let modulo = null;
 let configurado = false;
+const toquesAtendidos = new Set();
 
 /**
  * Carga expo-notifications la primera vez que hace falta.
@@ -71,8 +72,10 @@ async function cargar() {
       // por defecto y el cliente no puede silenciarlas sin silenciar
       // el app entera.
       if (Platform.OS === "android") {
+        // Lo usan las alertas del panel y los avisos de cada cliente
+        // (migración 57). El nombre se puede cambiar; el id no.
         await N.setNotificationChannelAsync(CANAL_ALERTAS, {
-          name: "Alertas del servicio",
+          name: "Avisos y alertas",
           importance: N.AndroidImportance.HIGH,
           vibrationPattern: [0, 250, 250, 250],
           lightColor: "#E8B800",
@@ -169,20 +172,41 @@ export async function escucharToques(alTocar) {
   const N = await cargar();
   if (!N) return () => {};
 
-  try {
-    const previa = await N.getLastNotificationResponseAsync();
-    if (previa?.notification?.request?.content?.data) {
-      alTocar(previa.notification.request.content.data);
-    }
+  // Cada toque se atiende una sola vez. La "ultima respuesta" se lee de
+  // nuevo cada vez que se monta quien escucha: sin esto, tocar "Cuenta
+  // verificada" entraba al Inicio, el Inicio volvia a leer el mismo
+  // toque y volvia a entrar, en bucle.
+  const atender = (res) => {
+    const id = res?.notification?.request?.identifier;
+    const datos = res?.notification?.request?.content?.data;
+    if (!datos || (id && toquesAtendidos.has(id))) return;
+    if (id) toquesAtendidos.add(id);
+    alTocar(datos);
+  };
 
-    const sub = N.addNotificationResponseReceivedListener((res) => {
-      const datos = res?.notification?.request?.content?.data;
-      if (datos) alTocar(datos);
-    });
+  try {
+    atender(await N.getLastNotificationResponseAsync());
+    const sub = N.addNotificationResponseReceivedListener(atender);
 
     return () => sub.remove();
   } catch (e) {
     console.warn("No se pudo escuchar notificaciones:", e?.message || e);
+    return () => {};
+  }
+}
+
+/**
+ * Avisa cuando llega una notificacion con el app abierta. Sirve para
+ * renovar lo guardado en el telefono al instante (el aviso dice que algo
+ * cambio: una solicitud pagada, una tarjeta aprobada).
+ */
+export async function escucharLlegadas(alLlegar) {
+  const N = await cargar();
+  if (!N) return () => {};
+  try {
+    const sub = N.addNotificationReceivedListener((n) => alLlegar(n?.request?.content?.data || {}));
+    return () => sub.remove();
+  } catch {
     return () => {};
   }
 }

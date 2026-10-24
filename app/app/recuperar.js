@@ -24,6 +24,7 @@ import { mensajeError } from "../src/lib/ui";
 import { useAviso } from "../src/components/Avisos";
 import { useAlturaTeclado } from "../src/lib/teclado";
 import { validarEmail, validarPassword, reglasPassword } from "../src/lib/validaciones";
+import { ScrollConTeclado } from "../src/components/ui/ScrollConTeclado";
 
 /**
  * Recuperar acceso en tres pasos, como en el prototipo:
@@ -181,8 +182,8 @@ export default function RecuperarScreen() {
   return (
     <KeyboardAvoidingView style={s.pantalla} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <StatusBar style="light" />
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 48 + altoTeclado + insets.bottom }}
+      <ScrollConTeclado
+        contentContainerStyle={{ paddingBottom: 48 + insets.bottom }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
@@ -319,7 +320,7 @@ export default function RecuperarScreen() {
             </Aparece>
           )}
         </View>
-      </ScrollView>
+      </ScrollConTeclado>
     </KeyboardAvoidingView>
   );
 }

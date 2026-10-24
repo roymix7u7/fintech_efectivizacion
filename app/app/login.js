@@ -31,6 +31,7 @@ import {
   motivoDelBloqueo,
 } from "../src/lib/sesion";
 import CuentaBloqueada from "../src/components/CuentaBloqueada";
+import { ScrollConTeclado } from "../src/components/ui/ScrollConTeclado";
 
 const LUCES = [
   { color: colors.glowGold, opacity: 0.36, size: 280, top: 40, right: -120 },
@@ -151,7 +152,7 @@ export default function LoginScreen() {
       />
 
       <StatusBar style="light" />
-      <ScrollView
+      <ScrollConTeclado
         contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 28 }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -252,7 +253,7 @@ export default function LoginScreen() {
             </Text>
           </Toque>
         </View>
-      </ScrollView>
+      </ScrollConTeclado>
     </KeyboardAvoidingView>
   );
 }

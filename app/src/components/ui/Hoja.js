@@ -5,11 +5,10 @@
 // solicitud?", cámara o galería. Sube en 450 ms con la curva del
 // diseño; tocar el velo o el botón atrás del teléfono la cierra.
 import { useEffect, useRef, useState } from "react";
-import { Animated, Dimensions, Modal, Platform, Pressable, Text, View } from "react-native";
+import { Animated, Dimensions, Keyboard, Modal, Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, fonts, motion } from "../../theme/tokens";
 import { CURVA, useReducirMovimiento } from "../../lib/movimiento";
-import { useAlturaTeclado } from "../../lib/teclado";
 import { useArrastreCerrar } from "../../lib/arrastre";
 
 const ALTO = Dimensions.get("window").height;
@@ -17,9 +16,26 @@ const ALTO = Dimensions.get("window").height;
 export function Hoja({ visible, onCerrar, titulo, children, altoMax = 0.72, etiqueta }) {
   const insets = useSafeAreaInsets();
   const reducir = useReducirMovimiento();
-  // Con un buscador dentro (ubigeo), el teclado no debe taparla. En
-  // Android la ventana ya se achica sola ("resize" en app.json).
-  const teclado = useAlturaTeclado();
+  // Con un campo dentro (buscador del ubigeo, motivo) el teclado no debe
+  // taparla. Se mide cuánto la tapa de verdad: con Expo 57 Android dibuja
+  // de borde a borde y la ventana ya no se achica sola, y si algún
+  // teléfono sí la achica, la cuenta da cero y no se suma dos veces.
+  const [altoVentana, setAltoVentana] = useState(0);
+  const [bordeTeclado, setBordeTeclado] = useState(null);
+  useEffect(() => {
+    const abre = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow", (e) => {
+      const c = e?.endCoordinates || {};
+      setBordeTeclado(c.screenY || Dimensions.get("screen").height - (c.height || 0));
+    });
+    const cierra = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide", () =>
+      setBordeTeclado(null),
+    );
+    return () => {
+      abre.remove();
+      cierra.remove();
+    };
+  }, []);
+  const tapa = bordeTeclado == null || !altoVentana ? 0 : Math.max(0, altoVentana - bordeTeclado);
   const y = useRef(new Animated.Value(ALTO)).current;
   const velo = useRef(new Animated.Value(0)).current;
   // Se mantiene montada mientras baja, para que la salida también se vea.
@@ -49,7 +65,10 @@ export function Hoja({ visible, onCerrar, titulo, children, altoMax = 0.72, etiq
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={onCerrar} statusBarTranslucent>
-      <View style={{ flex: 1, justifyContent: "flex-end", paddingBottom: Platform.OS === "ios" ? teclado : 0 }}>
+      <View
+        style={{ flex: 1, justifyContent: "flex-end", paddingBottom: tapa }}
+        onLayout={(e) => setAltoVentana(e.nativeEvent.layout.height)}
+      >
         <Animated.View
           style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15,27,51,0.45)", opacity: velo }}
         >
@@ -59,7 +78,9 @@ export function Hoja({ visible, onCerrar, titulo, children, altoMax = 0.72, etiq
           accessibilityViewIsModal
           accessibilityLabel={etiqueta || titulo}
           style={{
-            maxHeight: ALTO * altoMax,
+            // Con el teclado abierto, no más alta que lo que queda visible:
+            // si no, se saldría por arriba en vez de achicar su lista.
+            maxHeight: tapa ? Math.min(ALTO * altoMax, altoVentana - tapa - insets.top - 12) : ALTO * altoMax,
             backgroundColor: colors.surface,
             borderTopLeftRadius: 30,
             borderTopRightRadius: 30,

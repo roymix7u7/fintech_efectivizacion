@@ -40,11 +40,13 @@ import { useAviso } from "../src/components/Avisos";
 import { HojaFoto, capturarFoto } from "../src/components/ui/HojaFoto";
 import { useFranjaNoche } from "../src/components/ui/FranjaSistema";
 import { useArrastreCerrar } from "../src/lib/arrastre";
+import { plazoDeposito } from "../src/lib/fechas";
 import { esFalloDeRed } from "../src/lib/conexion";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
 import { Esqueleto, Aparece } from "../src/components/Cargando";
 import { useAlturaTeclado } from "../src/lib/teclado";
 import { alertasUrgentes, marcarVistas } from "../src/lib/alertas";
+import { ScrollConTeclado } from "../src/components/ui/ScrollConTeclado";
 import {
   cuentasDeDeposito,
   esBancoPrincipal,
@@ -130,7 +132,7 @@ export default function NuevaSolicitudScreen() {
       if (e1) throw e1;
       if (!perfilData) return { perfil: null, tarjetas: [], cuentas: [] };
 
-      const [{ data: tarjetasData, error: e2 }, { data: cuentasData, error: e3 }] = await Promise.all([
+      const [{ data: tarjetasData, error: e2 }, { data: cuentasData, error: e3 }, { data: com }] = await Promise.all([
         supabase
           .from("tarjetas")
           .select("id, banco, ultimos_4")
@@ -146,11 +148,19 @@ export default function NuevaSolicitudScreen() {
           .select("id, banco, tipo, numero_cuenta")
           .eq("cliente_id", perfilData.id)
           .eq("activa", true),
+        // La comisión que se le cobra, por banco: la calcula el servidor
+        // (especial del cliente o la de su bloque), igual que en Mi cuenta.
+        supabase.rpc("mis_comisiones"),
       ]);
       if (e2 || e3) throw e2 || e3;
-      return { perfil: perfilData, tarjetas: tarjetasData || [], cuentas: cuentasData || [] };
+      return {
+        perfil: perfilData,
+        tarjetas: tarjetasData || [],
+        cuentas: cuentasData || [],
+        comisiones: com?.bancos || [],
+      };
     },
-    { grupos: ["tarjetas", "cuentas", "perfil"] },
+    { grupos: ["tarjetas", "cuentas", "perfil", "comisiones"] },
   );
   const perfil = datos?.perfil || null;
   const tarjetas = useMemo(() => datos?.tarjetas || [], [datos]);
@@ -179,6 +189,9 @@ export default function NuevaSolicitudScreen() {
   // mandar el dinero.
   const bancoTarjeta = tarjetaSeleccionada?.banco || null;
   const destinos = cuentasDeDeposito(bancoTarjeta, cuentas);
+  // Se muestra antes de enviar: es lo que se descuenta del depósito.
+  const comision = (datos?.comisiones || []).find((c) => c.banco === bancoTarjeta)?.porcentaje;
+  const comisionTexto = comision == null ? null : `${Number(comision).toFixed(2).replace(/\.?0+$/, "")}%`;
   const tieneCuentaDelBanco = destinos.length > 0;
   const falta = faltaParaRecibir(bancoTarjeta, cuentas);
   // Lo que se le dice en la barra de abajo: a qué banco va su dinero.
@@ -421,7 +434,9 @@ export default function NuevaSolicitudScreen() {
               <Text style={s.enviadaChipTexto}>En revisión</Text>
             </View>
           </Aparece>
-          <Text style={s.enviadaTexto}>Te avisaremos en cada paso.</Text>
+          <Text style={s.enviadaTexto}>
+            {plazoDeposito()} Te avisaremos en cada paso, y cualquier demora la verás en Alertas.
+          </Text>
         </View>
         <View style={{ gap: 10 }}>
           <Boton
@@ -484,12 +499,13 @@ export default function NuevaSolicitudScreen() {
   return (
     <View style={s.pantalla}>
       <StatusBar style="dark" />
-      <ScrollView
+      <ScrollConTeclado
         contentContainerStyle={[
           s.contenido,
           {
             paddingTop: insets.top + 18,
-            paddingBottom: ALTO_BARRA_FIJA + insets.bottom + 20 + altoTeclado,
+            // La línea de la comisión hace la barra más alta.
+            paddingBottom: ALTO_BARRA_FIJA + insets.bottom + 20 + (tarjetaSeleccionada && comisionTexto ? 46 : 0),
           },
         ]}
         keyboardShouldPersistTaps="handled"
@@ -680,12 +696,21 @@ export default function NuevaSolicitudScreen() {
             {nota.length} / {MAX_NOTA}
           </Text>
         ) : null}
-      </ScrollView>
+      </ScrollConTeclado>
 
       {/* Barra fija con el envío. Se oculta con el teclado abierto: en
           Android la pantalla se encoge y la barra taparía la nota. */}
       {altoTeclado === 0 ? (
         <BarraFija>
+          {tarjetaSeleccionada && comisionTexto ? (
+            <View style={s.barraResumen}>
+              <Text style={s.barraComision} accessibilityRole="text">
+                Comisión {bancoDe(bancoTarjeta).name}: <Text style={s.barraComisionValor}>{comisionTexto}</Text> · se
+                descuenta de lo que te depositamos
+              </Text>
+              <Text style={s.barraComision}>{plazoDeposito()}</Text>
+            </View>
+          ) : null}
           <Boton
             variante="dinero"
             titulo="Enviar solicitud"
@@ -851,6 +876,9 @@ const s = StyleSheet.create({
   },
   bloqueoBotonTexto: { fontFamily: fonts.heavy, fontSize: 12, color: colors.white },
 
+  barraResumen: { gap: 2, paddingHorizontal: 8, paddingTop: 4, paddingBottom: 8 },
+  barraComision: { fontFamily: fonts.label, fontSize: 12, color: colors.text2, textAlign: "center" },
+  barraComisionValor: { fontFamily: fonts.heavy, color: colors.text },
   voucherOpciones: { flexDirection: "row", gap: 10 },
   voucherVacio: {
     flex: 1,
