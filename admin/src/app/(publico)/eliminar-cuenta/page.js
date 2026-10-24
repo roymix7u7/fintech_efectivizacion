@@ -12,13 +12,15 @@ import { clientePublico, EMPRESA } from "@/lib/supabasePublico";
  * su correo y contraseña; el pedido cae en la misma cola del panel
  * (Pedidos de datos) que el hecho desde la app.
  */
+// Según la política de privacidad 1.0: depende de si ya operó.
 const SE_BORRA = [
-  "Las fotos de tu documento, tu selfie y tus tarjetas",
-  "Tus datos personales: nombre, documento, celular y dirección",
   "Tu acceso: ya no podrás entrar con tu correo",
+  "Tus datos de contacto: celular, dirección y correo",
+  "Si nunca hiciste una operación: también tus fotos y tus datos de identidad",
 ];
 const SE_CONSERVA = [
-  "El registro de tus operaciones y sus comprobantes, por el tiempo que exige la ley",
+  "Si ya hiciste operaciones, bloqueados para cualquier otro uso: tus fotos de identidad y de tarjetas por 5 años, y tu nombre, documento y registro de operaciones por 10 años, desde tu última operación",
+  "Los comprobantes, mientras no prescriban las obligaciones tributarias",
   "La constancia de los documentos que aceptaste",
 ];
 
@@ -40,6 +42,7 @@ export default function EliminarCuentaPage() {
   const [error, setError] = useState("");
   const [vence, setVence] = useState(null);
   const [yaPedida, setYaPedida] = useState(false);
+  const [retencion, setRetencion] = useState(null);
 
   async function entrar(e) {
     e.preventDefault();
@@ -59,6 +62,9 @@ export default function EliminarCuentaPage() {
       await sb.auth.signOut();
       return setError("Esta página es para clientes de la app AlToque.");
     }
+    // Sus fechas reales: qué se le conservaría y hasta cuándo.
+    const { data: r } = await sb.rpc("mi_retencion");
+    setRetencion(r || null);
     setClave("");
     setPaso("confirmar");
   }
@@ -160,6 +166,17 @@ export default function EliminarCuentaPage() {
         {paso === "confirmar" && (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold">¿Eliminar tu cuenta?</h2>
+            {retencion?.opero ? (
+              <p className="rounded-xl bg-amber-50 p-4 text-[14px] text-slate-800">
+                Como ya hiciste operaciones, conservaremos bloqueados para cualquier otro uso tus fotos hasta el{" "}
+                <strong>{fecha(retencion.fotos_hasta)}</strong> y tu nombre, documento y registro de operaciones hasta
+                el <strong>{fecha(retencion.datos_hasta)}</strong>. Se borran solos al vencer cada plazo.
+              </p>
+            ) : (
+              <p className="rounded-xl bg-slate-50 p-4 text-[14px] text-slate-800">
+                Como no tienes operaciones, borraremos tus fotos y tus datos.
+              </p>
+            )}
             <label className="block space-y-1.5">
               <span className="text-[13px] font-medium">¿Nos cuentas por qué? (opcional)</span>
               <textarea
@@ -179,7 +196,7 @@ export default function EliminarCuentaPage() {
                 onChange={(e) => setEntiendo(e.target.checked)}
                 className="mt-1"
               />
-              Entiendo que mi cuenta y mis fotos se borrarán y que no se puede deshacer.
+              Entiendo que mi cuenta se eliminará y que no se puede deshacer.
             </label>
             <button
               onClick={pedir}

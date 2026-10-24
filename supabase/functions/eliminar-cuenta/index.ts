@@ -2,15 +2,18 @@
  * Elimina la cuenta de un cliente que lo pidió desde la app.
  *
  * Vive en el servidor porque hace dos cosas que la base no puede:
- *   1. Borrar las fotos del documento, la selfie y las tarjetas (Storage
- *      no deja borrar archivos con SQL).
+ *   1. Las fotos del documento, la selfie y las tarjetas (Storage no deja
+ *      tocar archivos con SQL):
+ *        - si el cliente ya operó, se MUEVEN al bucket privado
+ *          "conservados" (solo el administrador), por 5 años desde su
+ *          última operación (política de privacidad 1.0);
+ *        - si nunca operó, se borran.
  *   2. Quitar el acceso: borra el usuario de Auth.
- * Lo del medio, anonimizar los datos personales, lo hace la base
- * (anonimizar_cliente) con la sesión del administrador que llama, así
- * queda en la auditoría con su nombre.
+ * Lo del medio, anonimizar y guardar la identidad que se conserva, lo
+ * hace la base (anonimizar_cliente) con la sesión del administrador que
+ * llama, así queda en la auditoría con su nombre.
  *
- * Se conservan los comprobantes y el registro de operaciones: la
- * prevención del lavado de activos obliga a guardarlos.
+ * Lo vencido lo borra cada día la función purgar-conservados.
  *
  * Se puede volver a llamar si algo falla a mitad: cada paso tolera que
  * el anterior ya se haya hecho.
@@ -104,14 +107,37 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ¿Operó alguna vez? Decide si las fotos se conservan o se borran.
+  let opero = false;
+  if (perfil) {
+    const { count } = await admin
+      .from("solicitudes")
+      .select("id", { count: "exact", head: true })
+      .eq("cliente_id", perfil.id);
+    opero = Boolean(count);
+  }
+
   // ── 1. Fotos ──
   // Cada cliente sube a su propia carpeta: <user_id>/...
   let borradas = 0;
+  const conservadas: string[] = [];
   for (const bucket of BUCKETS_PERSONALES) {
     const { data: archivos, error: eLista } = await admin.storage.from(bucket).list(sol.user_id, { limit: 1000 });
     if (eLista) return responder({ error: `No se pudieron listar las fotos de ${bucket}: ${eLista.message}` }, 500);
-    const rutas = (archivos || []).filter((a) => a.name).map((a) => `${sol.user_id}/${a.name}`);
-    if (rutas.length) {
+    const nombres = (archivos || []).filter((a) => a.name).map((a) => a.name);
+    if (!nombres.length) continue;
+
+    if (opero) {
+      for (const nombre of nombres) {
+        const destino = `${sol.user_id}/${bucket}/${nombre}`;
+        const { error: eMover } = await admin.storage
+          .from(bucket)
+          .move(`${sol.user_id}/${nombre}`, destino, { destinationBucket: "conservados" });
+        if (eMover) return responder({ error: `No se pudo conservar ${bucket}/${nombre}: ${eMover.message}` }, 500);
+        conservadas.push(destino);
+      }
+    } else {
+      const rutas = nombres.map((n) => `${sol.user_id}/${n}`);
       const { error: eBorrar } = await admin.storage.from(bucket).remove(rutas);
       if (eBorrar) return responder({ error: `No se pudieron borrar las fotos de ${bucket}: ${eBorrar.message}` }, 500);
       borradas += rutas.length;
@@ -119,7 +145,10 @@ Deno.serve(async (req) => {
   }
 
   // ── 2. Datos personales (con la sesión del administrador) ──
-  const { data: anon_, error: eAnon } = await comoUsuario.rpc("anonimizar_cliente", { p_solicitud: sol.id });
+  const { data: anon_, error: eAnon } = await comoUsuario.rpc("anonimizar_cliente", {
+    p_solicitud: sol.id,
+    p_fotos: conservadas,
+  });
   if (eAnon) return responder({ error: eAnon.message }, 409);
 
   // ── 3. Acceso ──
@@ -129,5 +158,5 @@ Deno.serve(async (req) => {
     return responder({ error: `Datos anonimizados, pero no se pudo quitar el acceso: ${eAuth.message}` }, 500);
   }
 
-  return responder({ ok: true, fotos_borradas: borradas, resultado: anon_ });
+  return responder({ ok: true, opero, fotos_borradas: borradas, fotos_conservadas: conservadas.length, resultado: anon_ });
 });

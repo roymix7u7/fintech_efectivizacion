@@ -4,7 +4,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { textoMisDatos, miPedido, pedirEliminacion, cancelarEliminacion } from "../src/lib/misdatos";
+import { textoMisDatos, miPedido, miRetencion, pedirEliminacion, cancelarEliminacion } from "../src/lib/misdatos";
 import { invalidar } from "../src/lib/cache";
 import { fechaLegal } from "../src/lib/legal";
 import { mensajeError } from "../src/lib/ui";
@@ -24,15 +24,36 @@ const LUCES = [
   { color: colors.glowBlue, opacity: 0.7, size: 280, bottom: -160, left: -110 },
 ];
 
-const SE_BORRA = [
-  "Las fotos de tu documento, tu selfie y tus tarjetas",
-  "Tus datos personales: nombre, documento, celular y dirección",
-  "Tu acceso: ya no podrás entrar con tu correo",
-];
-const SE_CONSERVA = [
-  "El registro de tus operaciones y sus comprobantes, por el tiempo que exige la ley",
-  "La constancia de los documentos que aceptaste",
-];
+/**
+ * Qué se borra y qué se conserva, según la política de privacidad 1.0.
+ * Depende de si ya operó: quien nunca envió una solicitud no tiene
+ * nada que la ley obligue a guardar.
+ */
+function queBorraYConserva(r) {
+  if (!r?.opero) {
+    return {
+      borra: [
+        "Las fotos de tu documento, tu selfie y tus tarjetas",
+        "Tus datos personales: nombre, documento, celular, dirección y correo",
+        "Tu acceso: ya no podrás entrar con tu correo",
+      ],
+      conserva: ["La constancia de los documentos que aceptaste"],
+    };
+  }
+  return {
+    borra: [
+      "Tus datos de contacto: celular, dirección y correo",
+      "Tu acceso: ya no podrás entrar con tu correo",
+      "Tus tarjetas y cuentas dejan de estar activas",
+    ],
+    conserva: [
+      `Las fotos de tu documento, tu selfie y tus tarjetas, hasta el ${fechaLegal(r.fotos_hasta)} (5 años desde tu última operación)`,
+      `Tu nombre, tu documento y el registro de tus operaciones, hasta el ${fechaLegal(r.datos_hasta)} (10 años)`,
+      "Los comprobantes, mientras no prescriban las obligaciones tributarias",
+      "La constancia de los documentos que aceptaste",
+    ],
+  };
+}
 
 /** Fila de lista con ícono. */
 function Item({ icono, color, texto }) {
@@ -53,6 +74,7 @@ export default function MisDatosScreen() {
   const insets = useSafeAreaInsets();
   const { mostrar } = useAviso();
   const [pedido, setPedido] = useState(undefined); // undefined: cargando
+  const [retencion, setRetencion] = useState(null);
   const [descargando, setDescargando] = useState(false);
   const [confirmar, setConfirmar] = useState(false);
   const [motivo, setMotivo] = useState("");
@@ -61,7 +83,9 @@ export default function MisDatosScreen() {
 
   const cargar = useCallback(async () => {
     try {
-      setPedido(await miPedido());
+      const [p, r] = await Promise.all([miPedido(), miRetencion().catch(() => null)]);
+      setPedido(p);
+      setRetencion(r);
     } catch (e) {
       setPedido(null);
       mostrar(mensajeError(e), "error");
@@ -233,13 +257,21 @@ export default function MisDatosScreen() {
                     </View>
                   ) : null}
                   <Text style={s.subtituloBloque}>Qué se borra</Text>
-                  {SE_BORRA.map((t) => (
+                  {queBorraYConserva(retencion).borra.map((t) => (
                     <Item key={t} icono="close-circle-outline" color={colors.errorText} texto={t} />
                   ))}
-                  <Text style={s.subtituloBloque}>Qué se conserva</Text>
-                  {SE_CONSERVA.map((t) => (
+                  <Text style={s.subtituloBloque}>
+                    {retencion?.opero ? "Qué se conserva, bloqueado para cualquier otro uso" : "Qué se conserva"}
+                  </Text>
+                  {queBorraYConserva(retencion).conserva.map((t) => (
                     <Item key={t} icono="lock-closed-outline" color={colors.goldText} texto={t} />
                   ))}
+                  {retencion?.opero ? (
+                    <Text style={s.nota}>
+                      Como ya hiciste operaciones, la ley nos obliga a guardar esto por esos plazos. Solo lo puede
+                      ver la administración de AlToque, y se borra solo al vencer cada plazo.
+                    </Text>
+                  ) : null}
                   <Text style={s.nota}>
                     Si tienes una solicitud en curso, primero la terminamos (y te pagamos), y luego eliminamos tu
                     cuenta.
@@ -281,7 +313,7 @@ export default function MisDatosScreen() {
             </View>
           </View>
           <Casilla marcada={entiendo} onCambio={setEntiendo} accessibilityLabel="Entiendo que no se puede deshacer">
-            Entiendo que mi cuenta y mis fotos se borrarán y que no se puede deshacer.
+            Entiendo que mi cuenta se eliminará y que no se puede deshacer.
           </Casilla>
           <Boton
             variante="peligro"

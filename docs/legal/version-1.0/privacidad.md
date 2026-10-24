@@ -9,11 +9,13 @@ ALTOQUE PERU WK S.A.C., con RUC 20611531410 y domicilio en Av. Abel B. Du Petit 
 - Cuentas bancarias: banco, tipo y número de cuenta o CCI.
 - Operaciones: los comprobantes que envías, tus notas y el estado de cada solicitud.
 - Uso de la app: el identificador de tu teléfono para enviarte notificaciones y los datos de tu sesión.
+- Preferencias: si aceptas recibir promociones y desde cuándo.
 
 ## 3. Para qué los usamos
 - Verificar tu identidad y prevenir la suplantación y el fraude.
 - Procesar tus solicitudes y depositarte el dinero.
 - Avisarte del estado de tus trámites.
+- Enviarte promociones y novedades, solo si lo autorizas. Puedes dejar de recibirlas cuando quieras desde Mi cuenta → Recibir promociones.
 - Cumplir con nuestras obligaciones legales.
 
 No vendemos tus datos ni los usamos para publicidad de terceros.
@@ -38,13 +40,13 @@ Conservamos tus datos durante los siguientes plazos:
 - Fotos de verificación (tu documento y tu selfie) y fotos de tus tarjetas: 5 años desde la última operación.
 - Comprobantes de pago y datos tributarios: mientras no prescriban las obligaciones tributarias.
 - Reclamos y quejas: al menos 2 años desde su registro.
-- Datos usados para enviarte promociones: hasta que retires tu consentimiento.
+- Datos usados para enviarte promociones: hasta que retires tu consentimiento desde Mi cuenta → Recibir promociones.
 
 ## 8. Tus derechos
 Puedes pedir acceder a tus datos, corregirlos, eliminarlos u oponerte a su uso (derechos ARCO). Escríbenos a contacto@altoqueperu.com desde el correo con el que te registraste. Si no estás conforme con nuestra respuesta, puedes acudir a la Autoridad Nacional de Protección de Datos Personales.
 
 ## 9. Eliminar tu cuenta
-Puedes pedir la eliminación de tu cuenta desde la app, en Mi cuenta → Mis datos, o en nuestra web. Responderemos tu pedido en un plazo máximo de 10 días hábiles. Si la ley nos obliga a conservar algunos de tus datos, te indicaremos cuáles conservamos, por qué y hasta cuándo, y los bloquearemos para cualquier otro uso.
+Puedes pedir la eliminación de tu cuenta desde la app, en Mi cuenta → Mis datos, o en nuestra web. Responderemos tu pedido en un plazo máximo de 10 días hábiles. Si la ley nos obliga a conservar algunos de tus datos, te indicaremos cuáles conservamos, por qué y hasta cuándo, y los bloquearemos para cualquier otro uso. Si nunca hiciste una operación, borramos tus fotos y tus datos.
 
 ## 10. Banco de datos
 Tus datos se almacenan en un banco de datos personales de titularidad de ALTOQUE PERU WK S.A.C., que se encuentra en proceso de inscripción ante la Autoridad Nacional de Protección de Datos Personales.

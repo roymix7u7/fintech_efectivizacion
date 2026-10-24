@@ -179,6 +179,8 @@ export default function RegistroScreen() {
   // autorización aparte de los términos.
   const [aceptaTerminos, setAceptaTerminos] = useState(false);
   const [aceptaFotos, setAceptaFotos] = useState(false);
+  // Opcional y desmarcada: las promociones necesitan su propio permiso.
+  const [aceptaPromos, setAceptaPromos] = useState(false);
   // Versiones vigentes al momento de aceptar: son las que se registran.
   const [vigentes, setVigentes] = useState(null);
   const router = useRouter();
@@ -549,6 +551,8 @@ export default function RegistroScreen() {
         telefono: "+51" + form.telefono,
         direccion,
         codigo_promo: form.codigo_promo.trim() || null,
+        acepta_promociones: aceptaPromos,
+        promociones_actualizado_en: new Date().toISOString(),
         foto_dni_frontal: paths.dni_frontal,
         foto_dni_posterior: paths.dni_posterior,
         foto_selfie: paths.selfie,
@@ -882,6 +886,14 @@ export default function RegistroScreen() {
                   >
                     Autorizo el uso de las fotos de mi documento y mi selfie solo para verificar mi identidad.{" "}
                     <Enlace onPress={() => router.push("/legal/biometria")}>Ver detalle</Enlace>
+                  </Casilla>
+                  <Casilla
+                    marcada={aceptaPromos}
+                    onCambio={setAceptaPromos}
+                    accessibilityLabel="Quiero recibir promociones y novedades de AlToque, opcional"
+                  >
+                    Quiero recibir promociones y novedades de AlToque (opcional). Puedo dejar de recibirlas cuando
+                    quiera desde Mi cuenta.
                   </Casilla>
                 </GlassPanel>
               </View>

@@ -137,7 +137,11 @@ export default function PrivacidadPage() {
     setEliminando(null);
     setConfirmacion("");
     setError("");
-    window.alert(`Cuenta eliminada. Fotos borradas: ${data?.fotos_borradas ?? 0}.`);
+    window.alert(
+      data?.opero
+        ? `Cuenta eliminada. Como había operado, se conservaron ${data?.fotos_conservadas ?? 0} foto(s) y su identidad, bloqueadas, hasta que venza cada plazo.`
+        : `Cuenta eliminada. Nunca había operado: se borraron ${data?.fotos_borradas ?? 0} foto(s) y sus datos.`,
+    );
     cargar();
   }
 
@@ -280,10 +284,12 @@ export default function PrivacidadPage() {
                     <div className="space-y-2 rounded-lg border border-red-200 bg-red-50/60 p-3">
                       <p className="text-[0.85rem] font-medium text-red-800">Esto no se puede deshacer.</p>
                       <ul className="list-disc pl-5 text-[0.8rem] text-red-900">
-                        <li>Se borran las fotos de su documento, su selfie y sus tarjetas.</li>
-                        <li>Se reemplazan su nombre, documento, celular, dirección y correo.</li>
-                        <li>Pierde el acceso a la app.</li>
-                        <li>Se conservan sus operaciones y comprobantes.</li>
+                        <li>Pierde el acceso a la app y se borran su celular, dirección y correo.</li>
+                        <li>
+                          Si ya operó: sus fotos se conservan bloqueadas 5 años y su nombre, documento y operaciones
+                          10 años desde su última operación (solo los ve la administración). Se borran solos al vencer.
+                        </li>
+                        <li>Si nunca operó: se borran sus fotos y sus datos.</li>
                       </ul>
                       <p className="text-[0.8rem]">
                         Escribe <span className="font-mono font-semibold">ELIMINAR</span> para confirmar:

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from "react-native";
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Switch } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
@@ -75,7 +75,7 @@ export default function PerfilScreen() {
         supabase
           .from("perfiles_cliente")
           .select(
-            "nombres, apellidos, tipo_documento, dni, telefono, direccion, validado_por, fecha_validacion, created_at",
+            "nombres, apellidos, tipo_documento, dni, telefono, direccion, validado_por, fecha_validacion, created_at, acepta_promociones",
           )
           .eq("user_id", user.id)
           .maybeSingle(),
@@ -93,6 +93,18 @@ export default function PerfilScreen() {
   // Sin huella: cambian poco y la copia se renueva al entrar.
   const { datos: aceptaciones } = useDatos("aceptaciones", misAceptaciones);
   const usuario = guardado ? { email: guardado.email } : null;
+  // Promociones: se muestra el cambio al instante; si falla, vuelve.
+  const [promos, setPromos] = useState(null);
+  const aceptaPromos = promos ?? Boolean(guardado?.perfil?.acepta_promociones);
+  async function cambiarPromos(v) {
+    setPromos(v);
+    const { error } = await supabase.rpc("fijar_promociones", { p_acepta: v });
+    if (error) {
+      setPromos(!v);
+      return;
+    }
+    recargar();
+  }
   const perfil = guardado?.perfil || null;
   const comisiones = guardado?.comisiones || null;
 
@@ -271,6 +283,24 @@ export default function PerfilScreen() {
                   </Toque>
                 );
               })}
+            </Tarjeta>
+            <Tarjeta style={[s.datos, s.misDatos]}>
+              <View style={[s.datoIcono, { backgroundColor: colors.infoBg }]}>
+                <Ionicons name="megaphone-outline" size={19} color={colors.navy} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <Text style={s.datoValor}>Recibir promociones</Text>
+                <Text style={s.datoEtiqueta}>
+                  {aceptaPromos ? "Te avisaremos de promociones y novedades" : "No te enviaremos promociones"}
+                </Text>
+              </View>
+              <Switch
+                value={aceptaPromos}
+                onValueChange={cambiarPromos}
+                trackColor={{ false: colors.track, true: colors.gold }}
+                thumbColor={colors.white}
+                accessibilityLabel="Recibir promociones"
+              />
             </Tarjeta>
             <Toque
               onPress={() => router.push("/mis-datos")}

@@ -58,6 +58,7 @@ export async function textoMisDatos() {
   fila("Dirección", p.direccion);
   fila("Código promocional", p.codigo_promocional);
   fila("Identidad verificada el", fecha(p.verificado_el));
+  fila("Recibir promociones", si(p.acepta_promociones));
   fila("Foto del documento (frente) guardada", si(p.fotos_guardadas?.documento_frente));
   fila("Foto del documento (reverso) guardada", si(p.fotos_guardadas?.documento_reverso));
   fila("Selfie guardada", si(p.fotos_guardadas?.selfie));
@@ -99,6 +100,17 @@ export async function textoMisDatos() {
     "Las fotos no van en este archivo. Si necesitas una copia, pídela a contacto@altoqueperu.com desde tu correo registrado.",
   );
   return l.join("\n");
+}
+
+/**
+ * Qué se le conservaría si elimina su cuenta (política 1.0): si ya
+ * operó, fotos 5 años e identidad y operaciones 10 años desde su última
+ * operación. { opero, ultima_operacion, fotos_hasta, datos_hasta }
+ */
+export async function miRetencion() {
+  const { data, error } = await supabase.rpc("mi_retencion");
+  if (error) throw error;
+  return data || { opero: false };
 }
 
 /** El último pedido de eliminación, o null. */

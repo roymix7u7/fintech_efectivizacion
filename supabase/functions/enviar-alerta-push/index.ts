@@ -187,9 +187,18 @@ Deno.serve(async (req) => {
   }
 
   // ── A quién ──
-  const { data: filas, error: errorTokens } = await admin
-    .from("push_tokens")
-    .select("token");
+  // Una promoción solo llega a quien aceptó recibirlas (casilla del
+  // registro o Mi cuenta → Recibir promociones; migración 58). Las
+  // alertas del servicio llegan a todos.
+  let consulta = admin.from("push_tokens").select("token, user_id");
+  if (alerta.tipo === "promocion") {
+    const { data: aceptan } = await admin
+      .from("perfiles_cliente")
+      .select("user_id")
+      .eq("acepta_promociones", true);
+    consulta = consulta.in("user_id", (aceptan ?? []).map((f) => f.user_id));
+  }
+  const { data: filas, error: errorTokens } = await consulta;
 
   if (errorTokens) {
     return responder(
