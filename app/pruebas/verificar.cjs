@@ -15,6 +15,11 @@ const fs = require("fs");
 const path = require("path");
 
 const RAIZ = path.join(__dirname, "..");
+// Lo que exporta StyleSheet en el React Native instalado.
+const FUENTE_STYLESHEET = fs.readFileSync(
+  path.join(RAIZ, "node_modules/react-native/Libraries/StyleSheet/StyleSheetExports.js"),
+  "utf8",
+);
 const IGNORAR = ["node_modules", ".expo", ".next", "dist", ".git", "pruebas"];
 
 const GLOBALES = new Set([
@@ -130,6 +135,13 @@ for (const f of archivos) {
   });
 
   for (const u of usos) {
+    // StyleSheet.algo que la versión instalada de React Native ya no
+    // trae: expandirlo no da error, solo no aplica ningún estilo (así se
+    // perdió el position absolute del selector con absoluteFillObject).
+    if (u.objeto === "StyleSheet" && !new RegExp(`\\b${u.prop}\\b`).test(FUENTE_STYLESHEET))
+      problemas.push(
+        `STYLESHEET ${rel(f)}:${u.linea}  StyleSheet.${u.prop} no existe en esta version de React Native`,
+      );
     if (!estilos[u.objeto]) continue;
     if (!estilos[u.objeto].has(u.prop))
       problemas.push(

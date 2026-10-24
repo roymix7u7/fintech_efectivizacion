@@ -1,45 +1,82 @@
-import { useCallback, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  RefreshControl,
-} from "react-native";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useState } from "react";
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from "react-native";
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../src/lib/supabase";
-import Header from "../../src/components/Header";
+import { useDatos } from "../../src/lib/cache";
+import { misAceptaciones, fechaLegal, TIPOS_LEGALES } from "../../src/lib/legal";
+import { Toque } from "../../src/components/ui/Toque";
 import MenuLateral from "../../src/components/MenuLateral";
-import COLORS from "../../src/theme/colors";
-import TIPO, { CIFRAS } from "../../src/theme/tipografia";
 import { Esqueleto, Aparece } from "../../src/components/Cargando";
 import { confirmar } from "../../src/lib/ui";
 import { cerrarSesion as cerrarSesionCompleta } from "../../src/lib/sesion";
+import { CabeceraNoche } from "../../src/components/ui/CabeceraNoche";
+import { GlassPanel } from "../../src/components/ui/GlassPanel";
+import { BankBadge } from "../../src/components/ui/BankBadge";
+import { Boton } from "../../src/components/ui/Boton";
+import { BotonIcono, Tarjeta } from "../../src/components/ui/Piezas";
+import { bancoDe, colors, fonts } from "../../src/theme/tokens";
+
+const LUCES = [
+  { color: colors.glowGold, opacity: 0.38, size: 260, top: -60, right: -100 },
+  { color: colors.glowBlue, opacity: 0.75, size: 300, bottom: -160, left: -110 },
+];
+
+const fechaLarga = (iso) =>
+  iso ? new Date(iso).toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" }) : "";
+
+/** "2.50" -> "2.5", "3.00" -> "3". */
+const porcentaje = (v) => Number(v).toFixed(2).replace(/\.?0+$/, "");
+
+/** "+51987654321" -> "+51 987 654 321". */
+function telefonoLegible(t) {
+  const d = String(t || "").replace(/\D/g, "");
+  if (d.length === 11 && d.startsWith("51")) return `+51 ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8)}`;
+  return t || "";
+}
+
+/** Fila de dato con su ícono en un cuadro claro. */
+function Dato({ icono, etiqueta, valor, ultima }) {
+  return (
+    <View style={[s.dato, !ultima && s.datoSeparado]} accessible accessibilityLabel={`${etiqueta}: ${valor}`}>
+      <View style={s.datoIcono}>
+        <Ionicons name={icono} size={19} color={colors.navy} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text style={s.datoEtiqueta}>{etiqueta}</Text>
+        <Text style={s.datoValor} numberOfLines={1}>
+          {valor}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 export default function PerfilScreen() {
-  const [usuario, setUsuario] = useState(null);
-  const [perfil, setPerfil] = useState(null);
-  const [comisiones, setComisiones] = useState(null);
-  const [cargando, setCargando] = useState(true);
-  const [refrescando, setRefrescando] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  const cargar = useCallback(async () => {
-    try {
+  // Datos personales y comisiones guardados en el teléfono: solo se
+  // vuelven a descargar si el gestor cambió algo (huellas "perfil" y
+  // "comisiones"). Entrar a Mi cuenta ya no muestra "cargando".
+  const { datos: guardado, cargando, refrescando, recargar } = useDatos(
+    "perfil",
+    async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) return;
-      setUsuario(user);
+      if (!user) return null;
 
       // Las dos consultas en paralelo: no dependen una de otra.
-      const [{ data: perfilData }, { data: com }] = await Promise.all([
+      const [{ data: perfilData, error: e1 }, { data: com, error: e2 }] = await Promise.all([
         supabase
           .from("perfiles_cliente")
-          .select("nombres, apellidos, dni, telefono, direccion, validado_por, fecha_validacion")
+          .select(
+            "nombres, apellidos, tipo_documento, dni, telefono, direccion, validado_por, fecha_validacion, created_at",
+          )
           .eq("user_id", user.id)
           .maybeSingle(),
         // La tarifa la calcula el servidor: manda la especial si la
@@ -48,20 +85,16 @@ export default function PerfilScreen() {
         // un numero que no es el que se le aplica.
         supabase.rpc("mis_comisiones"),
       ]);
-
-      setPerfil(perfilData);
-      setComisiones(com || { bloque: null, bancos: [] });
-    } finally {
-      setCargando(false);
-      setRefrescando(false);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      cargar();
-    }, [cargar]),
+      if (e1 || e2) throw e1 || e2;
+      return { email: user.email, perfil: perfilData, comisiones: com || { bloque: null, bancos: [] } };
+    },
+    { grupos: ["perfil", "comisiones"] },
   );
+  // Sin huella: cambian poco y la copia se renueva al entrar.
+  const { datos: aceptaciones } = useDatos("aceptaciones", misAceptaciones);
+  const usuario = guardado ? { email: guardado.email } : null;
+  const perfil = guardado?.perfil || null;
+  const comisiones = guardado?.comisiones || null;
 
   // window.confirm no existe en React Native: sin esto el boton de
   // cerrar sesion no hacia nada en el telefono.
@@ -75,319 +108,261 @@ export default function PerfilScreen() {
 
   // Con nombres vacio, perfil.nombres[0] lanzaba una excepcion.
   const iniciales =
-    ((perfil?.nombres || "").trim()[0] || "") +
-      ((perfil?.apellidos || "").trim()[0] || "") || "?";
-
+    ((perfil?.nombres || "").trim()[0] || "") + ((perfil?.apellidos || "").trim()[0] || "") || "?";
   const verificado = Boolean(perfil?.validado_por);
+  const nombre = perfil ? `${perfil.nombres || ""} ${perfil.apellidos || ""}`.trim() : "Mi cuenta";
+  const vacio = cargando && !perfil ? "…" : "—";
 
   const datos = [
-    { etiqueta: "Nombres", valor: perfil?.nombres, icono: "person-outline" },
-    { etiqueta: "Apellidos", valor: perfil?.apellidos, icono: "people-outline" },
-    { etiqueta: "DNI", valor: perfil?.dni, icono: "card-outline", cifras: true },
-    { etiqueta: "Teléfono", valor: perfil?.telefono, icono: "call-outline", cifras: true },
-    { etiqueta: "Correo", valor: usuario?.email, icono: "mail-outline" },
-    { etiqueta: "Dirección", valor: perfil?.direccion, icono: "location-outline" },
+    {
+      icono: "id-card-outline",
+      etiqueta: perfil?.tipo_documento === "ce" ? "Carnet de extranjería" : "DNI",
+      valor: perfil?.dni || vacio,
+    },
+    { icono: "mail-outline", etiqueta: "Correo", valor: usuario?.email || vacio },
+    { icono: "phone-portrait-outline", etiqueta: "Celular", valor: telefonoLegible(perfil?.telefono) || vacio },
+    { icono: "location-outline", etiqueta: "Dirección", valor: perfil?.direccion || vacio },
   ];
 
-  const bancos = comisiones?.bancos || [];
-  const conTarjeta = bancos.filter((b) => b.con_tarjeta);
-  const otros = bancos.filter((b) => !b.con_tarjeta);
+  // Primero los bancos con los que ya opera: es la tarifa que le toca.
+  const bancos = [...(comisiones?.bancos || [])].sort(
+    (a, b) => Number(Boolean(b.con_tarjeta)) - Number(Boolean(a.con_tarjeta)),
+  );
+  const hayEspecial = bancos.some((b) => b.especial);
 
   return (
     <View style={s.pantalla}>
-      <Header onMenuPress={() => setMenuVisible(true)} titulo="Mi cuenta" />
-
+      <StatusBar style="light" />
       <ScrollView
-        contentContainerStyle={s.contenido}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 48 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refrescando}
-            onRefresh={() => {
-              setRefrescando(true);
-              cargar();
-            }}
-            tintColor={COLORS.primary}
-            colors={[COLORS.primary]}
+            onRefresh={recargar}
+            tintColor={colors.white}
+            colors={[colors.navy]}
           />
         }
       >
-        {/* ── Identidad ── */}
-        <Aparece>
-          <View style={s.cabecera}>
-            <View style={s.avatar}>
-              <Text style={s.avatarTexto}>{iniciales}</Text>
-            </View>
-            {cargando && !perfil ? (
-              <>
-                <Esqueleto alto={20} ancho={160} estilo={{ marginTop: 12 }} />
-                <Esqueleto alto={13} ancho={200} estilo={{ marginTop: 8 }} />
-              </>
-            ) : (
-              <>
-                <Text style={s.nombre}>
-                  {perfil ? `${perfil.nombres} ${perfil.apellidos}` : "Mi cuenta"}
-                </Text>
-                <Text style={s.correo}>{usuario?.email}</Text>
-                <View
-                  style={[
-                    s.estado,
-                    { backgroundColor: verificado ? COLORS.successLight : COLORS.warningLight },
-                  ]}
-                >
-                  <Ionicons
-                    name={verificado ? "shield-checkmark" : "time"}
-                    size={13}
-                    color={verificado ? COLORS.success : COLORS.warning}
-                  />
-                  <Text
-                    style={[
-                      s.estadoTexto,
-                      { color: verificado ? COLORS.success : COLORS.warning },
-                    ]}
-                  >
-                    {verificado ? "Identidad verificada" : "Identidad en revisión"}
+        {/* ── Identidad, en azul noche ── */}
+        <CabeceraNoche luces={LUCES} style={s.cabecera}>
+          <View style={s.barra}>
+            <BotonIcono variante="noche" icono="menu" onPress={() => setMenuVisible(true)} accessibilityLabel="Abrir menú" />
+            <Text style={s.barraTitulo} accessibilityRole="header">
+              Mi cuenta
+            </Text>
+            <View style={{ width: 44 }} />
+          </View>
+          <Aparece>
+            <View style={s.identidad}>
+              <GlassPanel variant="onNight" radius={36} style={s.avatar}>
+                <Text style={s.avatarTexto}>{iniciales.toUpperCase()}</Text>
+              </GlassPanel>
+              <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
+                {cargando && !perfil ? (
+                  <View style={s.nombreEsqueleto} />
+                ) : (
+                  <Text style={s.nombre} numberOfLines={2}>
+                    {nombre}
                   </Text>
+                )}
+                <View style={s.sellos}>
+                  <View style={s.sello}>
+                    <Ionicons name={verificado ? "shield-checkmark-outline" : "time-outline"} size={13} color="#F4DC8A" />
+                    <Text style={s.selloTexto}>{verificado ? "Verificada" : "En revisión"}</Text>
+                  </View>
+                  {perfil?.created_at ? (
+                    <Text style={s.desde}>Cliente desde {fechaLarga(perfil.created_at)}</Text>
+                  ) : null}
                 </View>
-              </>
-            )}
-          </View>
-        </Aparece>
-
-        {/* ── Datos personales ── */}
-        <Aparece retraso={80}>
-          <Text style={s.seccion}>Datos personales</Text>
-          <View style={s.tarjeta}>
-            {datos.map((d, i) => (
-              <View
-                key={d.etiqueta}
-                style={[s.fila, i < datos.length - 1 && s.filaBorde]}
-              >
-                <Ionicons
-                  name={d.icono}
-                  size={17}
-                  color={COLORS.textLight}
-                  style={{ width: 24 }}
-                />
-                <Text style={s.filaEtiqueta}>{d.etiqueta}</Text>
-                <Text
-                  style={[s.filaValor, d.cifras && CIFRAS]}
-                  numberOfLines={2}
-                >
-                  {cargando && !perfil ? "…" : d.valor || "—"}
-                </Text>
               </View>
-            ))}
-          </View>
-          <Text style={s.pie}>
-            ¿Algún dato está mal? Escríbenos y lo corregimos: tus datos deben
-            coincidir con tu DNI.
-          </Text>
-        </Aparece>
-
-        {/* ── Comisiones ── */}
-        <Aparece retraso={160}>
-          <Text style={s.seccion}>Mis comisiones</Text>
-          <View style={s.tarjeta}>
-            <View style={s.comisionCabecera}>
-              <Text style={s.comisionIntro}>
-                Es el porcentaje que se descuenta de tu operación, según el
-                banco de la tarjeta que uses.
-              </Text>
-              {comisiones?.bloque ? (
-                <View style={s.plan}>
-                  <Ionicons name="pricetags-outline" size={13} color={COLORS.primary} />
-                  <Text style={s.planTexto}>{comisiones.bloque}</Text>
-                </View>
-              ) : null}
             </View>
+          </Aparece>
+        </CabeceraNoche>
 
+        <View style={s.cuerpo}>
+          {/* ── Datos ── */}
+          <Aparece retraso={80}>
+            <Text style={s.seccion}>Datos personales</Text>
+            <Tarjeta style={s.datos}>
+              {datos.map((d, i) => (
+                <Dato key={d.etiqueta} {...d} ultima={i === datos.length - 1} />
+              ))}
+            </Tarjeta>
+          </Aparece>
+
+          {/* ── Comisiones ── */}
+          <Aparece retraso={160}>
+            <Text style={s.seccion}>Tus comisiones</Text>
             {cargando && !comisiones ? (
-              <View style={{ gap: 10, paddingTop: 12 }}>
-                <Esqueleto alto={16} />
-                <Esqueleto alto={16} />
+              <View style={s.grilla}>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={s.celda}>
+                    <Esqueleto alto={84} radio={18} />
+                  </View>
+                ))}
               </View>
             ) : bancos.length === 0 ? (
-              <Text style={s.vacio}>
-                Cuando verifiquemos tu tarjeta verás aquí tu porcentaje.
-              </Text>
+              <Tarjeta style={s.vacio}>
+                <Text style={s.vacioTexto}>Cuando verifiquemos tu tarjeta verás aquí tu porcentaje.</Text>
+              </Tarjeta>
             ) : (
-              <>
-                {conTarjeta.length > 0 && (
-                  <>
-                    <Text style={s.grupo}>Tus tarjetas</Text>
-                    {conTarjeta.map((b) => (
-                      <FilaComision key={b.banco} banco={b} destacada />
-                    ))}
-                  </>
-                )}
-                {otros.length > 0 && (
-                  <>
-                    <Text style={s.grupo}>Otros bancos</Text>
-                    {otros.map((b) => (
-                      <FilaComision key={b.banco} banco={b} />
-                    ))}
-                  </>
-                )}
-              </>
+              <View style={s.grilla}>
+                {bancos.map((b) => (
+                  <View key={b.banco} style={s.celda}>
+                    <View
+                      style={[s.comision, b.especial && s.comisionEspecial]}
+                      accessibilityLabel={`${bancoDe(b.banco).name}: ${porcentaje(b.porcentaje)} por ciento${
+                        b.especial ? ", condición especial" : ""
+                      }`}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <BankBadge bank={b.banco} size={26} />
+                        <Text style={s.comisionBanco} numberOfLines={1}>
+                          {bancoDe(b.banco).name}
+                        </Text>
+                      </View>
+                      <Text style={s.comisionValor}>{porcentaje(b.porcentaje)}%</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
             )}
-          </View>
-          <Text style={s.pie}>
-            El depósito llega a tu cuenta del mismo banco de la tarjeta.
-          </Text>
-        </Aparece>
+            <View style={s.leyenda}>
+              {hayEspecial ? <View style={s.leyendaMuestra} /> : null}
+              <Text style={s.nota}>
+                {hayEspecial ? "Condición especial · se descuenta del depósito" : "Se descuenta del depósito"}
+              </Text>
+            </View>
+          </Aparece>
 
-        {/* ── Salir ── */}
-        <Aparece retraso={240}>
-          <TouchableOpacity
-            style={s.salir}
-            onPress={cerrarSesion}
-            accessibilityRole="button"
-          >
-            <Ionicons name="log-out-outline" size={19} color={COLORS.error} />
-            <Text style={s.salirTexto}>Cerrar sesión</Text>
-          </TouchableOpacity>
-        </Aparece>
+          {/* Lo que aceptó, con versión y fecha: la misma constancia que
+              tiene la empresa, a la vista del cliente. */}
+          <Aparece retraso={220}>
+            <Text style={s.seccion}>Privacidad y términos</Text>
+            <Tarjeta style={s.datos}>
+              {["terminos", "privacidad", "biometria"].map((tipo, i, todos) => {
+                const a = (aceptaciones || []).find((x) => x.tipo === tipo);
+                return (
+                  <Toque
+                    key={tipo}
+                    onPress={() =>
+                      router.push({ pathname: "/legal/[tipo]", params: a ? { tipo, id: a.documento_id } : { tipo } })
+                    }
+                    accessibilityLabel={`${TIPOS_LEGALES[tipo].corto}${
+                      a ? `, versión ${a.version}, aceptada el ${fechaLegal(a.aceptado_en)}` : ""
+                    }`}
+                    escala={0.99}
+                    style={[s.dato, i < todos.length - 1 && s.datoSeparado]}
+                  >
+                    <View style={s.datoIcono}>
+                      <Ionicons name={TIPOS_LEGALES[tipo].icono} size={19} color={colors.navy} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                      <Text style={s.datoValor} numberOfLines={1}>
+                        {TIPOS_LEGALES[tipo].corto}
+                      </Text>
+                      <Text style={s.datoEtiqueta}>
+                        {a ? `Versión ${a.version} · aceptada el ${fechaLegal(a.aceptado_en)}` : "Toca para leer"}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+                  </Toque>
+                );
+              })}
+            </Tarjeta>
+            <Toque
+              onPress={() => router.push("/mis-datos")}
+              accessibilityLabel="Mis datos: descargarlos o eliminar mi cuenta"
+              escala={0.99}
+            >
+              <Tarjeta style={[s.datos, s.misDatos]}>
+                <View style={[s.datoIcono, { backgroundColor: colors.goldCream }]}>
+                  <Ionicons name="folder-open-outline" size={19} color={colors.goldText} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                  <Text style={s.datoValor}>Mis datos</Text>
+                  <Text style={s.datoEtiqueta}>Descárgalos o pide eliminar tu cuenta</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+              </Tarjeta>
+            </Toque>
+          </Aparece>
+
+          <Aparece retraso={240}>
+            <Boton
+              variante="peligro"
+              titulo="Cerrar sesión"
+              iconoIzq="log-out-outline"
+              onPress={cerrarSesion}
+              style={{ marginTop: 18, height: 54 }}
+            />
+          </Aparece>
+        </View>
       </ScrollView>
 
-      <MenuLateral
-        visible={menuVisible}
-        onClose={() => setMenuVisible(false)}
-        perfil={perfil}
-      />
-    </View>
-  );
-}
-
-/** Una tarifa. La especial se marca: es un acuerdo aparte. */
-function FilaComision({ banco, destacada }) {
-  return (
-    <View style={[s.comision, destacada && s.comisionDestacada]}>
-      <Text style={s.comisionBanco}>{banco.banco}</Text>
-      {banco.especial ? (
-        <View style={s.etiquetaEspecial}>
-          <Text style={s.etiquetaEspecialTexto}>Especial</Text>
-        </View>
-      ) : null}
-      <Text style={s.comisionValor}>
-        {Number(banco.porcentaje).toFixed(2).replace(/\.00$/, "")} %
-      </Text>
+      <MenuLateral visible={menuVisible} onClose={() => setMenuVisible(false)} perfil={perfil} />
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  pantalla: { flex: 1, backgroundColor: COLORS.background },
-  contenido: { padding: 20, paddingBottom: 40 },
+  pantalla: { flex: 1, backgroundColor: colors.ground },
+  cabecera: { paddingHorizontal: 20, paddingBottom: 30, gap: 22 },
+  barra: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  barraTitulo: { fontFamily: fonts.heavy, fontSize: 15, color: colors.white },
+  identidad: { flexDirection: "row", alignItems: "center", gap: 16 },
+  avatar: { width: 72, height: 72, alignItems: "center", justifyContent: "center" },
+  avatarTexto: { fontFamily: fonts.display, fontSize: 26, color: "#F4DC8A" },
+  nombre: { fontFamily: fonts.display, fontSize: 26, lineHeight: 28, letterSpacing: -0.4, color: colors.white },
+  nombreEsqueleto: { width: 170, height: 28, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.1)" },
+  sellos: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
+  sello: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(232,184,0,0.18)",
+  },
+  selloTexto: { fontFamily: fonts.heavy, fontSize: 12, color: "#F4DC8A" },
+  desde: { fontFamily: fonts.label, fontSize: 12, color: "rgba(255,255,255,0.75)" },
 
-  cabecera: { alignItems: "center", marginBottom: 24 },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: COLORS.primary,
+  cuerpo: { paddingHorizontal: 16, paddingTop: 8, gap: 10 },
+  misDatos: { marginTop: 10, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14 },
+  seccion: { fontFamily: fonts.heavy, fontSize: 13, color: colors.text2, paddingHorizontal: 6, paddingTop: 12, paddingBottom: 10 },
+  datos: { borderRadius: 22, paddingHorizontal: 16, paddingVertical: 2 },
+  dato: { flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 14 },
+  datoSeparado: { borderBottomWidth: 1, borderBottomColor: colors.lineSoft },
+  datoIcono: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.ground,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarTexto: { color: COLORS.secondary, fontSize: 24, fontWeight: "800" },
-  nombre: { fontSize: 20, fontWeight: "700", color: COLORS.text, marginTop: 12 },
-  correo: { ...TIPO.apoyo, marginTop: 2 },
-  estado: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    borderRadius: 20,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
-    marginTop: 10,
-  },
-  estadoTexto: { fontSize: 12, fontWeight: "700" },
+  datoEtiqueta: { fontFamily: fonts.strong, fontSize: 13, color: colors.text2 },
+  datoValor: { fontFamily: fonts.strong, fontSize: 15, color: colors.text },
 
-  seccion: {
-    ...TIPO.etiqueta,
-    marginBottom: 8,
-    marginTop: 4,
-  },
-  tarjeta: {
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  pie: { ...TIPO.micro, marginTop: 8, marginBottom: 20, lineHeight: 17 },
-
-  fila: { flexDirection: "row", alignItems: "center", paddingVertical: 11 },
-  filaBorde: { borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
-  filaEtiqueta: { ...TIPO.apoyo, width: 92 },
-  filaValor: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.text,
-    textAlign: "right",
-  },
-
-  comisionCabecera: { gap: 8, marginBottom: 6 },
-  comisionIntro: { ...TIPO.apoyo },
-  plan: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    alignSelf: "flex-start",
-    backgroundColor: COLORS.inputBg,
-    borderRadius: 20,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  planTexto: { fontSize: 12, fontWeight: "700", color: COLORS.primary },
-  grupo: {
-    ...TIPO.micro,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    marginTop: 12,
-    marginBottom: 2,
-  },
+  grilla: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 },
+  celda: { width: "33.333%", padding: 4 },
   comision: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  comisionDestacada: { backgroundColor: "transparent" },
-  comisionBanco: { flex: 1, fontSize: 15, fontWeight: "600", color: COLORS.text },
-  comisionValor: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: COLORS.primary,
-    ...CIFRAS,
-  },
-  etiquetaEspecial: {
-    backgroundColor: COLORS.secondaryLight,
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  etiquetaEspecialTexto: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: COLORS.secondaryDark,
-    letterSpacing: 0.3,
-  },
-  vacio: { ...TIPO.apoyo, paddingTop: 10 },
-
-  salir: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    paddingVertical: 15,
+    borderRadius: 18,
+    padding: 12,
+    gap: 10,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: COLORS.errorLight,
+    borderColor: colors.line,
   },
-  salirTexto: { color: COLORS.error, fontSize: 15, fontWeight: "700" },
+  comisionEspecial: { backgroundColor: colors.goldCream, borderColor: "#F3DE92" },
+  comisionBanco: { flex: 1, fontFamily: fonts.strong, fontSize: 12, color: colors.text2 },
+  comisionValor: { fontFamily: fonts.display, fontSize: 24, lineHeight: 26, color: colors.text, fontVariant: ["tabular-nums"] },
+  vacio: { borderRadius: 18, padding: 16 },
+  vacioTexto: { fontFamily: fonts.body, fontSize: 13, color: colors.text2 },
+  leyenda: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 6, paddingTop: 8 },
+  leyendaMuestra: { width: 12, height: 12, borderRadius: 4, backgroundColor: colors.goldCream, borderWidth: 1, borderColor: "#F3DE92" },
+  nota: { fontFamily: fonts.label, fontSize: 12, color: colors.text2 },
 });

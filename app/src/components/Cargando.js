@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import COLORS from "../theme/colors";
 import TIPO from "../theme/tipografia";
+import { CURVA, useReducirMovimiento } from "../lib/movimiento";
 
 /**
  * Bloque de carga con latido.
@@ -108,17 +109,19 @@ export function PantallaCargando({ mensaje }) {
  * aparezca en vez de saltar de golpe.
  */
 export function Aparece({ children, retraso = 0, estilo }) {
+  const reducir = useReducirMovimiento();
   const valor = useRef(new Animated.Value(0)).current;
 
+  // El "fadeUp" del prototipo: sube 12 px mientras aparece, en 320 ms.
   useEffect(() => {
     Animated.timing(valor, {
       toValue: 1,
-      duration: 260,
-      delay: retraso,
-      easing: Easing.out(Easing.cubic),
+      duration: reducir ? 0 : 320,
+      delay: reducir ? 0 : retraso,
+      easing: CURVA,
       useNativeDriver: true,
     }).start();
-  }, [valor, retraso]);
+  }, [valor, retraso, reducir]);
 
   return (
     <Animated.View
@@ -129,7 +132,7 @@ export function Aparece({ children, retraso = 0, estilo }) {
             {
               translateY: valor.interpolate({
                 inputRange: [0, 1],
-                outputRange: [8, 0],
+                outputRange: [12, 0],
               }),
             },
           ],

@@ -1,9 +1,11 @@
 import { View } from "react-native";
 import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import COLORS from "../../src/theme/colors";
 import BurbujaAlerta from "../../src/components/BurbujaAlerta";
 import RegistroPush from "../../src/components/RegistroPush";
+import AceptarCondiciones from "../../src/components/AceptarCondiciones";
+import { BarraPestanas } from "../../src/components/ui/BarraPestanas";
+import { colors } from "../../src/theme/tokens";
+import { useReducirMovimiento } from "../../src/lib/movimiento";
 
 /**
  * Barra de pestañas.
@@ -12,78 +14,39 @@ import RegistroPush from "../../src/components/RegistroPush";
  * pestañas usa este navegador, no el de pila, así que la transición
  * del stack nunca se aplicaba y los cambios de pestaña salían secos.
  *
- * "shift" desplaza la pantalla saliente hacia el lado por el que se
- * fue, así que el movimiento coincide con el orden de la barra y se
- * entiende hacia dónde se avanzó.
+ * Entre pestañas va un fundido y no un desplazamiento: las tres son
+ * destinos al mismo nivel, no pasos de una secuencia, así que moverse
+ * de una a otra no debería sentirse como avanzar ni como volver.
+ *
+ * La barra es propia (BarraPestanas): flota en cristal sobre el
+ * contenido, como pide el diseño, en vez de la franja blanca nativa.
  */
 export default function TabsLayout() {
+  const reducir = useReducirMovimiento();
+
   return (
     // La burbuja de alertas vive fuera del navegador para que se vea
     // sobre cualquier pestana y no se desmonte al cambiar de una a otra.
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: colors.ground }}>
       <Tabs
+        tabBar={(props) => <BarraPestanas {...props} />}
         screenOptions={{
           headerShown: false,
-          animation: "shift",
-          tabBarStyle: {
-            backgroundColor: COLORS.white,
-            borderTopColor: COLORS.borderLight,
-            height: 58,
-            paddingBottom: 8,
-            paddingTop: 6,
-          },
-          tabBarActiveTintColor: COLORS.primary,
-          tabBarInactiveTintColor: COLORS.textLight,
-          tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+          animation: reducir ? "none" : "fade",
           tabBarHideOnKeyboard: true,
+          sceneStyle: { backgroundColor: colors.ground },
         }}
       >
-        <Tabs.Screen
-          name="inicio"
-          options={{
-            title: "Inicio",
-            // El icono relleno marca la pestaña activa mejor que el color
-            // solo, sobre todo para quien distingue mal los tonos.
-            tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                name={focused ? "home" : "home-outline"}
-                size={22}
-                color={color}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="solicitudes"
-          options={{
-            title: "Solicitudes",
-            tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                name={focused ? "document-text" : "document-text-outline"}
-                size={22}
-                color={color}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="tarjetas"
-          options={{
-            title: "Tarjetas",
-            tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                name={focused ? "card" : "card-outline"}
-                size={22}
-                color={color}
-              />
-            ),
-          }}
-        />
+        <Tabs.Screen name="inicio" options={{ title: "Inicio" }} />
+        <Tabs.Screen name="solicitudes" options={{ title: "Solicitudes" }} />
+        <Tabs.Screen name="tarjetas" options={{ title: "Tarjetas" }} />
         <Tabs.Screen name="noticias" options={{ href: null }} />
         <Tabs.Screen name="perfil" options={{ href: null }} />
       </Tabs>
       <RegistroPush />
       <BurbujaAlerta />
+      {/* Versiones nuevas de términos o privacidad: se aceptan antes de seguir. */}
+      <AceptarCondiciones />
     </View>
   );
 }

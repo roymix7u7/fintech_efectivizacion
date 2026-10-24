@@ -5,14 +5,12 @@
   },
   "build": {
     "preview": {
-      "//": "Perfil para probar y repartir. Genera un APK instalable directamente en el teléfono, sin pasar por la Play Store.",
       "distribution": "internal",
       "android": {
         "buildType": "apk"
       }
     },
     "desarrollo": {
-      "//": "Igual que preview pero con el cliente de desarrollo, para recargar cambios sin volver a compilar. Útil cuando se toca código nativo.",
       "developmentClient": true,
       "distribution": "internal",
       "android": {
@@ -20,7 +18,6 @@
       }
     },
     "produccion": {
-      "//": "Para publicar en la Play Store, que exige AAB y no APK.",
       "android": {
         "buildType": "app-bundle"
       },

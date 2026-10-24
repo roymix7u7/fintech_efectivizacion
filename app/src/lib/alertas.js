@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { invalidar } from "./cache";
 
 /**
  * Alertas: los avisos urgentes, separados de las noticias.
@@ -69,6 +70,9 @@ export async function marcarVistas(ids) {
     { onConflict: "alerta_id,user_id", ignoreDuplicates: true },
   );
   if (error) console.warn("No se pudo marcar la alerta:", error.message);
+  // La franja urgente del inicio sale de la copia guardada: tiene que
+  // saber que ya se abrió.
+  else invalidar("noticias");
 }
 
 /**

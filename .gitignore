@@ -9,3 +9,7 @@ dist/
 # Supabase CLI
 supabase/.temp/
 supabase/.branches/
+
+# Llave privada de Firebase (cuenta de servicio para notificaciones):
+# se sube a Expo con eas credentials, nunca al repositorio.
+*firebase-adminsdk*.json

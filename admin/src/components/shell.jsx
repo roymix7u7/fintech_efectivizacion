@@ -87,6 +87,27 @@ export const SECCIONES = [
     icono: Libro,
   },
   {
+    ruta: "/reclamaciones",
+    titulo: "Libro de Reclamaciones",
+    detalle: "Reclamos y quejas",
+    roles: ["admin", "supervisor"],
+    icono: Libro,
+  },
+  {
+    ruta: "/pedidos-datos",
+    titulo: "Pedidos de datos",
+    detalle: "Eliminación de cuentas",
+    roles: ["admin", "supervisor"],
+    icono: Escudo,
+  },
+  {
+    ruta: "/legal",
+    titulo: "Legal",
+    detalle: "Términos y privacidad",
+    roles: ["admin"],
+    icono: Balanza,
+  },
+  {
     ruta: "/auditoria",
     titulo: "Auditoría",
     detalle: "Historial de acciones",
@@ -323,6 +344,24 @@ export function Libro(p) {
     <svg {...base(p)}>
       <path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" />
       <path d="M4 19a2 2 0 0 1 2-2h13" />
+    </svg>
+  );
+}
+
+export function Escudo(p) {
+  return (
+    <svg {...base(p)}>
+      <path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+export function Balanza(p) {
+  return (
+    <svg {...base(p)}>
+      <path d="M12 3v18M7 21h10M5 7h14" />
+      <path d="M5 7l-3 6a3 3 0 0 0 6 0zM19 7l-3 6a3 3 0 0 0 6 0z" />
     </svg>
   );
 }

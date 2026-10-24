@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Nueva solicitud</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0;font-family:'Manrope',system-ui,sans-serif;color:#1B2A4A;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button,input,textarea{font-family:inherit}
+.gl{background:rgba(255,255,255,0.66);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);border:1px solid rgba(255,255,255,0.75);box-shadow:0 12px 34px rgba(15,27,51,0.12)}
+.gn{background:rgba(255,255,255,0.10);-webkit-backdrop-filter:blur(20px) saturate(150%);backdrop-filter:blur(20px) saturate(150%);border:1px solid rgba(255,255,255,0.2)}
+.c{background:#FFFFFF;border:1px solid #ECE8DF}
+.s{font-family:'Sora', 'Manrope', system-ui, sans-serif;font-weight:600;letter-spacing:-0.02em}
+.orb{position:absolute;border-radius:999px;filter:blur(64px);pointer-events:none}
+</style>
+</helmet>
+<div style="width: 390px; height: 900px; box-sizing: border-box; background: #F6F4EF; position: relative; overflow: hidden">
+<div style="position: relative; display: flex; flex-direction: column; padding: 18px 16px 130px; gap: 14px">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<a href="CInicio.dc.html" aria-label="Salir de la solicitud" class="c" style="width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></a>
+<div style="display: flex; gap: 6px" aria-label="Paso 1 de 2"><span style="width: 28px; height: 6px; border-radius: 3px; background: #E8B800"></span><span style="width: 28px; height: 6px; border-radius: 3px; background: #E2DDD1"></span></div>
+<div style="width: 44px"></div>
+</div>
+<h1 class="s" style="margin: 12px 6px 6px; font-size: 31px; line-height: 1">Nueva solicitud</h1>
+
+<div style="font-size: 11px; font-weight: 800; letter-spacing: 0.16em; color: #626D82; padding: 0 6px">1 · TARJETA</div>
+<button class="c" style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 20px; color: #1B2A4A; text-align: left"><div style="width: 40px; height: 40px; border-radius: 12px; background: #E67E00; color: #FFFFFF; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0">BCP</div><span style="flex-grow: 1; font-size: 15px; font-weight: 700">···· 4821</span><span style="width: 22px; height: 22px; border-radius: 999px; border: 2px solid #D8D1C1; box-sizing: border-box"></span></button>
+<div style="border-radius: 22px; overflow: hidden; background: #FFFFFF; border: 2px solid #1B2A4A">
+<button aria-pressed="true" style="width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: none; background: transparent; color: #1B2A4A; text-align: left"><div style="width: 40px; height: 40px; border-radius: 12px; background: #004481; color: #FFFFFF; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0">BBVA</div><span style="flex-grow: 1; font-size: 15px; font-weight: 700">···· 1190</span><span style="width: 22px; height: 22px; border-radius: 999px; border: 7px solid #1B2A4A; box-sizing: border-box"></span></button>
+<div style="margin: 0 10px 10px; padding: 12px; border-radius: 16px; background: #FBE7E5; display: flex; align-items: center; gap: 10px">
+<span style="color: #B3261E; display: flex"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-5 9 5M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/></svg></span><span style="flex-grow: 1; font-size: 13px; font-weight: 700; color: #6A1A14">Necesitas una cuenta BBVA</span>
+<a href="CTarjetas.dc.html" style="height: 34px; padding: 0 12px; border-radius: 10px; background: #1B2A4A; color: #FFFFFF; font-size: 12px; font-weight: 800; display: flex; align-items: center">Agregar</a>
+</div>
+</div>
+
+<div style="font-size: 11px; font-weight: 800; letter-spacing: 0.16em; color: #626D82; padding: 8px 6px 0">2 · COMPROBANTE</div>
+<button class="c" style="height: 120px; border-radius: 22px; border: 1.5px dashed #C9BE9E; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #1B2A4A"><span style="width: 46px; height: 46px; border-radius: 15px; background: #1B2A4A; color: #FFFFFF; display: flex; align-items: center; justify-content: center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><span style="font-size: 14px; font-weight: 700">Foto del voucher</span></button>
+
+<div style="font-size: 11px; font-weight: 800; letter-spacing: 0.16em; color: #626D82; padding: 8px 6px 0">NOTA · OPCIONAL</div>
+<textarea class="c" aria-label="Nota opcional" style="height: 72px; border-radius: 18px; padding: 14px; font-size: 15px; color: #1B2A4A; resize: none; outline: none"></textarea>
+</div>
+<div style="position: absolute; left: 16px; right: 16px; bottom: 30px">
+<button disabled style="width: 100%; height: 58px; border: none; border-radius: 20px; background: #ECE8DF; color: #626D82; font-size: 16px; font-weight: 800">Enviar solicitud</button>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

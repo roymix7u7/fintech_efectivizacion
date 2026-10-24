@@ -19,6 +19,23 @@ export function validarDni(dni) {
   return null;
 }
 
+/**
+ * Documento según el tipo elegido en el registro: DNI de 8 dígitos o
+ * carnet de extranjería de 9. La base exige lo mismo, así que este
+ * mensaje solo adelanta lo que el servidor rechazaría.
+ */
+export function validarDocumento(tipo, numero) {
+  if (tipo !== "ce") return validarDni(numero);
+  const v = (numero || "").trim();
+  if (!v) return "Ingresa tu número de carnet.";
+  if (!/^\d{9}$/.test(v)) return "El carnet de extranjería tiene 9 dígitos.";
+  if (/^(\d)\1{8}$/.test(v)) return "Ese carnet no es válido.";
+  return null;
+}
+
+/** Largo del documento según su tipo. */
+export const largoDocumento = (tipo) => (tipo === "ce" ? 9 : 8);
+
 export function validarTelefono(telefono) {
   const v = (telefono || "").trim();
   if (!v) return "Ingresa tu numero de celular.";

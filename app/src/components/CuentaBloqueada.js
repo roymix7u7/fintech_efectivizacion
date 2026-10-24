@@ -1,14 +1,8 @@
-import {
-  Modal,
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Linking,
-} from "react-native";
+import { Modal, View, Text, StyleSheet, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import COLORS from "../theme/colors";
-import TIPO from "../theme/tipografia";
+import { colors, fonts } from "../theme/tokens";
+import { Boton } from "./ui/Boton";
+import { Toque } from "./ui/Toque";
 
 const WHATSAPP = "51995766986";
 
@@ -34,49 +28,33 @@ export default function CuentaBloqueada({ visible, motivo, onCerrar }) {
       statusBarTranslucent
     >
       <View style={s.fondo}>
-        <View style={s.tarjeta}>
+        <View style={s.tarjeta} accessibilityViewIsModal>
           <View style={s.icono}>
-            <Ionicons name="lock-closed" size={26} color={COLORS.error} />
+            <Ionicons name="lock-closed" size={26} color={colors.errorText} />
           </View>
 
-          <Text style={s.titulo}>Tu cuenta está bloqueada</Text>
-          <Text style={s.bajada}>
-            Por ahora no puedes ingresar ni enviar operaciones.
-          </Text>
+          <Text style={s.titulo} accessibilityRole="header">Tu cuenta está bloqueada</Text>
+          <Text style={s.bajada}>Por ahora no puedes ingresar ni enviar operaciones.</Text>
 
-          {motivo ? (
-            <View style={s.motivo}>
-              <Text style={s.motivoEtiqueta}>Motivo</Text>
-              <Text style={s.motivoTexto}>{motivo}</Text>
-            </View>
-          ) : (
-            <View style={s.motivo}>
-              <Text style={s.motivoTexto}>
-                Escríbenos para conocer el detalle y resolverlo.
-              </Text>
-            </View>
-          )}
+          <View style={s.motivo}>
+            {motivo ? <Text style={s.motivoEtiqueta}>MOTIVO</Text> : null}
+            <Text style={s.motivoTexto}>
+              {motivo || "Escríbenos para conocer el detalle y resolverlo."}
+            </Text>
+          </View>
 
-          <Text style={s.nota}>
-            Si crees que es un error, escríbenos y lo revisamos contigo.
-          </Text>
+          <Text style={s.nota}>Si crees que es un error, escríbenos y lo revisamos contigo.</Text>
 
-          <TouchableOpacity
-            style={s.whatsapp}
+          <Boton
+            titulo="Escribir a soporte"
+            iconoIzq="logo-whatsapp"
             onPress={() => Linking.openURL(`https://wa.me/${WHATSAPP}`)}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="logo-whatsapp" size={19} color={COLORS.white} />
-            <Text style={s.whatsappTexto}>Escribir a soporte</Text>
-          </TouchableOpacity>
+            style={{ alignSelf: "stretch", height: 54, marginTop: 18 }}
+          />
 
-          <TouchableOpacity
-            style={s.cerrar}
-            onPress={onCerrar}
-            activeOpacity={0.7}
-          >
+          <Toque onPress={onCerrar} accessibilityLabel="Entendido" style={s.cerrar}>
             <Text style={s.cerrarTexto}>Entendido</Text>
-          </TouchableOpacity>
+          </Toque>
         </View>
       </View>
     </Modal>
@@ -86,52 +64,41 @@ export default function CuentaBloqueada({ visible, motivo, onCerrar }) {
 const s = StyleSheet.create({
   fondo: {
     flex: 1,
-    backgroundColor: "rgba(15,27,51,0.55)",
+    backgroundColor: "rgba(15,27,51,0.6)",
     justifyContent: "center",
-    padding: 24,
+    padding: 20,
   },
   tarjeta: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    padding: 22,
+    backgroundColor: colors.surface,
+    borderRadius: 30,
+    paddingHorizontal: 22,
+    paddingTop: 26,
+    paddingBottom: 10,
     alignItems: "center",
   },
   icono: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.errorLight,
+    width: 58,
+    height: 58,
+    borderRadius: 20,
+    backgroundColor: colors.errorBg,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 14,
+    marginBottom: 16,
   },
-  titulo: { ...TIPO.seccion, textAlign: "center" },
-  bajada: { ...TIPO.apoyo, textAlign: "center", marginTop: 4 },
+  titulo: { fontFamily: fonts.display, fontSize: 24, lineHeight: 28, letterSpacing: -0.4, color: colors.text, textAlign: "center" },
+  bajada: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.text2, textAlign: "center", marginTop: 6 },
   motivo: {
     alignSelf: "stretch",
-    backgroundColor: COLORS.errorLight,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.error,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginTop: 16,
+    backgroundColor: colors.errorBg,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginTop: 18,
+    gap: 4,
   },
-  motivoEtiqueta: { ...TIPO.etiqueta, color: COLORS.error, marginBottom: 4 },
-  motivoTexto: { ...TIPO.cuerpo, color: COLORS.text },
-  nota: { ...TIPO.micro, textAlign: "center", marginTop: 14 },
-  whatsapp: {
-    alignSelf: "stretch",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#25D366",
-    borderRadius: 12,
-    paddingVertical: 13,
-    marginTop: 16,
-  },
-  whatsappTexto: { ...TIPO.tarjeta, color: COLORS.white },
-  cerrar: { paddingVertical: 12, marginTop: 2 },
-  cerrarTexto: { ...TIPO.tarjeta, color: COLORS.textSecondary },
+  motivoEtiqueta: { fontFamily: fonts.heavy, fontSize: 11, letterSpacing: 1.4, color: colors.errorText },
+  motivoTexto: { fontFamily: fonts.label, fontSize: 15, lineHeight: 22, color: colors.text },
+  nota: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.text3, textAlign: "center", marginTop: 14 },
+  cerrar: { minHeight: 48, justifyContent: "center", paddingHorizontal: 20, marginTop: 4 },
+  cerrarTexto: { fontFamily: fonts.strong, fontSize: 15, color: colors.text2 },
 });

@@ -21,13 +21,22 @@
     },
     "android": {
       "package": "com.altoqueperu.fintech",
+      "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png",
         "backgroundColor": "#1B2A4A"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -38,13 +47,16 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Usamos la cámara para que puedas fotografiar tu DNI, tu tarjeta y tus comprobantes de operación."
+          "cameraPermission": "Usamos la cámara para que puedas fotografiar tu DNI, tu tarjeta y tus comprobantes de operación.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Accedemos a tus fotos para que puedas adjuntar comprobantes ya guardados en tu galería."
+          "photosPermission": "Accedemos a tus fotos para que puedas adjuntar comprobantes ya guardados en tu galería.",
+          "microphonePermission": false
         }
       ],
       [
@@ -55,10 +67,19 @@
           "defaultChannel": "alertas"
         }
       ],
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-font",
+      "expo-splash-screen"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f1ae4ae2-235e-434d-ae0e-36de70308ff5"
+      }
+    },
+    "owner": "roymix"
   }
 }

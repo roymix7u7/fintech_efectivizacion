@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "170657639890",
+    "project_id": "altoque-peru-app",
+    "storage_bucket": "altoque-peru-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:170657639890:android:f31032bb79f003a06c6c0b",
+        "android_client_info": {
+          "package_name": "com.altoqueperu.fintech"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD26dIGsewGTyy1qtJQ4r0m-Z3kN069d1s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

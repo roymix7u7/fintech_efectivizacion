@@ -1,39 +1,40 @@
-import COLORS from "./colors";
+// Cómo se ve cada estado de una solicitud, en un solo lugar.
+//
+// Antes cada pantalla tenía su propia copia, y bastaba con cambiar una
+// para que el mismo estado se viera distinto en el inicio y en el
+// historial.
+//
+// Los valores salen de requestStatus en tokens.js, que es lo que fija
+// el diseño: ícono + texto + color, nunca el color solo. "Pago
+// enviado" es el único de fondo sólido, porque es la meta de todo el
+// circuito y tiene que leerse distinto a "aprobado".
+import { colors, requestStatus } from "./tokens";
 
 /**
- * Como se ve cada estado de una solicitud, en un solo lugar.
- *
- * Antes cada pantalla tenia su propia copia, y bastaba con cambiar una
- * para que el mismo estado se viera distinto en el inicio y en el
- * historial.
+ * "Pago enviado" es el único con fondo sólido, así que su color de
+ * texto es blanco. Eso sirve dentro del chip, pero no para escribir el
+ * estado directamente sobre una fila blanca: quedaría invisible. Por
+ * eso cada estado lleva también `textoClaro`, para cuando el texto va
+ * suelto sobre una superficie clara.
  */
+const SOBRE_CLARO = { pagado: colors.successText };
+
+const desde = (clave) => {
+  const s = requestStatus[clave];
+  return {
+    text: s.label,
+    color: s.fg,
+    bg: s.bg,
+    icon: s.icon,
+    textoClaro: SOBRE_CLARO[clave] || s.fg,
+  };
+};
+
 const ESTADOS_SOLICITUD = {
-  pendiente: {
-    text: "En revisión",
-    color: COLORS.warning,
-    bg: COLORS.warningLight,
-    icon: "time",
-  },
-  aprobado: {
-    text: "Aprobado",
-    color: COLORS.success,
-    bg: COLORS.successLight,
-    icon: "checkmark-circle",
-  },
-  rechazado: {
-    text: "Rechazado",
-    color: COLORS.error,
-    bg: COLORS.errorLight,
-    icon: "close-circle",
-  },
-  // El ultimo paso: ya se le deposito. Es lo que el cliente espera desde
-  // que envio el comprobante, asi que se distingue de aprobado.
-  pagado: {
-    text: "Pago enviado",
-    color: COLORS.primary,
-    bg: "#E6ECF7",
-    icon: "cash",
-  },
+  pendiente: desde("pendiente"),
+  aprobado: desde("aprobado"),
+  rechazado: desde("rechazado"),
+  pagado: desde("pagado"),
 };
 
 export const estadoSolicitud = (e) =>

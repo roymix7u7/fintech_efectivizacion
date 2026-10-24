@@ -8,6 +8,7 @@ import { explicarError } from "@/lib/acciones";
 import { extraerPath } from "@/lib/storage";
 import { useRetraso } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
+import { recibeDeposito, BANCOS_PRINCIPALES } from "@/lib/bancos";
 import Shell, { Lupa, Check, Cruz, Billete } from "@/components/shell";
 import { Vacio, Aviso } from "@/components/marca";
 import {
@@ -222,14 +223,31 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar }) {
               : `enviada ${haceCuanto(fila.created_at)}`}
         </p>
 
-        {/* Cuentas: lo que de verdad se necesita para pagar */}
+        {/* Cuentas: lo que de verdad se necesita para pagar. La que
+            recibe va primero y resaltada: con normal y CCI del mismo
+            banco, o con una tarjeta CMR y cuentas en varios bancos, el
+            pagador no tiene que deducir a cuál depositar. */}
         <div className="mt-2 flex flex-wrap gap-1.5">
           {fila.cuentas?.length ? (
-            fila.cuentas.map((c, i) => (
+            [...fila.cuentas]
+              .sort((a, b) => recibeDeposito(fila.banco, b) - recibeDeposito(fila.banco, a))
+              .map((c, i) => {
+              const recibe = recibeDeposito(fila.banco, c);
+              return (
               <span
                 key={i}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1"
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg border px-2 py-1",
+                  recibe
+                    ? "border-emerald-300 bg-emerald-50"
+                    : "border-border bg-background opacity-70",
+                )}
               >
+                {recibe && (
+                  <span className="rounded bg-emerald-600 px-1 text-[10px] font-bold uppercase tracking-wide text-white">
+                    Recibe
+                  </span>
+                )}
                 <span className="text-[11px] font-bold uppercase tracking-wide text-marca-700">
                   {c.banco}
                 </span>
@@ -241,13 +259,25 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar }) {
                 </span>
                 <Copiar texto={c.numero} />
               </span>
-            ))
+              );
+            })
           ) : (
             <span className="rounded-lg bg-red-50 px-2 py-1 text-[12px] font-medium text-red-700">
               Sin cuentas registradas: contacta al cliente antes de pagar
             </span>
           )}
         </div>
+
+        {/* Solicitudes de antes de la regla: tienen cuentas, pero
+            ninguna sirve para esta tarjeta (solo CCI, u otro banco). */}
+        {fila.cuentas?.length > 0 &&
+          !fila.cuentas.some((c) => recibeDeposito(fila.banco, c)) && (
+            <p className="mt-1.5 text-[12px] font-medium text-red-700">
+              Ninguna cuenta recibe esta operación: falta la cuenta de ahorros
+              {BANCOS_PRINCIPALES.includes(fila.banco) ? ` ${fila.banco}` : ""}.
+              Contacta al cliente antes de pagar.
+            </p>
+          )}
 
         {fila.nota_cliente && (
           <p className="mt-1.5 text-[12px] italic text-muted-foreground">

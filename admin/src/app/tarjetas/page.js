@@ -50,6 +50,10 @@ export default function TarjetasPage() {
   const [seleccionada, setSeleccionada] = useState(null);
   const [motivo, setMotivo] = useState("");
   const [modoRechazo, setModoRechazo] = useState(false);
+  // Baja de una tarjeta verificada: el cliente ya no puede hacerlo desde
+  // el app ("para darla de baja, habla con un asesor").
+  const [modoBaja, setModoBaja] = useState(false);
+  const [motivoBaja, setMotivoBaja] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [loading, setLoading] = useState(true);
   const [accion, setAccion] = useState(null);
@@ -69,20 +73,26 @@ export default function TarjetasPage() {
   const puedeResolver = ["gestor", "admin"].includes(session?.rol);
   const esGestor = session?.rol === "gestor";
 
-  const cargar = useCallback(async (estado, mias, yo) => {
-    setLoading(true);
+  // silencioso: solo renueva la lista, sin cerrar la ficha abierta ni
+  // mostrar "cargando". Es lo que pasa al abrir una tarjeta (se toma y
+  // se recarga): antes esa recarga cerraba la ficha que se acababa de
+  // abrir y no había forma de aprobarla.
+  const cargar = useCallback(async (estado, mias, yo, { silencioso = false } = {}) => {
+    if (!silencioso) {
+      setLoading(true);
+      setSeleccionada(null);
+      setModoRechazo(false);
+      setMotivo("");
+    }
     setError("");
     setFiltro(estado);
-    setSeleccionada(null);
-    setModoRechazo(false);
-    setMotivo("");
 
     let q = supabase
       .from("tarjetas")
       .select(
-        `id, banco, ultimos_4, estado, foto_tarjeta, foto_reverso,
+        `id, banco, ultimos_4, nombre_impreso, estado, foto_tarjeta, foto_reverso,
          motivo_rechazo, created_at, fecha_revision, asignado_a, asignado_en,
-         perfiles_cliente (nombres, apellidos, dni, telefono, user_id)`,
+         perfiles_cliente (nombres, apellidos, tipo_documento, dni, telefono, user_id)`,
       )
       .eq("estado", estado)
       .eq("activa", true);
@@ -136,8 +146,8 @@ export default function TarjetasPage() {
   }, [router, cargar]);
 
   /** Vuelve a pedir la lista con el filtro y el rol actuales. */
-  function recargar() {
-    cargar(filtro, session?.rol === "gestor", session?.user.id);
+  function recargar(opciones) {
+    cargar(filtro, session?.rol === "gestor", session?.user.id, opciones);
     contarPendientes();
   }
 
@@ -183,7 +193,8 @@ export default function TarjetasPage() {
     if (puedeTomar && t.estado === "pendiente") {
       const r = await tomarCaso("tarjeta", t.id);
       if (!r.ok && r.motivo === "TOMADO") setAjeno(r);
-      recargar();
+      // La lista se renueva (ahora figura tomada) sin cerrar la ficha.
+      recargar({ silencioso: true });
     }
     // Siempre se abre por el frente: es la cara obligatoria y la que
     // toda tarjeta tiene.
@@ -246,6 +257,29 @@ export default function TarjetasPage() {
 
   async function aprobar(t) {
     await resolver(t, true, null);
+  }
+
+  async function darDeBaja(t) {
+    const texto = motivoBaja.trim();
+    if (texto.length < MIN_MOTIVO) {
+      setError(`Explica el motivo con al menos ${MIN_MOTIVO} caracteres: el cliente lo recibe como aviso.`);
+      return;
+    }
+    setAccion("baja");
+    setError("");
+    const { data, error: e } = await supabase.rpc("dar_de_baja_tarjeta", { p_id: t.id, p_motivo: texto });
+    setAccion(null);
+    if (e) {
+      setError(explicarError(e));
+      return;
+    }
+    if (data && data.ok === false) {
+      setError("Esa tarjeta ya estaba dada de baja.");
+    }
+    setModoBaja(false);
+    setMotivoBaja("");
+    setSeleccionada(null);
+    recargar();
   }
 
   async function rechazar(t) {
@@ -314,7 +348,7 @@ export default function TarjetasPage() {
         )}
         <BotonRefrescar
           girando={loading}
-          onClick={recargar}
+          onClick={() => recargar()}
           texto="Volver a pedir la lista de tarjetas"
         />
         <div className="hidden items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 sm:flex">
@@ -485,13 +519,13 @@ export default function TarjetasPage() {
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
                 <div className="min-w-0">
                   {/* Selector de cara. Solo aparece si el cliente subió
-                      el reverso: la mayoría de tarjetas muestra todo en
+                      una segunda foto: la mayoría de tarjetas muestra todo en
                       una sola foto y un selector de una opción confunde. */}
                   {seleccionada.foto_reverso && (
                     <div className="mb-3 flex items-center gap-1 rounded-lg border border-border bg-muted/60 p-1">
                       {[
-                        { clave: "frente", texto: "Frente" },
-                        { clave: "reverso", texto: "Reverso" },
+                        { clave: "frente", texto: "Foto principal" },
+                        { clave: "reverso", texto: "Otra foto" },
                       ].map((c) => (
                         <button
                           key={c.clave}
@@ -530,8 +564,8 @@ export default function TarjetasPage() {
                       }
                       titulo={
                         cara === "reverso"
-                          ? "Reverso de la tarjeta"
-                          : "Frente de la tarjeta"
+                          ? "Otra foto de la tarjeta"
+                          : "Foto principal de la tarjeta"
                       }
                       alto="h-[440px]"
                     />
@@ -541,7 +575,16 @@ export default function TarjetasPage() {
                       Qué comprobar
                     </p>
                     <ul className="mt-1.5 space-y-1 text-[13px] text-foreground">
-                      <li>El nombre impreso coincide con el titular.</li>
+                      <li>
+                        El nombre impreso
+                        {seleccionada.nombre_impreso ? (
+                          <>
+                            {" "}
+                            (<span className="font-semibold">{seleccionada.nombre_impreso}</span>)
+                          </>
+                        ) : null}{" "}
+                        coincide con el titular.
+                      </li>
                       <li>
                         Los últimos 4 dígitos coinciden con{" "}
                         <span className="cifras font-mono font-semibold">
@@ -551,7 +594,7 @@ export default function TarjetasPage() {
                       </li>
                       <li>El número completo está cubierto.</li>
                       {seleccionada.foto_reverso && (
-                        <li>Revisa las dos caras antes de resolver.</li>
+                        <li>Revisa las dos fotos antes de resolver.</li>
                       )}
                     </ul>
                   </div>
@@ -566,11 +609,14 @@ export default function TarjetasPage() {
                         : "Cliente sin perfil"}
                     </p>
                     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
-                      <Dato etiqueta="DNI" mono>
+                      <Dato etiqueta={cliente?.tipo_documento === "ce" ? "Carnet de extranjería" : "DNI"} mono>
                         {cliente?.dni}
                       </Dato>
                       <Dato etiqueta="Teléfono" mono>
                         {cliente?.telefono}
+                      </Dato>
+                      <Dato etiqueta="Nombre impreso" className="col-span-2">
+                        {seleccionada.nombre_impreso || "No lo indicó (registro anterior)"}
                       </Dato>
                     </dl>
                   </div>
@@ -679,6 +725,55 @@ export default function TarjetasPage() {
                           </p>
                         </div>
                       )}
+                      {seleccionada.estado === "aprobado" &&
+                        ["gestor", "supervisor", "admin"].includes(session?.rol) && (
+                          <div className="mt-4 border-t border-border pt-4">
+                            {!modoBaja ? (
+                              <button
+                                onClick={() => setModoBaja(true)}
+                                className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                              >
+                                <Cruz className="h-4 w-4" />
+                                Dar de baja
+                              </button>
+                            ) : (
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="text-[13px] font-semibold">Motivo de la baja</label>
+                                  <p className="mt-0.5 text-[12px] text-muted-foreground">
+                                    El cliente lo recibe en Mis avisos. La tarjeta deja de aparecer en su app.
+                                  </p>
+                                </div>
+                                <textarea
+                                  autoFocus
+                                  value={motivoBaja}
+                                  onChange={(e) => setMotivoBaja(e.target.value)}
+                                  rows={3}
+                                  placeholder="Ej: El cliente pidió retirarla por teléfono."
+                                  className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2.5 text-sm outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setModoBaja(false);
+                                      setMotivoBaja("");
+                                    }}
+                                    className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:bg-muted"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    onClick={() => darDeBaja(seleccionada)}
+                                    disabled={accion !== null || motivoBaja.trim().length < MIN_MOTIVO}
+                                    className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-40"
+                                  >
+                                    {accion === "baja" ? "Dando de baja..." : "Confirmar baja"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                     </div>
                   )}
                 </div>

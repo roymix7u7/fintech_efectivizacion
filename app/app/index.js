@@ -2,15 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
-  Image,
   Animated,
-  Easing,
   ActivityIndicator,
-  Platform,
   StatusBar,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
@@ -22,8 +19,13 @@ import {
   motivoDelBloqueo,
 } from "../src/lib/sesion";
 import CuentaBloqueada from "../src/components/CuentaBloqueada";
-import COLORS from "../src/theme/colors";
-import TIPO from "../src/theme/tipografia";
+import { colors, fonts } from "../src/theme/tokens";
+import { Logo } from "../src/components/brand/Logo";
+import { AmbientGlow, heroLights } from "../src/components/ui/AmbientGlow";
+import { GlassPanel } from "../src/components/ui/GlassPanel";
+import { Boton } from "../src/components/ui/Boton";
+import { useFranjaNoche } from "../src/components/ui/FranjaSistema";
+import { CURVA, DURACION, duracion, useReducirMovimiento } from "../src/lib/movimiento";
 
 /**
  * Pantalla de entrada.
@@ -43,11 +45,14 @@ export default function Bienvenida() {
   // explicación y creer que se le borró la cuenta.
   const [bloqueo, setBloqueo] = useState(null);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const reducir = useReducirMovimiento();
+  // Cargando o sin conexión, la pantalla es azul noche entera.
+  useFranjaNoche(fase !== "bienvenida");
 
   // Entrada del contenido. Se anima una sola vez, cuando se decide
   // mostrar la bienvenida.
   const entrada = useRef(new Animated.Value(0)).current;
-  const flote = useRef(new Animated.Value(0)).current;
 
   const arrancar = useCallback(async () => {
     setFase("revisando");
@@ -118,333 +123,191 @@ export default function Bienvenida() {
 
     Animated.timing(entrada, {
       toValue: 1,
-      duration: 520,
-      easing: Easing.out(Easing.cubic),
+      duration: duracion(DURACION.screen, reducir),
+      easing: CURVA,
       useNativeDriver: true,
     }).start();
-
-    // El logo respira muy despacio. Es casi imperceptible, y es lo que
-    // separa una pantalla viva de una captura de pantalla.
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(flote, {
-          toValue: 1,
-          duration: 2600,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(flote, {
-          toValue: 0,
-          duration: 2600,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-    ).start();
-  }, [fase, entrada, flote]);
+  }, [fase, entrada, reducir]);
 
   const sube = entrada.interpolate({
     inputRange: [0, 1],
     outputRange: [22, 0],
   });
-  const flota = flote.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -7],
-  });
+
+  // Mientras se comprueba la sesión, o sin conexión: pantalla azul noche
+  // entera con el logo, como el splash, para que no haya un salto.
+  if (fase !== "bienvenida") {
+    return (
+      <View style={s.pantallaNoche}>
+        <StatusBar barStyle="light-content" backgroundColor={colors.night} />
+        <AmbientGlow lights={heroLights} />
+        <CuentaBloqueada
+          visible={bloqueo !== null}
+          motivo={bloqueo?.motivo}
+          onCerrar={() => setBloqueo(null)}
+        />
+        {fase === "revisando" ? (
+          <View style={s.centro}>
+            <Logo width={140} />
+            <ActivityIndicator size="small" color={colors.gold} style={{ marginTop: 28 }} />
+          </View>
+        ) : (
+          <View style={s.centro}>
+            <View style={s.iconoAviso}>
+              <Ionicons name="cloud-offline-outline" size={32} color={colors.gold} />
+            </View>
+            <Text style={s.tituloAviso}>Sin conexión</Text>
+            <Text style={s.textoAviso}>Revisa tu internet e inténtalo de nuevo.</Text>
+            <Boton
+              variante="claro"
+              titulo="Reintentar"
+              iconoIzq="refresh"
+              onPress={arrancar}
+              style={{ marginTop: 22, alignSelf: "stretch" }}
+            />
+          </View>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={s.pantalla}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primaryDark} />
-
-      {/* Halos de fondo. Dos círculos muy tenues dan profundidad sin
-          necesitar una librería de degradados. */}
+      <StatusBar barStyle="light-content" backgroundColor={colors.night} />
       <CuentaBloqueada
         visible={bloqueo !== null}
         motivo={bloqueo?.motivo}
         onCerrar={() => setBloqueo(null)}
       />
 
-      <View pointerEvents="none" style={[s.halo, s.haloOro]} />
-      <View pointerEvents="none" style={[s.halo, s.haloAzul]} />
-
-      {fase === "revisando" ? (
-        <View style={s.centro}>
-          <Image
-            source={require("../assets/LOGOATK.png")}
-            style={s.logoChico}
-            resizeMode="contain"
-          />
-          <ActivityIndicator
-            size="small"
-            color={COLORS.secondary}
-            style={{ marginTop: 22 }}
-          />
-          <Text style={s.cargando}>Conectando...</Text>
-        </View>
-      ) : fase === "sin_conexion" ? (
-        <View style={s.centro}>
-          <View style={s.iconoAviso}>
-            <Ionicons name="cloud-offline-outline" size={34} color={COLORS.secondary} />
-          </View>
-          <Text style={s.tituloAviso}>Sin conexión</Text>
-          <Text style={s.textoAviso}>
-            No pudimos comunicarnos con el servidor. Revisa tu internet e
-            inténtalo de nuevo.
-          </Text>
-          <TouchableOpacity
-            style={s.btnReintentar}
-            onPress={arrancar}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="refresh" size={18} color={COLORS.primaryDark} />
-            <Text style={s.btnReintentarTexto}>Reintentar</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <Animated.View
-          style={[
-            s.contenido,
-            { opacity: entrada, transform: [{ translateY: sube }] },
+      {/* Cabecera de marca: ~70% del alto, esquinas inferiores de 40. */}
+      <View style={[s.portada, { paddingTop: insets.top }]}>
+        <AmbientGlow
+          lights={[
+            { color: colors.glowGold, opacity: 0.35, size: 320, top: -90, right: -120 },
+            { color: colors.glowBlue, opacity: 0.8, size: 360, bottom: -180, left: -150 },
           ]}
+        />
+        <Animated.View
+          style={[s.marca, { opacity: entrada, transform: [{ translateY: sube }] }]}
         >
-          {/* Marca */}
-          <View style={s.marca}>
-            <Animated.View
-              style={[s.logoPlaca, { transform: [{ translateY: flota }] }]}
-            >
-              <Image
-                source={require("../assets/LOGOATK.png")}
-                style={s.logo}
-                resizeMode="contain"
-              />
-            </Animated.View>
-
-            <Text style={s.nombre}>ALTOQUE PERÚ</Text>
-            <View style={s.linea} />
-            <Text style={s.lema}>Efectivización de tarjetas de crédito</Text>
-          </View>
-
-          {/* Lo que ofrece, en tres líneas */}
-          <View style={s.puntos}>
-            {[
-              { icono: "flash-outline", texto: "Envía tu comprobante en un minuto" },
-              { icono: "shield-checkmark-outline", texto: "Tus documentos viajan cifrados" },
-              { icono: "notifications-outline", texto: "Te avisamos apenas se resuelva" },
-            ].map((p) => (
-              <View key={p.texto} style={s.punto}>
-                <View style={s.puntoIcono}>
-                  <Ionicons name={p.icono} size={15} color={COLORS.secondary} />
-                </View>
-                <Text style={s.puntoTexto}>{p.texto}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Acciones */}
-          <View style={s.acciones}>
-            <TouchableOpacity
-              style={s.btnPrimario}
-              onPress={() => router.push("/login")}
-              activeOpacity={0.85}
-            >
-              <Text style={s.btnPrimarioTexto}>Iniciar sesión</Text>
-              <Ionicons name="arrow-forward" size={18} color={COLORS.primaryDark} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={s.btnSecundario}
-              onPress={() => router.push("/registro")}
-              activeOpacity={0.7}
-            >
-              <Text style={s.btnSecundarioTexto}>Crear cuenta nueva</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={s.enlace}
-              onPress={() => router.push("/empresa")}
-              activeOpacity={0.6}
-            >
-              <Text style={s.enlaceTexto}>Conoce la empresa</Text>
-            </TouchableOpacity>
-          </View>
+          <Logo width={200} />
+          <Text style={s.peruWk}>PERÚ WK</Text>
+          <Text style={s.lema}>
+            Tu aliado{"\n"}
+            <Text style={{ color: "#F4DC8A" }}>financiero.</Text>
+          </Text>
         </Animated.View>
-      )}
+
+        <GlassPanel variant="onNight" radius={999} style={s.pastilla}>
+          <View style={s.pastillaItem}>
+            <Ionicons name="person-outline" size={14} color={colors.white} />
+            <Text style={s.pastillaTexto}>Revisión humana</Text>
+          </View>
+          <View style={s.pastillaSeparador} />
+          <View style={s.pastillaItem}>
+            <Ionicons name="lock-closed-outline" size={14} color={colors.white} />
+            <Text style={s.pastillaTexto}>Datos cifrados</Text>
+          </View>
+        </GlassPanel>
+      </View>
+
+      <Animated.View
+        style={[
+          s.acciones,
+          { paddingBottom: insets.bottom + 34, opacity: entrada },
+        ]}
+      >
+        <Boton
+          variante="dinero"
+          titulo="Crear cuenta"
+          onPress={() => router.push("/registro")}
+          style={{ height: 58 }}
+        />
+        <Boton
+          variante="contorno"
+          titulo="Ingresar"
+          onPress={() => router.push("/login")}
+          style={{ height: 58 }}
+        />
+      </Animated.View>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  pantalla: {
+  pantalla: { flex: 1, backgroundColor: colors.ground },
+  pantallaNoche: {
     flex: 1,
-    backgroundColor: COLORS.primaryDark,
+    backgroundColor: colors.night,
     overflow: "hidden",
+    paddingHorizontal: 28,
   },
-
-  // Halos de fondo
-  halo: {
-    position: "absolute",
-    borderRadius: 999,
-  },
-  haloOro: {
-    width: 460,
-    height: 460,
-    top: -190,
-    right: -170,
-    backgroundColor: COLORS.secondary,
-    opacity: 0.07,
-  },
-  haloAzul: {
-    width: 420,
-    height: 420,
-    bottom: -170,
-    left: -160,
-    backgroundColor: COLORS.primaryLight,
-    opacity: 0.28,
-  },
-
-  centro: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 40,
-  },
-  logoChico: { width: 64, height: 64, opacity: 0.9 },
-  cargando: {
-    ...TIPO.apoyo,
-    color: "rgba(255,255,255,0.55)",
-    marginTop: 12,
-  },
-
-  // Sin conexión
+  centro: { flex: 1, alignItems: "center", justifyContent: "center" },
   iconoAviso: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: "rgba(232,184,0,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(232,184,0,0.25)",
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 20,
   },
-  tituloAviso: { ...TIPO.seccion, color: COLORS.white, fontSize: 20 },
+  tituloAviso: {
+    fontFamily: fonts.display,
+    fontSize: 24,
+    color: colors.white,
+    marginTop: 18,
+  },
   textoAviso: {
-    ...TIPO.apoyo,
-    color: "rgba(255,255,255,0.6)",
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: "rgba(255,255,255,0.72)",
     textAlign: "center",
-    marginTop: 8,
-    lineHeight: 21,
-  },
-  btnReintentar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: COLORS.secondary,
-    borderRadius: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 26,
-    marginTop: 26,
-  },
-  btnReintentarTexto: {
-    color: COLORS.primaryDark,
-    fontSize: 15,
-    fontWeight: "700",
+    marginTop: 6,
   },
 
-  // Bienvenida
-  contenido: {
-    flex: 1,
-    justifyContent: "space-between",
-    paddingHorizontal: 30,
-    paddingTop: Platform.OS === "ios" ? 96 : 78,
-    paddingBottom: 40,
-  },
-
-  marca: { alignItems: "center" },
-  logoPlaca: {
-    width: 108,
-    height: 108,
-    borderRadius: 32,
-    // Placa translúcida: deja ver el halo de atrás y despega el logo
-    // del fondo sin recortarlo con un borde duro.
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
+  portada: {
+    height: "70%",
+    backgroundColor: colors.night,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
-  logo: { width: 68, height: 68 },
-  nombre: {
-    fontSize: 25,
-    fontWeight: "800",
-    color: COLORS.secondary,
-    letterSpacing: 3.2,
-    marginTop: 24,
-  },
-  linea: {
-    width: 40,
-    height: 2,
-    borderRadius: 2,
-    backgroundColor: "rgba(232,184,0,0.4)",
-    marginTop: 14,
+  marca: { alignItems: "center", gap: 18 },
+  peruWk: {
+    fontFamily: fonts.heavy,
+    fontSize: 11,
+    letterSpacing: 3.5,
+    color: "rgba(255,255,255,0.7)",
   },
   lema: {
-    ...TIPO.apoyo,
-    color: "rgba(255,255,255,0.62)",
+    fontFamily: fonts.display,
+    fontSize: 36,
+    lineHeight: 38,
+    letterSpacing: -0.7,
+    color: colors.white,
     textAlign: "center",
-    marginTop: 14,
-    lineHeight: 21,
+    marginTop: 6,
   },
-
-  puntos: { gap: 14, paddingHorizontal: 4 },
-  punto: { flexDirection: "row", alignItems: "center", gap: 13 },
-  puntoIcono: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  puntoTexto: {
-    ...TIPO.cuerpo,
-    color: "rgba(255,255,255,0.78)",
-    flex: 1,
-  },
-
-  acciones: { gap: 11 },
-  btnPrimario: {
+  pastilla: {
+    position: "absolute",
+    bottom: 28,
+    height: 40,
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 9,
-    backgroundColor: COLORS.secondary,
-    borderRadius: 14,
-    paddingVertical: 17,
+    gap: 14,
   },
-  btnPrimarioTexto: {
-    color: COLORS.primaryDark,
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 0.2,
-  },
-  btnSecundario: {
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
-    paddingVertical: 16,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-  },
-  btnSecundarioTexto: {
-    color: COLORS.white,
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  enlace: { alignItems: "center", paddingVertical: 12 },
-  enlaceTexto: {
-    ...TIPO.apoyo,
-    color: "rgba(255,255,255,0.45)",
+  pastillaItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+  pastillaTexto: { fontFamily: fonts.strong, fontSize: 12, color: colors.white },
+  pastillaSeparador: { width: 1, height: 14, backgroundColor: "rgba(255,255,255,0.3)" },
+
+  acciones: {
+    flex: 1,
+    justifyContent: "flex-end",
+    gap: 10,
+    paddingHorizontal: 24,
   },
 });

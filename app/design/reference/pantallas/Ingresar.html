@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Ingresar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0;font-family:'Manrope',system-ui,sans-serif;color:#1B2A4A;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button,input,textarea{font-family:inherit}
+.gl{background:rgba(255,255,255,0.66);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);border:1px solid rgba(255,255,255,0.75);box-shadow:0 12px 34px rgba(15,27,51,0.12)}
+.gn{background:rgba(255,255,255,0.10);-webkit-backdrop-filter:blur(20px) saturate(150%);backdrop-filter:blur(20px) saturate(150%);border:1px solid rgba(255,255,255,0.2)}
+.c{background:#FFFFFF;border:1px solid #ECE8DF}
+.s{font-family:'Sora', 'Manrope', system-ui, sans-serif;font-weight:600;letter-spacing:-0.02em}
+.orb{position:absolute;border-radius:999px;filter:blur(64px);pointer-events:none}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #F6F4EF; display: flex; flex-direction: column; padding: 20px 24px 34px; gap: 18px">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<a href="CBienvenida.dc.html" aria-label="Volver" class="c" style="width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></a>
+<div style="height: 40px; padding: 0 14px; border-radius: 13px; background: #0F1B33; display: flex; align-items: center"><svg width="56" height="24" viewBox="218 14 672 290" role="img" aria-label="ATK"><polygon fill="#E8B800" points="225,296 357,22 490,296 431,296 357,138 284,296"/><polygon fill="#FFFFFF" points="450,22 645,22 645,80 577,80 577,296 512,296 512,80 450,80"/><polygon fill="#FFFFFF" points="672,22 732,22 732,160 806,22 876,22 789,158 882,296 812,296 755,205 732,232 732,296 672,296"/></svg></div>
+<div style="width: 44px"></div>
+</div>
+<h1 class="s" style="margin: 36px 0 6px; font-size: 34px; line-height: 1">Hola de nuevo.</h1>
+<div style="display: flex; flex-direction: column; gap: 8px"><label for="c" style="font-size: 13px; font-weight: 600; color: #4F5B74">Correo</label><input id="c" value="rosa.quispe@correo.pe" class="c" style="height: 56px; border-radius: 16px; padding: 0 16px; font-size: 16px; font-weight: 600; color: #1B2A4A; outline: none"></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><label for="p" style="font-size: 13px; font-weight: 600; color: #4F5B74">Contraseña</label>
+<div style="height: 56px; border-radius: 16px; background: #FFFFFF; border: 2px solid #1B2A4A; box-shadow: 0 0 0 4px rgba(232,184,0,0.22); display: flex; align-items: center; padding: 0 6px 0 16px"><input id="p" type="password" value="contraseña1" style="flex-grow: 1; min-width: 0; border: none; background: transparent; font-size: 16px; letter-spacing: 0.12em; color: #1B2A4A; outline: none"><button aria-label="Mostrar contraseña" style="width: 44px; height: 44px; border: none; background: transparent; color: #4F5B74; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: #C4291F"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>Correo o contraseña incorrectos</div></div>
+<div style="flex-grow: 1"></div>
+<a href="CInicio.dc.html" style="height: 58px; border-radius: 18px; background: #1B2A4A; color: #FFFFFF; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center">Ingresar</a>
+<div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: 700"><a href="Recuperar.dc.html" style="color: #4F5B74">¿Olvidaste tu contraseña?</a><a href="Registro1.dc.html" style="color: #8C6A00">Crear cuenta</a></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -28,6 +28,7 @@ const { base64ToArrayBuffer, extraerPath } = await cargar("binario.js");
 const {
   validarEmail,
   validarDni,
+  validarDocumento,
   validarTelefono,
   validarNombre,
   validarUltimos4,
@@ -106,6 +107,14 @@ test("DNI: ocho digitos y no todos iguales", () => {
   assert.ok(validarDni("11111111"));
   assert.ok(validarDni("7012345a"));
   assert.ok(validarDni(""));
+});
+
+test("Carnet de extranjeria: nueve digitos", () => {
+  assert.equal(validarDocumento("ce", "001234567"), null);
+  assert.ok(validarDocumento("ce", "00123456"));
+  assert.ok(validarDocumento("ce", "999999999"));
+  assert.equal(validarDocumento("dni", "70123456"), null);
+  assert.ok(validarDocumento("dni", "001234567"));
 });
 
 test("Email: exige dominio con punto", () => {
@@ -220,4 +229,94 @@ test("clave de dia y hora en formato local", () => {
   const d = new Date(2026, 0, 5, 9, 7);
   assert.equal(claveDia(d), "2026-01-05");
   assert.equal(hora(d), "09:07");
+});
+
+// ─────────────────────────────────────────────────────────────
+// deposito.js
+// Decide si el cliente puede enviar: si se equivoca, o bloquea a
+// quien sí puede cobrar, o deja pasar una operación sin destino.
+// ─────────────────────────────────────────────────────────────
+const { cuentasDeDeposito, puedeRecibir, faltaParaRecibir, estadoBanco, bancosDelCliente } =
+  await cargar("deposito.js");
+
+const ahorros = (banco) => ({ banco, tipo: "ahorros" });
+const cci = (banco) => ({ banco, tipo: "interbancaria" });
+
+test("deposito: banco principal recibe en la cuenta normal del mismo banco", () => {
+  assert.equal(puedeRecibir("BCP", [ahorros("BCP")]), true);
+  assert.equal(puedeRecibir("BCP", [ahorros("BBVA")]), false);
+});
+
+test("deposito: con normal y CCI del mismo banco, recibe la normal", () => {
+  const destino = cuentasDeDeposito("BCP", [cci("BCP"), ahorros("BCP")]);
+  assert.equal(destino.length, 1);
+  assert.equal(destino[0].tipo, "ahorros");
+});
+
+test("deposito: la CCI sola no alcanza, y el aviso lo explica", () => {
+  assert.equal(puedeRecibir("Interbank", [cci("Interbank")]), false);
+  assert.match(faltaParaRecibir("Interbank", [cci("Interbank")]).detalle, /CCI/);
+});
+
+test("deposito: CMR y Otros reciben en la cuenta normal de cualquier banco", () => {
+  assert.equal(puedeRecibir("CMR", [ahorros("Scotiabank")]), true);
+  assert.equal(puedeRecibir("Otros", [ahorros("BanBif"), ahorros("BCP")]), true);
+  assert.equal(cuentasDeDeposito("CMR", [ahorros("BCP"), ahorros("BBVA")]).length, 2);
+});
+
+test("deposito: CMR sin cuenta normal no puede enviar, aunque tenga CCI", () => {
+  assert.equal(puedeRecibir("CMR", []), false);
+  assert.equal(puedeRecibir("CMR", [cci("BCP")]), false);
+  assert.equal(faltaParaRecibir("CMR", []).banco, null);
+});
+
+test("deposito: cuentas viejas sin tipo cuentan como normales", () => {
+  assert.equal(puedeRecibir("BBVA", [{ banco: "BBVA" }]), true);
+});
+
+test("deposito: sin tarjeta no hay destino ni aviso", () => {
+  assert.deepEqual(cuentasDeDeposito(null, [ahorros("BCP")]), []);
+  assert.equal(faltaParaRecibir(null, []), null);
+});
+
+test("estado por banco: listo, falta cuenta, verificando y falta tarjeta", () => {
+  const t = (banco, estado) => ({ banco, estado });
+  assert.equal(estadoBanco("BCP", [t("BCP", "aprobado")], [ahorros("BCP")]), "listo");
+  assert.equal(estadoBanco("BBVA", [t("BBVA", "aprobado")], [cci("BBVA")]), "falta_cuenta");
+  assert.equal(estadoBanco("Interbank", [t("Interbank", "pendiente")], [ahorros("Interbank")]), "verificando");
+  assert.equal(estadoBanco("BanBif", [], [ahorros("BanBif")]), "falta_tarjeta");
+  assert.equal(estadoBanco("CMR", [t("CMR", "aprobado")], [ahorros("BCP")]), "listo");
+  // La rechazada no cuenta: va en "Requiere tu atención".
+  assert.equal(estadoBanco("Scotiabank", [t("Scotiabank", "rechazado")], []), null);
+  assert.deepEqual(bancosDelCliente([t("CMR", "aprobado")], [ahorros("BCP")]), ["BCP", "CMR"]);
+});
+
+// El ubigeo vive en src/data y no en src/lib: se carga igual, como data URI.
+const PERU = (
+  await import(
+    "data:text/javascript;base64," +
+      Buffer.from(fs.readFileSync(path.join(carpetaLib, "..", "data", "peru.js"), "utf8")).toString("base64")
+  )
+).default;
+
+test("ubigeo: el listado completo del INEI", () => {
+  const provincias = Object.values(PERU).flatMap((p) => Object.keys(p));
+  const distritos = Object.values(PERU).flatMap((p) => Object.values(p).flat());
+  assert.equal(Object.keys(PERU).length, 25);
+  assert.equal(provincias.length, 196);
+  assert.equal(distritos.length, 1891);
+  // Callao es su propia región, no una provincia de Lima.
+  assert.deepEqual(Object.keys(PERU.Callao), ["Callao"]);
+  assert.equal(PERU.Lima.Callao, undefined);
+  assert.ok(PERU.Lima.Lima.includes("Santiago de Surco"));
+  // Sin repetidos dentro de una provincia, y sin espacios sueltos.
+  for (const [dep, provs] of Object.entries(PERU)) {
+    assert.equal(dep, dep.trim());
+    for (const [prov, ds] of Object.entries(provs)) {
+      assert.equal(prov, prov.trim());
+      assert.equal(new Set(ds).size, ds.length, `${dep}/${prov} repite distritos`);
+    }
+  }
+  // Ordenado como lo lee una persona: Áncash va junto a Amazonas.
+  assert.deepEqual(Object.keys(PERU).slice(0, 3), ["Amazonas", "Áncash", "Apurímac"]);
 });

@@ -4,19 +4,27 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Image,
   Modal,
+  Animated,
   Pressable,
   ActivityIndicator,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../lib/supabase";
 import { urlFirmada } from "../lib/storage";
-import { hora } from "../lib/fechas";
-import COLORS from "../theme/colors";
-import TIPO, { CIFRAS } from "../theme/tipografia";
-import { estadoSolicitud } from "../theme/estados";
+import { hora, tituloDia } from "../lib/fechas";
+import { cuentasDeDeposito } from "../lib/deposito";
+import { useReducirMovimiento } from "../lib/movimiento";
+import { useArrastreCerrar } from "../lib/arrastre";
+import { useDatos } from "../lib/cache";
+import { bancoDe, colors, fonts } from "../theme/tokens";
+import { GlassPanel } from "./ui/GlassPanel";
+import { BankBadge } from "./ui/BankBadge";
+import { Toque } from "./ui/Toque";
+import { BotonIcono, Etiqueta, FilaDato, Tarjeta } from "./ui/Piezas";
+import { VisorImagen } from "./ui/VisorImagen";
 
 const BUCKET = "comprobantes";
 
@@ -31,30 +39,9 @@ const firmas = new Map();
 const CAMPOS =
   "id, codigo, banco, estado, nota_cliente, motivo_rechazo, comprobante_url, created_at, fecha_revision, pagado_en, tarjetas(banco, ultimos_4)";
 
-const fechaLarga = (iso) =>
-  new Date(iso).toLocaleDateString("es-PE", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }) +
-  " · " +
-  hora(iso);
-
-function Paso({ icono, color, titulo, fecha, ultimo }) {
-  return (
-    <View style={s.paso}>
-      <View style={s.pasoRiel}>
-        <View style={[s.pasoPunto, { backgroundColor: color }]}>
-          <Ionicons name={icono} size={12} color={COLORS.white} />
-        </View>
-        {!ultimo && <View style={s.pasoLinea} />}
-      </View>
-      <View style={s.pasoTexto}>
-        <Text style={s.pasoTitulo}>{titulo}</Text>
-        {fecha ? <Text style={s.pasoFecha}>{fechaLarga(fecha)}</Text> : null}
-      </View>
-    </View>
-  );
+/** "Hoy · 10:42", "Ayer · 19:55" o "Jueves 24 set · 15:02". */
+function cuando(iso) {
+  return `${tituloDia(iso)} · ${hora(iso)}`;
 }
 
 /**
@@ -75,12 +62,44 @@ export default function DetalleSolicitud({ solicitud, onCerrar }) {
   // Solicitud abierta ahora. Si se cierra y se abre otra antes de que
   // lleguen las respuestas de la primera, esas respuestas se descartan.
   const abierta = useRef(null);
+  // A dónde se deposita y cuánto se cobra: no vienen en la fila de la
+  // solicitud, se calculan con las cuentas y la comisión del cliente.
+  // Guardadas en el teléfono: solo se descargan si cambiaron (huellas
+  // "cuentas" y "comisiones"). Si fallan, la hoja se muestra sin esas
+  // filas: no son motivo para tapar el resto del detalle.
+  const { datos: deposito } = useDatos(
+    "deposito",
+    async () => {
+      const [{ data: cuentas, error: e1 }, { data: com, error: e2 }] = await Promise.all([
+        supabase.from("cuentas_bancarias").select("banco, tipo, numero_cuenta").eq("activa", true),
+        supabase.rpc("mis_comisiones"),
+      ]);
+      if (e1 || e2) throw e1 || e2;
+      return { cuentas: cuentas || [], bancos: com?.bancos || [] };
+    },
+    { grupos: ["cuentas", "comisiones"] },
+  );
+  const insets = useSafeAreaInsets();
+  const reducir = useReducirMovimiento();
+  // Cerrada arrastrando: la hoja ya bajó con el dedo, así que el Modal
+  // se va sin su propia animación (si no, el velo bajaría después).
+  const [arrastrada, setArrastrada] = useState(false);
+  const arrastre = useArrastreCerrar({
+    alCerrar: () => {
+      setArrastrada(true);
+      onCerrar();
+    },
+  });
 
   const id = solicitud?.id || null;
 
   useEffect(() => {
     abierta.current = id;
     setAmpliada(false);
+    if (id) {
+      arrastre.reiniciar();
+      setArrastrada(false);
+    }
 
     if (!id) {
       setDetalle(null);
@@ -95,9 +114,14 @@ export default function DetalleSolicitud({ solicitud, onCerrar }) {
   }, [id]);
 
   /** Pide la fila completa y despues el comprobante. */
-  async function cargar(base) {
+  async function cargar(base, forzar = false) {
     const idActual = base.id;
     setImagen({ estado: "cargando", url: null });
+
+    // Desde el historial la fila ya viene completa (y al día: la lista
+    // se renueva cuando cambia alguna solicitud). Solo el resumen del
+    // inicio llega sin nota, motivo ni comprobante.
+    if (!forzar && "comprobante_url" in base) return cargarImagen(base);
 
     const { data, error } = await supabase
       .from("solicitudes")
@@ -142,298 +166,384 @@ export default function DetalleSolicitud({ solicitud, onCerrar }) {
     setImagen({ estado: "listo", url });
   }
 
-  const est = estadoSolicitud(detalle?.estado);
   const tarjeta = detalle?.tarjetas || {
     banco: detalle?.banco,
     ultimos_4: detalle?.ultimos_4,
   };
+  const estado = detalle?.estado;
+  const rechazada = estado === "rechazado";
+
+  // Recorrido en cuatro etapas. La de "En revisión" no tiene hora
+  // propia: la base guarda cuándo se envió y cuándo se resolvió, no
+  // cuándo empezó a mirarla alguien.
+  const etapas = !detalle
+    ? []
+    : [
+        { titulo: "Enviada", fecha: detalle.created_at, hecho: true },
+        {
+          titulo: "En revisión",
+          hecho: estado !== "pendiente",
+          actual: estado === "pendiente",
+        },
+        {
+          titulo: rechazada ? "Rechazada" : "Aprobado",
+          fecha: estado !== "pendiente" ? detalle.fecha_revision : null,
+          hecho: estado === "pagado",
+          actual: estado === "aprobado" || rechazada,
+          rojo: rechazada,
+        },
+        ...(rechazada
+          ? []
+          : [
+              {
+                titulo: "Pago enviado",
+                fecha: detalle.pagado_en,
+                hecho: estado === "pagado",
+                actual: false,
+              },
+            ]),
+      ];
+
+  const bancoSolicitud = detalle?.tarjetas?.banco || detalle?.banco;
+  const extras = {
+    destinos: deposito ? cuentasDeDeposito(bancoSolicitud, deposito.cuentas) : [],
+    comision: (deposito?.bancos || []).find((b) => b.banco === bancoSolicitud)?.porcentaje ?? null,
+  };
+
+  const destino =
+    extras.destinos.length === 1
+      ? `${bancoDe(extras.destinos[0].banco).name} ···· ${String(extras.destinos[0].numero_cuenta || "").slice(-4)}`
+      : extras.destinos.length > 1
+        ? "Tu cuenta de ahorros"
+        : null;
 
   return (
     <Modal
       visible={Boolean(id)}
       transparent
-      animationType="slide"
+      animationType={reducir || arrastrada ? "none" : "slide"}
       onRequestClose={() => (ampliada ? setAmpliada(false) : onCerrar())}
+      statusBarTranslucent
     >
-      <Pressable style={s.hojaFondo} onPress={onCerrar}>
+      <Pressable style={s.fondo} onPress={onCerrar} accessibilityLabel="Cerrar detalle">
+        <Animated.View style={[s.hojaPosicion, { transform: [{ translateY: arrastre.y }] }]}>
         {/* Pressable interno: tocar la hoja no debe cerrarla. */}
-        <Pressable style={s.hoja} onPress={() => {}}>
-          {detalle && (
-            <>
-              <View style={s.hojaAsa} />
-
-              <View style={s.hojaCabecera}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.hojaEtiqueta}>Solicitud</Text>
-                  <Text style={s.hojaCodigo}>{detalle.codigo}</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={onCerrar}
-                  hitSlop={12}
+        <Pressable
+          onPress={() => {}}
+          style={{ flexShrink: 1 }}
+          accessibilityViewIsModal
+        >
+          <GlassPanel variant="sheet" radius={34} style={s.hoja}>
+            {detalle && (
+              <>
+                {/* Barrita y cabecera: se arrastran hacia abajo para
+                    cerrar. La X sigue funcionando con un toque. */}
+                <View {...arrastre.gestos} style={{ gap: 16 }}>
+                <View
+                  style={s.asaZona}
                   accessibilityRole="button"
-                  accessibilityLabel="Cerrar"
+                  accessibilityLabel="Cerrar detalle"
+                  accessibilityHint="Desliza hacia abajo para cerrar"
+                  onAccessibilityTap={onCerrar}
                 >
-                  <Ionicons name="close" size={24} color={COLORS.textLight} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 12 }}
-              >
-                <View style={[s.hojaEstado, { backgroundColor: est.bg }]}>
-                  <Ionicons name={est.icon} size={18} color={est.color} />
-                  <Text style={[s.hojaEstadoTexto, { color: est.color }]}>
-                    {est.text}
-                  </Text>
+                  <View style={s.asa} />
                 </View>
 
-                <View style={s.datos}>
-                  <View>
-                    <Text style={s.datoEtiqueta}>Tarjeta</Text>
-                    <Text style={s.datoValor}>
-                      {tarjeta.banco}
-                      {tarjeta.ultimos_4 ? ` •••• ${tarjeta.ultimos_4}` : ""}
+                <View style={s.cabecera}>
+                  <BankBadge bank={tarjeta.banco} size={52} />
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={s.digitos}>
+                      {tarjeta.ultimos_4 ? `···· ${tarjeta.ultimos_4}` : bancoDe(tarjeta.banco).name}
                     </Text>
+                    <Text style={s.cuando}>{cuando(detalle.created_at)}</Text>
                   </View>
-                  {detalle.nota_cliente ? (
-                    <View>
-                      <Text style={s.datoEtiqueta}>Tu nota</Text>
-                      <Text style={s.datoValor}>{detalle.nota_cliente}</Text>
+                  <BotonIcono icono="close" onPress={onCerrar} accessibilityLabel="Cerrar" tamano={18} />
+                </View>
+                </View>
+
+                <ScrollView
+                  style={{ flexShrink: 1 }}
+                  showsVerticalScrollIndicator={false}
+                  // El espacio de la barra del sistema va dentro de la
+                  // hoja: así su fondo llega hasta abajo y no queda una
+                  // franja del velo oscuro detrás de los botones.
+                  contentContainerStyle={{ gap: 12, paddingBottom: insets.bottom + 20 }}
+                >
+                  <Tarjeta style={s.recorrido}>
+                    {etapas.map((e, i) => {
+                      const ultima = i === etapas.length - 1;
+                      const lleno = e.hecho || e.actual;
+                      return (
+                        <View key={e.titulo} style={s.etapa}>
+                          <View style={s.riel}>
+                            <View
+                              style={[
+                                s.punto,
+                                e.hecho && s.puntoHecho,
+                                e.actual && s.puntoActual,
+                                e.rojo && s.puntoRojo,
+                                !lleno && s.puntoVacio,
+                              ]}
+                            >
+                              {lleno ? (
+                                <Ionicons
+                                  name={e.rojo ? "close" : e.actual && !e.hecho && i === 1 ? "time-outline" : "checkmark"}
+                                  size={11}
+                                  color={e.actual && !e.rojo ? colors.night : colors.white}
+                                />
+                              ) : null}
+                            </View>
+                            {!ultima ? (
+                              <View style={[s.linea, e.hecho && s.lineaHecha]} />
+                            ) : null}
+                          </View>
+                          <View style={s.etapaTexto}>
+                            <Text
+                              style={[
+                                s.etapaTitulo,
+                                e.actual && s.etapaActual,
+                                e.rojo && { color: colors.errorText },
+                                !lleno && { color: colors.text3, fontFamily: fonts.body },
+                              ]}
+                            >
+                              {e.titulo}
+                            </Text>
+                            {e.fecha ? <Text style={s.etapaHora}>{hora(e.fecha)}</Text> : null}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </Tarjeta>
+
+                  {rechazada && detalle.motivo_rechazo ? (
+                    <View style={s.motivo}>
+                      <Etiqueta color={colors.errorText}>Motivo</Etiqueta>
+                      <Text style={s.motivoTexto}>{detalle.motivo_rechazo}</Text>
                     </View>
                   ) : null}
-                </View>
 
-                {detalle.estado === "rechazado" && detalle.motivo_rechazo ? (
-                  <View style={s.rechazoBox}>
-                    <Text style={s.rechazoLabel}>Motivo del rechazo</Text>
-                    <Text style={s.rechazoTexto}>{detalle.motivo_rechazo}</Text>
-                  </View>
-                ) : null}
+                  {destino || extras.comision != null || detalle.nota_cliente ? (
+                    <Tarjeta style={s.datos}>
+                      {destino ? (
+                        <FilaDato
+                          etiqueta="Depósito en"
+                          valor={destino}
+                          ultima={extras.comision == null && !detalle.nota_cliente}
+                        />
+                      ) : null}
+                      {extras.comision != null ? (
+                        <View style={[s.filaComision, detalle.nota_cliente && s.separador]}>
+                          <Text style={s.datoEtiqueta}>Comisión</Text>
+                          <Text style={s.comision}>{extras.comision}%</Text>
+                        </View>
+                      ) : null}
+                      {detalle.nota_cliente ? (
+                        <View style={s.nota}>
+                          <Text style={s.datoEtiqueta}>Tu nota</Text>
+                          <Text style={s.notaTexto}>{detalle.nota_cliente}</Text>
+                        </View>
+                      ) : null}
+                    </Tarjeta>
+                  ) : null}
 
-                <Text style={s.seccionTitulo}>Recorrido</Text>
-                <View>
-                  <Paso
-                    icono="paper-plane"
-                    color={COLORS.primaryLight}
-                    titulo="Enviada"
-                    fecha={detalle.created_at}
-                    ultimo={detalle.estado === "pendiente"}
-                  />
-                  {detalle.estado === "pendiente" ? null : (
-                    <Paso
-                      icono={detalle.estado === "rechazado" ? "close" : "checkmark"}
-                      color={
-                        detalle.estado === "rechazado"
-                          ? COLORS.error
-                          : COLORS.success
+                  {/* Comprobante grande, entero (contain): es lo que la
+                      persona quiere revisar. Al tocarlo se abre a pantalla
+                      completa con zoom. Se carga recién al abrir. */}
+                  <Tarjeta style={s.comprobante}>
+                    <View style={s.comprobanteCabeza}>
+                      <Text style={s.comprobanteTitulo}>Comprobante</Text>
+                      {imagen.estado === "listo" ? (
+                        <Text style={s.comprobanteAyuda}>Toca para ampliar</Text>
+                      ) : null}
+                    </View>
+                    <Toque
+                      onPress={() =>
+                        imagen.estado === "listo"
+                          ? setAmpliada(true)
+                          : imagen.estado === "error"
+                            ? cargar(detalle, true)
+                            : null
                       }
-                      titulo={
-                        detalle.estado === "rechazado" ? "Rechazada" : "Aprobada"
+                      escala={0.99}
+                      disabled={imagen.estado === "sin" || imagen.estado === "cargando" || imagen.estado === "vacio"}
+                      accessibilityLabel={
+                        imagen.estado === "error" ? "Reintentar cargar el comprobante" : "Ampliar comprobante"
                       }
-                      fecha={detalle.fecha_revision}
-                      ultimo={detalle.estado !== "pagado"}
-                    />
-                  )}
-                  {detalle.estado === "pagado" && (
-                    <Paso
-                      icono="cash"
-                      color={COLORS.primary}
-                      titulo="Pago enviado"
-                      fecha={detalle.pagado_en}
-                      ultimo
-                    />
-                  )}
-                  {detalle.estado === "pendiente" && (
-                    <Text style={s.recorridoPista}>
-                      Estamos revisando tu comprobante. Te avisaremos en la
-                      campana cuando cambie.
-                    </Text>
-                  )}
-                </View>
-
-                <Text style={s.seccionTitulo}>Comprobante</Text>
-                {imagen.estado === "cargando" || imagen.estado === "vacio" ? (
-                  <View style={[s.comprobante, s.comprobanteCentro]}>
-                    <ActivityIndicator color={COLORS.primary} />
-                    <Text style={s.comprobanteAyuda}>Cargando comprobante…</Text>
-                  </View>
-                ) : imagen.estado === "listo" ? (
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    onPress={() => setAmpliada(true)}
-                  >
-                    <Image
-                      source={{ uri: imagen.url }}
-                      style={s.comprobante}
-                      resizeMode="contain"
-                    />
-                    <Text style={s.comprobanteAmpliar}>
-                      Toca para verlo en pantalla completa
-                    </Text>
-                  </TouchableOpacity>
-                ) : imagen.estado === "sin" ? (
-                  <View style={[s.comprobante, s.comprobanteCentro]}>
-                    <Ionicons
-                      name="image-outline"
-                      size={28}
-                      color={COLORS.textLight}
-                    />
-                    <Text style={s.comprobanteAyuda}>
-                      Esta solicitud no tiene comprobante guardado.
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={[s.comprobante, s.comprobanteCentro]}>
-                    <Ionicons
-                      name="cloud-offline-outline"
-                      size={28}
-                      color={COLORS.textLight}
-                    />
-                    <Text style={s.comprobanteAyuda}>
-                      No pudimos cargar el comprobante.
-                    </Text>
-                    <TouchableOpacity
-                      style={s.reintentar}
-                      onPress={() => cargar(detalle)}
+                      style={s.vista}
                     >
-                      <Text style={s.reintentarTexto}>Reintentar</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </ScrollView>
-            </>
-          )}
+                      {imagen.estado === "listo" ? (
+                        <>
+                          <Image
+                            source={{ uri: imagen.url }}
+                            style={s.vistaImagen}
+                            resizeMode="contain"
+                            accessibilityIgnoresInvertColors
+                          />
+                          <View style={s.ampliar}>
+                            <Ionicons name="expand-outline" size={15} color={colors.white} />
+                            <Text style={s.ampliarTexto}>Ampliar</Text>
+                          </View>
+                        </>
+                      ) : imagen.estado === "cargando" || imagen.estado === "vacio" ? (
+                        <ActivityIndicator color={colors.navy} />
+                      ) : (
+                        <View style={{ alignItems: "center", gap: 8, paddingHorizontal: 20 }}>
+                          <Ionicons
+                            name={imagen.estado === "sin" ? "image-outline" : "cloud-offline-outline"}
+                            size={26}
+                            color={colors.text3}
+                          />
+                          <Text style={[s.comprobanteAyuda, { textAlign: "center" }]}>
+                            {imagen.estado === "sin"
+                              ? "Sin comprobante guardado"
+                              : "No cargó. Toca para reintentar."}
+                          </Text>
+                        </View>
+                      )}
+                    </Toque>
+                  </Tarjeta>
+                </ScrollView>
+              </>
+            )}
+          </GlassPanel>
         </Pressable>
+        </Animated.View>
       </Pressable>
 
       {/* Pantalla completa dentro del mismo Modal: dos Modal abiertos a
           la vez se comportan distinto en Android e iOS. */}
       {ampliada && imagen.url ? (
-        <Pressable style={s.ampliadaFondo} onPress={() => setAmpliada(false)}>
-          <Image
-            source={{ uri: imagen.url }}
-            style={s.ampliadaImagen}
-            resizeMode="contain"
-          />
-          <View style={s.ampliadaCerrar}>
-            <Ionicons name="close" size={26} color={COLORS.white} />
-          </View>
-        </Pressable>
+        <VisorImagen
+          url={imagen.url}
+          titulo="Comprobante"
+          subtitulo={detalle ? [detalle.codigo, cuando(detalle.created_at)].filter(Boolean).join(" · ") : null}
+          onCerrar={() => setAmpliada(false)}
+        />
       ) : null}
     </Modal>
   );
 }
 
 const s = StyleSheet.create({
-  hojaFondo: {
+  fondo: {
     flex: 1,
     backgroundColor: "rgba(15,27,51,0.55)",
     justifyContent: "flex-end",
   },
+  hojaPosicion: { maxHeight: "92%" },
+  // flexShrink en la hoja y en su lista: sin él, con contenido largo la
+  // hoja pasaba el 92% y lo último (el comprobante) quedaba cortado.
   hoja: {
-    backgroundColor: COLORS.card,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+    flexShrink: 1,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     paddingHorizontal: 20,
-    paddingBottom: 28,
-    maxHeight: "90%",
+    paddingTop: 12,
+    gap: 16,
   },
-  hojaAsa: {
+  // Zona tocable más alta que la barrita: 5 px no se aciertan con el dedo.
+  asaZona: { alignItems: "center", paddingVertical: 8, marginVertical: -8 },
+  asa: {
     width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.border,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.fieldFilled,
     alignSelf: "center",
-    marginTop: 10,
-    marginBottom: 10,
   },
-  hojaCabecera: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  hojaEtiqueta: { ...TIPO.micro, textTransform: "uppercase", letterSpacing: 0.6 },
-  hojaCodigo: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginTop: 2,
-    ...CIFRAS,
+  cabecera: { flexDirection: "row", alignItems: "center", gap: 14 },
+  digitos: {
+    fontFamily: fonts.display,
+    fontSize: 22,
+    lineHeight: 24,
+    color: colors.text,
+    letterSpacing: 0.4,
   },
-  hojaEstado: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  hojaEstadoTexto: { fontSize: 14, fontWeight: "700" },
+  cuando: { fontFamily: fonts.body, fontSize: 13, color: colors.text3 },
 
-  datos: { marginTop: 14, gap: 10 },
-  datoEtiqueta: { ...TIPO.micro, marginBottom: 2 },
-  datoValor: { fontSize: 14, color: COLORS.text, lineHeight: 20 },
-
-  rechazoBox: {
-    backgroundColor: COLORS.errorLight,
+  recorrido: { borderRadius: 24, paddingVertical: 18, paddingHorizontal: 20 },
+  etapa: { flexDirection: "row", gap: 14 },
+  riel: { alignItems: "center", width: 20 },
+  punto: {
+    width: 20,
+    height: 20,
     borderRadius: 10,
-    padding: 12,
-    marginTop: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  rechazoLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.error,
-    marginBottom: 3,
-  },
-  rechazoTexto: { fontSize: 13.5, color: COLORS.error, lineHeight: 19 },
-
-  seccionTitulo: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginTop: 20,
-    marginBottom: 10,
-  },
-
-  recorridoPista: { ...TIPO.apoyo, marginTop: 6 },
-  paso: { flexDirection: "row", gap: 12 },
-  pasoRiel: { alignItems: "center", width: 22 },
-  pasoPunto: {
+  puntoHecho: { backgroundColor: colors.navy },
+  puntoActual: {
+    backgroundColor: colors.gold,
+    borderWidth: 4,
+    borderColor: "rgba(232,184,0,0.25)",
     width: 22,
     height: 22,
     borderRadius: 11,
+  },
+  puntoRojo: { backgroundColor: colors.error, borderColor: "rgba(196,41,31,0.2)" },
+  puntoVacio: { borderWidth: 2, borderColor: "#D8D1C1" },
+  linea: { width: 2, height: 22, backgroundColor: colors.track },
+  lineaHecha: { backgroundColor: colors.navy },
+  etapaTexto: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingTop: 1,
+  },
+  etapaTitulo: { fontFamily: fonts.label, fontSize: 14, color: colors.text },
+  etapaActual: { fontFamily: fonts.heavy },
+  etapaHora: { fontFamily: fonts.body, fontSize: 14, color: colors.text3, fontVariant: ["tabular-nums"] },
+
+  motivo: {
+    backgroundColor: colors.errorBg,
+    borderRadius: 18,
+    padding: 16,
+    gap: 6,
+  },
+  motivoTexto: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.text },
+
+  datos: { borderRadius: 24, paddingHorizontal: 20, paddingVertical: 4 },
+  filaComision: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  separador: { borderBottomWidth: 1, borderBottomColor: colors.lineSoft },
+  datoEtiqueta: { fontFamily: fonts.body, fontSize: 13, color: colors.text3 },
+  comision: { fontFamily: fonts.display, fontSize: 18, color: colors.text, fontVariant: ["tabular-nums"] },
+  nota: { paddingVertical: 12, gap: 4 },
+  notaTexto: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.text },
+
+  comprobante: { borderRadius: 24, padding: 10, gap: 10 },
+  comprobanteCabeza: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 8,
+    paddingTop: 4,
+  },
+  comprobanteTitulo: { fontFamily: fonts.strong, fontSize: 15, color: colors.text },
+  comprobanteAyuda: { fontFamily: fonts.body, fontSize: 12, color: colors.text3 },
+  vista: {
+    height: 300,
+    borderRadius: 16,
+    backgroundColor: colors.ground,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
-  pasoLinea: { width: 2, flex: 1, minHeight: 16, backgroundColor: COLORS.border },
-  pasoTexto: { flex: 1, paddingBottom: 14 },
-  pasoTitulo: { fontSize: 14, fontWeight: "600", color: COLORS.text },
-  pasoFecha: { ...TIPO.micro, marginTop: 2 },
-
-  comprobante: {
-    width: "100%",
-    height: 320,
-    borderRadius: 12,
-    backgroundColor: COLORS.inputBg,
-  },
-  comprobanteCentro: { alignItems: "center", justifyContent: "center", gap: 8 },
-  comprobanteAyuda: { ...TIPO.apoyo, textAlign: "center", paddingHorizontal: 20 },
-  comprobanteAmpliar: { ...TIPO.micro, textAlign: "center", marginTop: 8 },
-  reintentar: {
-    marginTop: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  reintentarTexto: { fontSize: 13, fontWeight: "600", color: COLORS.primary },
-
-  ampliadaFondo: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.95)",
-    justifyContent: "center",
+  vistaImagen: { width: "100%", height: "100%" },
+  ampliar: {
+    position: "absolute",
+    right: 10,
+    bottom: 10,
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: "rgba(15,27,51,0.72)",
+    flexDirection: "row",
     alignItems: "center",
+    gap: 6,
   },
-  ampliadaImagen: { width: "100%", height: "82%" },
-  ampliadaCerrar: { position: "absolute", top: 50, right: 20 },
+  ampliarTexto: { fontFamily: fonts.heavy, fontSize: 12, color: colors.white },
 });

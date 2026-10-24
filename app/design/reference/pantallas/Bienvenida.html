@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Bienvenida</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0;font-family:'Manrope',system-ui,sans-serif;color:#1B2A4A;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button,input,textarea{font-family:inherit}
+.gl{background:rgba(255,255,255,0.66);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);border:1px solid rgba(255,255,255,0.75);box-shadow:0 12px 34px rgba(15,27,51,0.12)}
+.gn{background:rgba(255,255,255,0.10);-webkit-backdrop-filter:blur(20px) saturate(150%);backdrop-filter:blur(20px) saturate(150%);border:1px solid rgba(255,255,255,0.2)}
+.c{background:#FFFFFF;border:1px solid #ECE8DF}
+.s{font-family:'Sora', 'Manrope', system-ui, sans-serif;font-weight:600;letter-spacing:-0.02em}
+.orb{position:absolute;border-radius:999px;filter:blur(64px);pointer-events:none}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #F6F4EF; position: relative; overflow: hidden; display: flex; flex-direction: column">
+<div style="height: 590px; flex-shrink: 0; background: #0F1B33; border-radius: 0 0 40px 40px; position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; color: #FFFFFF; text-align: center">
+<div class="orb" style="width: 300px; height: 300px; background: #E8B800; opacity: 0.35; top: -80px; right: -110px"></div>
+<div class="orb" style="width: 340px; height: 340px; background: #2F56B0; opacity: 0.75; bottom: -170px; left: -140px"></div>
+<div style="position: relative; display: flex; flex-direction: column; align-items: center; gap: 18px">
+<svg width="200" height="86" viewBox="218 14 672 290" role="img" aria-label="ATK"><polygon fill="#E8B800" points="225,296 357,22 490,296 431,296 357,138 284,296"/><polygon fill="#FFFFFF" points="450,22 645,22 645,80 577,80 577,296 512,296 512,80 450,80"/><polygon fill="#FFFFFF" points="672,22 732,22 732,160 806,22 876,22 789,158 882,296 812,296 755,205 732,232 732,296 672,296"/></svg>
+<div style="font-size: 11px; font-weight: 800; letter-spacing: 0.32em; color: rgba(255,255,255,0.7)">PERÚ WK</div>
+<h1 class="s" style="margin: 6px 0 0; font-size: 36px; line-height: 1">Tu aliado<br><span style="color: #F4DC8A">financiero.</span></h1>
+</div>
+<div class="gn" style="position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); height: 40px; padding: 0 16px; border-radius: 999px; display: flex; align-items: center; gap: 14px; font-size: 12px; font-weight: 700; white-space: nowrap">
+<span style="display: flex; align-items: center; gap: 5px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Revisión humana</span><span style="width: 1px; height: 14px; background: rgba(255,255,255,0.3)"></span><span style="display: flex; align-items: center; gap: 5px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Datos cifrados</span>
+</div>
+</div>
+<div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding: 0 24px 34px">
+<a href="Registro1.dc.html" style="height: 58px; border-radius: 18px; background: #E8B800; color: #0F1B33; font-size: 16px; font-weight: 800; display: flex; align-items: center; justify-content: center">Crear cuenta</a>
+<a href="CIngresar.dc.html" style="height: 58px; border-radius: 18px; border: 1.5px solid #1B2A4A; color: #1B2A4A; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center">Ingresar</a>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

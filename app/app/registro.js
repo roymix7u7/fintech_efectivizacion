@@ -1,157 +1,67 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Image,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  BackHandler,
+  Animated,
+  TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../src/lib/supabase";
 import PERU_DATA from "../src/data/peru";
-import COLORS from "../src/theme/colors";
+import { colors, fonts } from "../src/theme/tokens";
 import { mensajeError } from "../src/lib/ui";
 import { useAviso } from "../src/components/Avisos";
 import { useAlturaTeclado } from "../src/lib/teclado";
 import { subirImagen, borrarImagenes } from "../src/lib/storage";
+import { marcarInicioSesion, entrarA } from "../src/lib/sesion";
 import SubidaDocumentos, {
   DOCUMENTOS,
   documentosCompletos,
+  fotosFaltantes,
 } from "../src/components/SubidaDocumentos";
 import {
   validarEmail,
-  validarDni,
+  validarDocumento,
+  largoDocumento,
   validarTelefono,
   validarNombre,
   validarPassword,
   reglasPassword,
-  primerError,
 } from "../src/lib/validaciones";
 import { hayConexion } from "../src/lib/conexion";
+import { Aparece } from "../src/components/Cargando";
+import { Boton } from "../src/components/ui/Boton";
+import { Toque } from "../src/components/ui/Toque";
+import { GlassPanel } from "../src/components/ui/GlassPanel";
+import { BarraFija, ALTO_BARRA_FIJA } from "../src/components/ui/BarraFija";
+import { CabeceraPasos } from "../src/components/ui/CabeceraPasos";
+import { Hoja } from "../src/components/ui/Hoja";
+import { Segmentado } from "../src/components/ui/Segmentado";
+import { Casilla, Enlace } from "../src/components/ui/Casilla";
+import { documentosVigentes, aceptar } from "../src/lib/legal";
+import {
+  Campo,
+  CodigoSeisCajas,
+  EtiquetaCampo,
+  FuerzaClave,
+  MensajeError,
+  ReglasClave,
+  useSacudida,
+} from "../src/components/ui/Campos";
 
 const BUCKET_KYC = "kyc-documentos";
 
-/**
- * IMPORTANTE: InputField y Selector viven fuera del componente de
- * pantalla a proposito. Si se declaran dentro, React los trata como un
- * tipo de componente distinto en cada render, desmonta el TextInput con
- * cada tecla y el teclado se cierra letra por letra.
- */
-function InputField({
-  icon,
-  placeholder,
-  value,
-  onChangeText,
-  keyboard,
-  maxLength,
-  secure,
-  showToggle,
-  toggleShow,
-  isShown,
-  autoCapitalize,
-  onLayout,
-  onFocus,
-  returnKeyType,
-  onSubmitEditing,
-}) {
-  return (
-    <View style={s.inputContainer} onLayout={onLayout}>
-      <Ionicons
-        name={icon}
-        size={20}
-        color={COLORS.textLight}
-        style={s.inputIcon}
-      />
-      <TextInput
-        style={s.input}
-        placeholder={placeholder}
-        value={value}
-        onChangeText={onChangeText}
-        onFocus={onFocus}
-        returnKeyType={returnKeyType || "next"}
-        onSubmitEditing={onSubmitEditing}
-        keyboardType={keyboard || "default"}
-        maxLength={maxLength}
-        secureTextEntry={Boolean(secure) && !isShown}
-        autoCorrect={false}
-        autoCapitalize={
-          autoCapitalize || (keyboard === "email-address" ? "none" : "sentences")
-        }
-        placeholderTextColor={COLORS.textLight}
-      />
-      {showToggle && (
-        <TouchableOpacity onPress={toggleShow} style={s.eyeBtn}>
-          <Ionicons
-            name={isShown ? "eye-off-outline" : "eye-outline"}
-            size={20}
-            color={COLORS.textLight}
-          />
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-}
-
-function Selector({
-  label,
-  icon,
-  valor,
-  opciones,
-  abierto,
-  onToggle,
-  onSelect,
-}) {
-  return (
-    <View>
-      <TouchableOpacity style={s.selectorBtn} onPress={onToggle}>
-        <Ionicons
-          name={icon}
-          size={20}
-          color={COLORS.textLight}
-          style={{ width: 28 }}
-        />
-        <Text style={valor ? s.selectorValue : s.selectorPlaceholder}>
-          {valor || `Selecciona ${label.toLowerCase()}`}
-        </Text>
-        <Ionicons
-          name={abierto ? "chevron-up" : "chevron-down"}
-          size={18}
-          color={COLORS.textLight}
-        />
-      </TouchableOpacity>
-      {abierto && (
-        <ScrollView style={s.selectorList} nestedScrollEnabled>
-          {opciones.map((op) => (
-            <TouchableOpacity
-              key={op}
-              style={s.selectorItem}
-              onPress={() => onSelect(op)}
-            >
-              <Text
-                style={[
-                  s.selectorItemText,
-                  valor === op && s.selectorItemActive,
-                ]}
-              >
-                {op}
-              </Text>
-              {valor === op && (
-                <Ionicons name="checkmark" size={18} color={COLORS.primary} />
-              )}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-    </View>
-  );
-}
-
 const FORM_VACIO = {
+  tipo_documento: "dni",
   nombres: "",
   apellidos: "",
   email: "",
@@ -166,10 +76,89 @@ const FORM_VACIO = {
   distrito: "",
 };
 
+/**
+ * "Áncash" → "ancash": para buscar sin depender de las tildes. Con
+ * reemplazos directos y no normalize(), que no todos los Android traen.
+ */
+const sinTildes = (t) =>
+  t
+    .toLowerCase()
+    .replace(/[áàä]/g, "a")
+    .replace(/[éèë]/g, "e")
+    .replace(/[íìï]/g, "i")
+    .replace(/[óòö]/g, "o")
+    .replace(/[úùü]/g, "u");
+
+/**
+ * Mensaje para un número que se escribe dígito a dígito: mientras falta
+ * largo dice cuántos faltan, que es lo que la persona necesita saber;
+ * con el largo completo, el motivo real (empieza en 9, no todos iguales).
+ */
+function errorDeDigitos(valor, largo, validar) {
+  if (valor.length > 0 && valor.length < largo) {
+    const faltan = largo - valor.length;
+    return `Faltan ${faltan} dígito${faltan === 1 ? "" : "s"}`;
+  }
+  return validar(valor);
+}
+
+/**
+ * Botón de ubigeo. Vive fuera de la pantalla a propósito: si se declara
+ * dentro, React lo trata como un componente nuevo en cada render.
+ */
+function Ubigeo({ etiqueta, valor, vacio, habilitado, error, senal, onAbrir }) {
+  const sacudida = useSacudida(senal, error);
+  return (
+    <Animated.View style={[{ flex: 1, minWidth: 0 }, sacudida]}>
+      <Toque
+        onPress={onAbrir}
+        disabled={!habilitado}
+        escala={0.99}
+        accessibilityLabel={`${etiqueta}: ${valor || "sin elegir"}`}
+        style={[
+          s.ubigeo,
+          !habilitado && { opacity: 0.5 },
+          valor
+            ? { borderColor: colors.success }
+            : error
+              ? { borderWidth: 2, borderColor: colors.error }
+              : null,
+        ]}
+      >
+        <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+          <Text style={s.ubigeoEtiqueta}>{etiqueta}</Text>
+          <Text
+            numberOfLines={1}
+            style={[s.ubigeoValor, !valor && { color: colors.textFaint }]}
+          >
+            {valor || vacio}
+          </Text>
+        </View>
+        <Ionicons
+          name={valor ? "checkmark" : "chevron-down"}
+          size={valor ? 16 : 18}
+          color={valor ? colors.success : colors.text3}
+        />
+      </Toque>
+    </Animated.View>
+  );
+}
+
+const TIPOS_DOC = [
+  { clave: "dni", titulo: "DNI", detalle: "Peruano", accesible: "DNI" },
+  {
+    clave: "ce",
+    titulo: "Carnet",
+    detalle: "de extranjería",
+    accesible: "Carnet de extranjería",
+  },
+];
+
 export default function RegistroScreen() {
   const [paso, setPaso] = useState(1);
   const [form, setForm] = useState(FORM_VACIO);
   const [codigoOtp, setCodigoOtp] = useState("");
+  const [codigoOk, setCodigoOk] = useState(false);
   const [fotos, setFotos] = useState({
     dni_frontal: null,
     dni_posterior: null,
@@ -177,47 +166,79 @@ export default function RegistroScreen() {
   });
   const [loading, setLoading] = useState(false);
   const [reenviando, setReenviando] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [abierto, setAbierto] = useState(null);
+  const [elegir, setElegir] = useState(null); // "departamento" | "provincia" | "distrito"
+  const [busqueda, setBusqueda] = useState("");
+  const [promoAbierto, setPromoAbierto] = useState(false);
+  // Cada intento de continuar con datos incompletos sube este contador:
+  // enciende los errores y sacude los campos que fallan.
+  const [intentos, setIntentos] = useState(0);
+  const [faltanVisible, setFaltanVisible] = useState(false);
+  // Consentimiento: dos casillas separadas, porque las fotos del
+  // documento y la selfie pueden ser datos sensibles y la ley pide una
+  // autorización aparte de los términos.
+  const [aceptaTerminos, setAceptaTerminos] = useState(false);
+  const [aceptaFotos, setAceptaFotos] = useState(false);
+  // Versiones vigentes al momento de aceptar: son las que se registran.
+  const [vigentes, setVigentes] = useState(null);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  /**
-   * Desplazamiento al campo enfocado.
-   *
-   * El teclado tapa la mitad inferior de la pantalla, asi que al tocar
-   * un campo de abajo el usuario escribe a ciegas y tiene que cerrar el
-   * teclado para comprobar lo que puso.
-   *
-   * Se guarda la posicion de cada campo cuando se dibuja, y al
-   * enfocarlo se lleva cerca del borde superior. Asi queda siempre a la
-   * vista, sin importar cuanto ocupe el teclado en ese telefono.
-   */
-  // Espacio en blanco al final igual al alto del teclado. Sin el, la
+  // Espacio en blanco al final igual al alto del teclado. Sin él, la
   // pantalla solo se desplaza hasta donde termina el contenido, y el
-  // ultimo campo queda atrapado debajo del teclado.
+  // último campo queda atrapado debajo del teclado.
   const altoTeclado = useAlturaTeclado();
   const { mostrar } = useAviso();
 
   const scrollRef = useRef(null);
   const posiciones = useRef({});
+  const grupos = useRef({});
   const inicioForm = useRef(0);
+  const verificando = useRef(false);
 
-  function recordarPos(campo) {
+  // Desde el paso 2 la cuenta de Auth ya existe: el botón atrás del
+  // teléfono no puede devolver al formulario, solo produciría un correo
+  // duplicado.
+  useEffect(() => {
+    if (paso === 1) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      mostrar(
+        paso === 2
+          ? "Ya creamos tu cuenta con ese correo. Termina de verificarla."
+          : "Sube tus fotos para terminar. Tu cuenta ya está creada.",
+        "info",
+      );
+      return true;
+    });
+    return () => sub.remove();
+  }, [paso]);
+
+  /**
+   * Desplazamiento al campo enfocado. Cada campo vive dentro de una
+   * tarjeta: su "y" es relativa a ella, así que se guarda también dónde
+   * empieza cada tarjeta y al enfocar se suman las dos.
+   */
+  function recordarGrupo(grupo) {
     return (e) => {
-      posiciones.current[campo] = e.nativeEvent.layout.y;
+      grupos.current[grupo] = e.nativeEvent.layout.y;
+    };
+  }
+
+  function recordarPos(campo, grupo) {
+    return (e) => {
+      posiciones.current[campo] = { grupo, y: e.nativeEvent.layout.y };
     };
   }
 
   function alEnfocar(campo) {
     return () => {
-      const y = posiciones.current[campo];
-      if (y == null || !scrollRef.current) return;
+      const pos = posiciones.current[campo];
+      if (!pos || !scrollRef.current) return;
+      const y = (grupos.current[pos.grupo] || 0) + pos.y;
       // La espera deja que el teclado termine de subir; sin ella el
-      // desplazamiento se calcula contra una pantalla que aun cambia.
+      // desplazamiento se calcula contra una pantalla que aún cambia.
       setTimeout(() => {
         scrollRef.current?.scrollTo({
-          y: Math.max(0, inicioForm.current + y - 16),
+          y: Math.max(0, inicioForm.current + y - 24),
           animated: true,
         });
       }, 140);
@@ -229,50 +250,131 @@ export default function RegistroScreen() {
   }
 
   function handleBack() {
-    // Desde el paso 2 en adelante la cuenta de Auth ya existe, asi que
-    // retroceder al formulario solo produciria un correo duplicado.
-    if (paso === 3) return;
-    if (paso === 2) {
-      mostrar(
-        "Ya creamos tu cuenta con ese correo. Termina de verificarla.",
-        "info",
-      );
-      return;
-    }
     if (router.canGoBack()) router.back();
-    else router.replace("/login");
+    else router.replace("/");
   }
 
-  const departamentos = Object.keys(PERU_DATA).sort();
+  // ── Ubigeo ──
+  // El listado ya viene ordenado sin tildes (Áncash junto a Amazonas):
+  // el .sort() de JavaScript lo mandaba al final.
+  const departamentos = Object.keys(PERU_DATA);
   const provincias = form.departamento
-    ? Object.keys(PERU_DATA[form.departamento] || {}).sort()
+    ? Object.keys(PERU_DATA[form.departamento] || {})
     : [];
   const distritos =
     form.departamento && form.provincia
-      ? [...(PERU_DATA[form.departamento]?.[form.provincia] || [])].sort()
+      ? PERU_DATA[form.departamento]?.[form.provincia] || []
       : [];
+  const todasUbigeo =
+    { departamento: departamentos, provincia: provincias, distrito: distritos }[
+      elegir
+    ] || [];
+  const conBuscador = todasUbigeo.length > 10;
+  const filtro = sinTildes(busqueda.trim());
+  const opcionesUbigeo = filtro
+    ? todasUbigeo.filter((op) => sinTildes(op).includes(filtro))
+    : todasUbigeo;
+  // Que la combinación exista de verdad en el listado del INEI.
+  const ubigeoValido = Boolean(
+    form.departamento &&
+    form.provincia &&
+    PERU_DATA[form.departamento]?.[form.provincia]?.includes(form.distrito),
+  );
 
+  function abrirUbigeo(nivel) {
+    setBusqueda("");
+    setElegir(nivel);
+  }
+
+  function elegirUbigeo(valor) {
+    if (elegir === "departamento")
+      setForm((p) => ({
+        ...p,
+        departamento: valor,
+        provincia: "",
+        distrito: "",
+      }));
+    else if (elegir === "provincia")
+      setForm((p) => ({ ...p, provincia: valor, distrito: "" }));
+    else updateForm("distrito", valor);
+    setElegir(null);
+  }
+
+  // ── Validación en vivo ──
+  const largo = largoDocumento(form.tipo_documento);
+  const esCe = form.tipo_documento === "ce";
   const passChecks = reglasPassword(form.password, form.confirmarPassword);
+  const errores = {
+    nombres: validarNombre(form.nombres, "nombres"),
+    apellidos: validarNombre(form.apellidos, "apellidos"),
+    dni: errorDeDigitos(form.dni, largo, (v) =>
+      validarDocumento(form.tipo_documento, v),
+    ),
+    telefono: errorDeDigitos(form.telefono, 9, validarTelefono),
+    ubicacion: !ubigeoValido
+      ? "Elige departamento, provincia y distrito"
+      : null,
+    direccion: form.direccion.trim().length < 5 ? "Escribe tu dirección" : null,
+    email: validarEmail(form.email),
+    password: validarPassword(form.password, form.password),
+    confirmar: !passChecks.match ? "Las contraseñas no coinciden" : null,
+  };
+  // Un error se muestra si la persona ya intentó continuar, o si está
+  // escribiendo algo que ya se ve mal (el correo con más de 3 letras,
+  // un documento o celular a medio escribir).
+  const mostrarErr = (campo) => {
+    if (!errores[campo]) return null;
+    if (intentos > 0) return errores[campo];
+    if (campo === "dni" || campo === "telefono")
+      return form[campo].length > 0 ? errores[campo] : null;
+    if (campo === "email") return form.email.length > 3 ? errores.email : null;
+    if (campo === "confirmar")
+      return form.confirmarPassword.length > 0 ? errores.confirmar : null;
+    return null;
+  };
+  const okDe = (campo, valor) =>
+    !errores[campo] && String(valor || "").length > 0;
 
-  function validarPaso1() {
-    return primerError(
-      validarNombre(form.nombres, "nombres"),
-      validarNombre(form.apellidos, "apellidos"),
-      validarDni(form.dni),
-      validarTelefono(form.telefono),
-      !form.departamento ? "Selecciona tu departamento." : null,
-      !form.provincia ? "Selecciona tu provincia." : null,
-      !form.distrito ? "Selecciona tu distrito." : null,
-      !form.direccion.trim() ? "Ingresa tu direccion." : null,
-      validarEmail(form.email),
-      validarPassword(form.password, form.confirmarPassword),
-    );
+  const faltantes = [
+    errores.nombres && "Nombres",
+    errores.apellidos && "Apellidos",
+    errores.dni && (esCe ? "Número de carnet" : "Número de DNI"),
+    errores.telefono && "Celular",
+    errores.ubicacion && "Departamento, provincia y distrito",
+    errores.direccion && "Dirección",
+    errores.email && "Correo",
+    errores.password && "Contraseña (revisa los requisitos)",
+    !errores.password && errores.confirmar && "Confirmar contraseña",
+    !aceptaTerminos && "Aceptar los términos y la política de privacidad",
+    !aceptaFotos && "Autorizar el uso de tus fotos de identidad",
+  ].filter(Boolean);
+
+  // Las versiones vigentes se piden al entrar: lo que la persona lee
+  // al tocar el enlace es lo que después queda registrado.
+  useEffect(() => {
+    documentosVigentes()
+      .then(setVigentes)
+      .catch(() => {});
+  }, []);
+
+  async function continuar() {
+    if (faltantes.length) {
+      setIntentos((n) => n + 1);
+      setFaltanVisible(true);
+      return;
+    }
+    // Sin las versiones no hay qué registrar: no se crea la cuenta.
+    if (!vigentes?.length) {
+      try {
+        setVigentes(await documentosVigentes());
+      } catch {
+        return mostrar("No pudimos cargar los términos. Revisa tu conexión e inténtalo otra vez.", "error");
+      }
+    }
+    enviarCodigoVerificacion();
   }
 
   async function enviarCodigoVerificacion() {
-    const error = validarPaso1();
-    if (error) return mostrar(error, "atencion");
-
     setLoading(true);
     try {
       if (!(await hayConexion())) {
@@ -317,25 +419,40 @@ export default function RegistroScreen() {
     }
   }
 
+  // Con los seis dígitos se verifica solo, sin botón: es lo que la
+  // persona espera después de pegar o escribir el código.
+  function cambiarCodigo(v) {
+    setCodigoOtp(v);
+    if (v.length === 6) verificarCodigo(v);
+  }
+
   /**
    * Verifica el codigo y crea de inmediato la fila en users.
    * Se hace aqui y no al final para que nadie quede con una cuenta de
    * Auth sin fila en users: eso dejaba al usuario sin poder entrar ni
    * volver a registrarse con el mismo correo.
    */
-  async function verificarCodigo() {
+  async function verificarCodigo(token = codigoOtp) {
+    if (verificando.current) return;
+    verificando.current = true;
     setLoading(true);
     try {
       const { data, error } = await supabase.auth.verifyOtp({
         email: form.email.trim().toLowerCase(),
-        token: codigoOtp,
+        token,
         type: "signup",
       });
-      if (error) return mostrar("El código es incorrecto o ya expiró", "error");
+      if (error) {
+        setCodigoOtp("");
+        return mostrar("El código es incorrecto o ya expiró", "error");
+      }
 
       const uid = data.user?.id;
       if (!uid)
-        return mostrar("No pudimos confirmar tu cuenta. Intenta de nuevo.", "error");
+        return mostrar(
+          "No pudimos confirmar tu cuenta. Intenta de nuevo.",
+          "error",
+        );
 
       const { data: existente } = await supabase
         .from("users")
@@ -353,10 +470,23 @@ export default function RegistroScreen() {
         if (userError) return mostrar(mensajeError(userError), "error");
       }
 
-      setPaso(3);
+      // Primer momento en que existe la cuenta: se registra lo que
+      // aceptó en el paso 1, antes de que suba ninguna foto. Si falla,
+      // la app se lo vuelve a pedir al entrar (AceptarCondiciones).
+      try {
+        const lista = vigentes?.length ? vigentes : await documentosVigentes();
+        await aceptar(lista.map((d) => d.id));
+      } catch {}
+
+      // Desde aquí hay sesión: empiezan a contar sus dos horas.
+      await marcarInicioSesion();
+      setCodigoOk(true);
+      // Se deja ver el "Correo verificado" un momento antes de avanzar.
+      setTimeout(() => setPaso(3), 900);
     } catch (err) {
       mostrar(mensajeError(err), "error");
     } finally {
+      verificando.current = false;
       setLoading(false);
     }
   }
@@ -374,9 +504,8 @@ export default function RegistroScreen() {
 
   /**
    * Sube los documentos y crea el perfil.
-   * Si una foto falla se aborta todo y se limpia lo ya subido. Antes el
-   * error solo se escribia en consola y la cuenta se creaba sin
-   * documentos, dejando al gestor sin nada que revisar.
+   * Si una foto falla se aborta todo y se limpia lo ya subido: antes la
+   * cuenta se creaba sin documentos y el gestor no tenía nada que revisar.
    */
   async function finalizarRegistro() {
     setLoading(true);
@@ -414,6 +543,7 @@ export default function RegistroScreen() {
         user_id: user.id,
         nombres: form.nombres.trim(),
         apellidos: form.apellidos.trim(),
+        tipo_documento: form.tipo_documento,
         dni: form.dni,
         telefono: "+51" + form.telefono,
         direccion,
@@ -438,9 +568,11 @@ export default function RegistroScreen() {
 
       if (perfilError) throw perfilError;
 
-      await supabase.auth.signOut();
-      mostrar("Cuenta creada. Revisaremos tus documentos.", "exito", 4500);
-      router.replace("/login");
+      // Igual que en el prototipo: no se le saca de la app, pasa a ver
+      // en qué va su revisión. Esa pantalla escucha a la base y lo deja
+      // entrar apenas el gestor lo aprueba.
+      mostrar("Documentos enviados. Una persona los revisará.", "exito", 4000);
+      entrarA(router, "/en-revision");
     } catch (err) {
       await borrarImagenes(BUCKET_KYC, subidos);
       mostrar(mensajeError(err), "error");
@@ -449,676 +581,831 @@ export default function RegistroScreen() {
     }
   }
 
-  const pasoTitulos = {
-    1: { titulo: "Crear cuenta", sub: "Completa tus datos personales" },
-    2: { titulo: "Verificar correo", sub: "Confirma tu direccion de email" },
-    3: { titulo: "Documentos", sub: "Verifica tu identidad con fotos" },
+  const titulos = {
+    1: { titulo: "Crea tu cuenta", sub: null },
+    2: {
+      titulo: "Revisa tu correo",
+      sub: "Te enviamos un código de 6 dígitos.",
+    },
+    3: {
+      titulo: "Tu identidad",
+      sub: "La revisa una persona, no un algoritmo.",
+    },
   };
-  const pasoIconos = ["person-outline", "mail-outline", "camera-outline"];
+  const conBarra = paso !== 2 && altoTeclado === 0;
+  const faltanFotos = fotosFaltantes(fotos);
 
   return (
     <KeyboardAvoidingView
-      style={s.screen}
+      style={s.pantalla}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      {/* Header */}
-      <View style={s.header}>
-        <TouchableOpacity
-          onPress={handleBack}
-          style={s.backBtn}
-          disabled={paso === 3}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={22}
-            color={paso === 3 ? "transparent" : COLORS.white}
-          />
-        </TouchableOpacity>
-        <View style={s.headerCenter}>
-          <Image
-            source={require("../assets/LOGOATK.png")}
-            style={s.headerLogo}
-            resizeMode="contain"
-          />
-          <Text style={s.headerBrand}>ALTOQUE PERU</Text>
-        </View>
-        <View style={{ width: 34 }} />
-      </View>
-
-      {/* Stepper */}
-      <View style={s.stepperContainer}>
-        <View style={s.stepper}>
-          {[1, 2, 3].map((n) => (
-            <View key={n} style={s.stepRow}>
-              <View
-                style={[
-                  s.stepCircle,
-                  paso >= n && s.stepCircleActive,
-                  paso === n && s.stepCircleCurrent,
-                ]}
-              >
-                {paso > n ? (
-                  <Ionicons name="checkmark" size={16} color={COLORS.white} />
-                ) : (
-                  <Ionicons
-                    name={pasoIconos[n - 1]}
-                    size={16}
-                    color={paso >= n ? COLORS.white : COLORS.textLight}
-                  />
-                )}
-              </View>
-              {n < 3 && (
-                <View style={[s.stepLine, paso > n && s.stepLineActive]} />
-              )}
-            </View>
-          ))}
-        </View>
-        <Text style={s.stepLabel}>{pasoTitulos[paso].sub}</Text>
-      </View>
-
+      <StatusBar style="light" />
       <ScrollView
         ref={scrollRef}
-        style={s.scrollView}
-        contentContainerStyle={[s.content, { paddingBottom: 40 + altoTeclado }]}
+        contentContainerStyle={{
+          paddingBottom:
+            (conBarra ? ALTO_BARRA_FIJA : 0) + insets.bottom + 32 + altoTeclado,
+        }}
         keyboardShouldPersistTaps="handled"
-        // Arrastrar la lista cierra el teclado: es el gesto natural
-        // para volver a ver el formulario completo.
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
-        {/* ── PASO 1: Datos personales ── */}
-        {paso === 1 && (
-          <View
-            style={s.form}
-            onLayout={(e) => {
-              inicioForm.current = e.nativeEvent.layout.y;
-            }}
-          >
-            <Text style={s.sectionLabel}>Informacion personal</Text>
-            <InputField
-              icon="person-outline"
-              placeholder="Nombres *"
-              value={form.nombres}
-              onChangeText={(v) => updateForm("nombres", v)}
-              autoCapitalize="words"
-              onLayout={recordarPos("nombres")}
-              onFocus={alEnfocar("nombres")}
-            />
-            <InputField
-              icon="person-outline"
-              placeholder="Apellidos *"
-              value={form.apellidos}
-              onChangeText={(v) => updateForm("apellidos", v)}
-              autoCapitalize="words"
-              onLayout={recordarPos("apellidos")}
-              onFocus={alEnfocar("apellidos")}
-            />
-            <InputField
-              icon="id-card-outline"
-              placeholder="DNI * (8 digitos)"
-              value={form.dni}
-              onChangeText={(v) =>
-                updateForm("dni", v.replace(/\D/g, "").slice(0, 8))
-              }
-              keyboard="numeric"
-              maxLength={8}
-              onLayout={recordarPos("dni")}
-              onFocus={alEnfocar("dni")}
-            />
+        <CabeceraPasos
+          paso={paso}
+          titulo={titulos[paso].titulo}
+          subtitulo={titulos[paso].sub}
+          onVolver={paso === 1 ? handleBack : null}
+        />
 
-            <View style={s.phoneRow} onLayout={recordarPos("telefono")}>
-              <View style={s.phonePrefix}>
-                <Text style={s.phonePrefixFlag}>PE</Text>
-                <Text style={s.phonePrefixText}>+51</Text>
-              </View>
-              <View style={[s.inputContainer, { flex: 1 }]}>
-                <TextInput
-                  style={s.input}
-                  placeholder="987 654 321"
-                  onFocus={alEnfocar("telefono")}
-                  value={form.telefono}
-                  onChangeText={(v) =>
-                    updateForm("telefono", v.replace(/\D/g, "").slice(0, 9))
-                  }
-                  keyboardType="phone-pad"
-                  maxLength={9}
-                  placeholderTextColor={COLORS.textLight}
-                />
-              </View>
-            </View>
-
-            <Text style={s.sectionLabel}>Ubicacion</Text>
-            <Selector
-              label="Departamento"
-              icon="navigate-outline"
-              valor={form.departamento}
-              opciones={departamentos}
-              abierto={abierto === "departamento"}
-              onToggle={() =>
-                setAbierto(abierto === "departamento" ? null : "departamento")
-              }
-              onSelect={(v) => {
-                setForm((p) => ({
-                  ...p,
-                  departamento: v,
-                  provincia: "",
-                  distrito: "",
-                }));
-                setAbierto(null);
-              }}
-            />
-            {form.departamento ? (
-              <Selector
-                label="Provincia"
-                icon="map-outline"
-                valor={form.provincia}
-                opciones={provincias}
-                abierto={abierto === "provincia"}
-                onToggle={() =>
-                  setAbierto(abierto === "provincia" ? null : "provincia")
-                }
-                onSelect={(v) => {
-                  setForm((p) => ({ ...p, provincia: v, distrito: "" }));
-                  setAbierto(null);
-                }}
-              />
-            ) : null}
-            {form.provincia ? (
-              <Selector
-                label="Distrito"
-                icon="location-outline"
-                valor={form.distrito}
-                opciones={distritos}
-                abierto={abierto === "distrito"}
-                onToggle={() =>
-                  setAbierto(abierto === "distrito" ? null : "distrito")
-                }
-                onSelect={(v) => {
-                  updateForm("distrito", v);
-                  setAbierto(null);
-                }}
-              />
-            ) : null}
-            <InputField
-              icon="home-outline"
-              placeholder="Direccion * (calle, manzana, lote)"
-              value={form.direccion}
-              onChangeText={(v) => updateForm("direccion", v)}
-              onLayout={recordarPos("direccion")}
-              onFocus={alEnfocar("direccion")}
-            />
-            <InputField
-              icon="pricetag-outline"
-              placeholder="Codigo promocional (opcional)"
-              value={form.codigo_promo}
-              onChangeText={(v) => updateForm("codigo_promo", v)}
-              autoCapitalize="characters"
-              onLayout={recordarPos("promo")}
-              onFocus={alEnfocar("promo")}
-            />
-
-            <Text style={s.sectionLabel}>Acceso a la cuenta</Text>
-            <InputField
-              icon="mail-outline"
-              placeholder="Correo electronico *"
-              value={form.email}
-              onChangeText={(v) => updateForm("email", v)}
-              keyboard="email-address"
-              onLayout={recordarPos("email")}
-              onFocus={alEnfocar("email")}
-            />
-            <InputField
-              icon="lock-closed-outline"
-              placeholder="Contrasena * (min. 8 caracteres)"
-              value={form.password}
-              onChangeText={(v) => updateForm("password", v)}
-              secure
-              showToggle
-              toggleShow={() => setShowPassword(!showPassword)}
-              isShown={showPassword}
-              onLayout={recordarPos("password")}
-              onFocus={alEnfocar("password")}
-            />
-
-            {form.password.length > 0 && (
-              <View style={s.checkList}>
-                {[
-                  { ok: passChecks.length, label: "Minimo 8 caracteres" },
-                  { ok: passChecks.upper, label: "Una mayuscula" },
-                  { ok: passChecks.lower, label: "Una minuscula" },
-                  { ok: passChecks.number, label: "Un numero" },
-                  { ok: passChecks.special, label: "Un simbolo" },
-                ].map((c) => (
-                  <View key={c.label} style={s.checkRow}>
-                    <Ionicons
-                      name={c.ok ? "checkmark-circle" : "ellipse-outline"}
-                      size={16}
-                      color={c.ok ? COLORS.success : COLORS.textLight}
+        <View
+          style={s.cuerpo}
+          onLayout={(e) => {
+            inicioForm.current = e.nativeEvent.layout.y;
+          }}
+        >
+          {/* ── PASO 1: Datos ── */}
+          {paso === 1 && (
+            <>
+              <View onLayout={recordarGrupo("identidad")}>
+                <GlassPanel variant="light" radius={26} style={s.grupo}>
+                  <View onLayout={recordarPos("nombres", "identidad")}>
+                    <Campo
+                      etiqueta="Nombres"
+                      value={form.nombres}
+                      onChangeText={(v) => updateForm("nombres", v)}
+                      placeholder="Ingresa tus nombres"
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      autoComplete="given-name"
+                      ok={okDe("nombres", form.nombres)}
+                      error={mostrarErr("nombres")}
+                      senal={intentos}
+                      onFocus={alEnfocar("nombres")}
                     />
-                    <Text style={[s.checkText, c.ok && s.checkTextOk]}>
-                      {c.label}
-                    </Text>
                   </View>
-                ))}
+                  <View onLayout={recordarPos("apellidos", "identidad")}>
+                    <Campo
+                      etiqueta="Apellidos"
+                      value={form.apellidos}
+                      onChangeText={(v) => updateForm("apellidos", v)}
+                      placeholder="Ingresa tus apellidos"
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      autoComplete="family-name"
+                      ok={okDe("apellidos", form.apellidos)}
+                      error={mostrarErr("apellidos")}
+                      senal={intentos}
+                      onFocus={alEnfocar("apellidos")}
+                    />
+                  </View>
+
+                  {/* Documento: el selector va solo en su fila, a todo el
+                      ancho. Al lado del número cada opción quedaba en
+                      ~50 px y "Carnet de extranjería" no entraba.
+                      Cambiar de tipo borra el número: el largo es otro. */}
+                  <View style={s.documento}>
+                    <EtiquetaCampo texto="Tipo de documento" />
+                    <Segmentado
+                      opciones={TIPOS_DOC}
+                      valor={form.tipo_documento}
+                      accessibilityLabel="Tipo de documento"
+                      onCambio={(t) =>
+                        t !== form.tipo_documento &&
+                        setForm((p) => ({ ...p, tipo_documento: t, dni: "" }))
+                      }
+                    />
+                  </View>
+
+                  <View onLayout={recordarPos("dni", "identidad")}>
+                    <Campo
+                      etiqueta={esCe ? "Número de carnet" : "Número de DNI"}
+                      value={form.dni}
+                      onChangeText={(v) =>
+                        updateForm("dni", v.replace(/\D/g, "").slice(0, largo))
+                      }
+                      keyboardType="number-pad"
+                      maxLength={largo}
+                      placeholder={`${largo} dígitos`}
+                      style={{ letterSpacing: 1.5 }}
+                      ok={okDe("dni", form.dni)}
+                      error={mostrarErr("dni")}
+                      senal={intentos}
+                      onFocus={alEnfocar("dni")}
+                    />
+                  </View>
+                </GlassPanel>
               </View>
-            )}
 
-            <InputField
-              icon="lock-closed-outline"
-              placeholder="Confirmar contrasena *"
-              value={form.confirmarPassword}
-              onChangeText={(v) => updateForm("confirmarPassword", v)}
-              secure
-              showToggle
-              toggleShow={() => setShowConfirm(!showConfirm)}
-              isShown={showConfirm}
-              onLayout={recordarPos("confirmar")}
-              onFocus={alEnfocar("confirmar")}
-              returnKeyType="done"
-              onSubmitEditing={enviarCodigoVerificacion}
-            />
+              <View onLayout={recordarGrupo("contacto")}>
+                <GlassPanel variant="light" radius={26} style={s.grupo}>
+                  <View onLayout={recordarPos("telefono", "contacto")}>
+                    <Campo
+                      etiqueta="Celular"
+                      prefijo="+51"
+                      value={form.telefono}
+                      onChangeText={(v) =>
+                        updateForm("telefono", v.replace(/\D/g, "").slice(0, 9))
+                      }
+                      keyboardType="phone-pad"
+                      maxLength={9}
+                      placeholder="9 dígitos"
+                      autoComplete="tel"
+                      ok={okDe("telefono", form.telefono)}
+                      error={mostrarErr("telefono")}
+                      senal={intentos}
+                      onFocus={alEnfocar("telefono")}
+                    />
+                  </View>
 
-            {form.confirmarPassword.length > 0 && (
-              <View style={s.matchRow}>
-                <Ionicons
-                  name={passChecks.match ? "checkmark-circle" : "close-circle"}
-                  size={16}
-                  color={passChecks.match ? COLORS.success : COLORS.error}
-                />
-                <Text
+                  <View style={{ gap: 6 }}>
+                    <EtiquetaCampo texto="Ubicación" />
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <Ubigeo
+                        etiqueta="Departamento"
+                        valor={form.departamento}
+                        vacio="Elige"
+                        habilitado
+                        error={intentos > 0 && !form.departamento}
+                        senal={intentos}
+                        onAbrir={() => abrirUbigeo("departamento")}
+                      />
+                      <Ubigeo
+                        etiqueta="Provincia"
+                        valor={form.provincia}
+                        vacio="Elige"
+                        habilitado={Boolean(form.departamento)}
+                        error={
+                          intentos > 0 &&
+                          Boolean(form.departamento) &&
+                          !form.provincia
+                        }
+                        senal={intentos}
+                        onAbrir={() => abrirUbigeo("provincia")}
+                      />
+                    </View>
+                    <View style={{ flexDirection: "row" }}>
+                      <Ubigeo
+                        etiqueta="Distrito"
+                        valor={form.distrito}
+                        vacio="Elige tu distrito"
+                        habilitado={Boolean(form.provincia)}
+                        error={
+                          intentos > 0 &&
+                          Boolean(form.provincia) &&
+                          !form.distrito
+                        }
+                        senal={intentos}
+                        onAbrir={() => abrirUbigeo("distrito")}
+                      />
+                    </View>
+                    {intentos > 0 && errores.ubicacion ? (
+                      <MensajeError texto={errores.ubicacion} />
+                    ) : null}
+                  </View>
+
+                  <View onLayout={recordarPos("direccion", "contacto")}>
+                    <Campo
+                      etiqueta="Dirección"
+                      value={form.direccion}
+                      onChangeText={(v) => updateForm("direccion", v)}
+                      placeholder="Av., calle, número"
+                      autoComplete="street-address"
+                      ok={okDe("direccion", form.direccion)}
+                      error={mostrarErr("direccion")}
+                      senal={intentos}
+                      onFocus={alEnfocar("direccion")}
+                    />
+                  </View>
+                  <View onLayout={recordarPos("email", "contacto")}>
+                    <Campo
+                      etiqueta="Correo"
+                      value={form.email}
+                      onChangeText={(v) => updateForm("email", v)}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="email"
+                      placeholder="tucorreo@ejemplo.com"
+                      ok={okDe("email", form.email)}
+                      error={mostrarErr("email")}
+                      senal={intentos}
+                      onFocus={alEnfocar("email")}
+                    />
+                  </View>
+                </GlassPanel>
+              </View>
+
+              <View onLayout={recordarGrupo("seguridad")}>
+                <GlassPanel variant="light" radius={26} style={s.grupo}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={18}
+                      color={colors.goldText}
+                    />
+                    <Text style={s.grupoTitulo}>Tu contraseña</Text>
+                  </View>
+                  <View onLayout={recordarPos("password", "seguridad")}>
+                    <Campo
+                      etiqueta="Contraseña"
+                      value={form.password}
+                      onChangeText={(v) => updateForm("password", v)}
+                      secreto
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="new-password"
+                      placeholder="••••••••"
+                      ok={!errores.password}
+                      error={
+                        intentos > 0 && errores.password
+                          ? "Revisa los requisitos de abajo"
+                          : null
+                      }
+                      senal={intentos}
+                      onFocus={alEnfocar("password")}
+                    />
+                  </View>
+                  <FuerzaClave clave={form.password} />
+                  <View onLayout={recordarPos("confirmar", "seguridad")}>
+                    <Campo
+                      etiqueta="Confirmar contraseña"
+                      value={form.confirmarPassword}
+                      onChangeText={(v) => updateForm("confirmarPassword", v)}
+                      secreto
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="new-password"
+                      placeholder="••••••••"
+                      returnKeyType="done"
+                      onSubmitEditing={continuar}
+                      ok={!errores.password && passChecks.match}
+                      error={mostrarErr("confirmar")}
+                      senal={intentos}
+                      onFocus={alEnfocar("confirmar")}
+                    />
+                  </View>
+                  <ReglasClave reglas={passChecks} mostrarCoincide />
+                </GlassPanel>
+              </View>
+
+              {/* Consentimiento: va al final, cuando ya sabe qué datos nos da. */}
+              <View onLayout={recordarGrupo("legal")}>
+                <GlassPanel variant="light" radius={26} style={s.grupo}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Ionicons name="shield-checkmark-outline" size={18} color={colors.goldText} />
+                    <Text style={s.grupoTitulo}>Tu privacidad</Text>
+                  </View>
+                  <Casilla
+                    marcada={aceptaTerminos}
+                    onCambio={setAceptaTerminos}
+                    error={intentos > 0 && !aceptaTerminos}
+                    senal={intentos}
+                    accessibilityLabel="Acepto los Términos y condiciones y la Política de privacidad"
+                  >
+                    Acepto los <Enlace onPress={() => router.push("/legal/terminos")}>Términos y condiciones</Enlace> y la{" "}
+                    <Enlace onPress={() => router.push("/legal/privacidad")}>Política de privacidad</Enlace>.
+                  </Casilla>
+                  <Casilla
+                    marcada={aceptaFotos}
+                    onCambio={setAceptaFotos}
+                    error={intentos > 0 && !aceptaFotos}
+                    senal={intentos}
+                    accessibilityLabel="Autorizo el uso de las fotos de mi documento y mi selfie para verificar mi identidad"
+                  >
+                    Autorizo el uso de las fotos de mi documento y mi selfie solo para verificar mi identidad.{" "}
+                    <Enlace onPress={() => router.push("/legal/biometria")}>Ver detalle</Enlace>
+                  </Casilla>
+                </GlassPanel>
+              </View>
+
+              {/* El código es opcional: plegado para que no parezca un
+                  campo más que hay que llenar. */}
+              <View onLayout={recordarGrupo("promo")}>
+                {promoAbierto || form.codigo_promo ? (
+                  <Aparece>
+                    <GlassPanel variant="light" radius={26} style={s.grupo}>
+                      <View onLayout={recordarPos("promo", "promo")}>
+                        <Campo
+                          etiqueta="Código promocional (opcional)"
+                          value={form.codigo_promo}
+                          onChangeText={(v) => updateForm("codigo_promo", v)}
+                          autoCapitalize="characters"
+                          autoCorrect={false}
+                          autoFocus={promoAbierto && !form.codigo_promo}
+                          onFocus={alEnfocar("promo")}
+                        />
+                      </View>
+                    </GlassPanel>
+                  </Aparece>
+                ) : (
+                  <Toque
+                    onPress={() => setPromoAbierto(true)}
+                    accessibilityLabel="Agregar código promocional"
+                    style={s.promo}
+                  >
+                    <View style={s.promoMas}>
+                      <Text style={s.promoMasTexto}>+</Text>
+                    </View>
+                    <Text style={s.promoTexto}>
+                      Código promocional{" "}
+                      <Text
+                        style={{ fontFamily: fonts.label, color: colors.text3 }}
+                      >
+                        (opcional)
+                      </Text>
+                    </Text>
+                  </Toque>
+                )}
+              </View>
+
+              <Toque
+                onPress={() => router.replace("/login")}
+                accessibilityLabel="Ya tengo cuenta. Iniciar sesión"
+                style={s.enlace}
+              >
+                <Text style={s.enlaceTexto}>
+                  ¿Ya tienes cuenta?{" "}
+                  <Text style={s.enlaceFuerte}>Inicia sesión</Text>
+                </Text>
+              </Toque>
+            </>
+          )}
+
+          {/* ── PASO 2: Verificar correo ── */}
+          {paso === 2 && (
+            <Aparece key="paso2">
+              <GlassPanel variant="light" radius={26} style={s.grupo}>
+                <View
                   style={{
-                    fontSize: 13,
-                    color: passChecks.match ? COLORS.success : COLORS.error,
-                    marginLeft: 6,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
                   }}
                 >
-                  {passChecks.match
-                    ? "Las contrasenas coinciden"
-                    : "Las contrasenas no coinciden"}
+                  <View style={s.sobre}>
+                    <Ionicons
+                      name="mail-outline"
+                      size={22}
+                      color={colors.gold}
+                    />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                    <Text style={s.enviadoA}>Enviado a</Text>
+                    <Text style={s.correo} numberOfLines={1}>
+                      {form.email.trim().toLowerCase()}
+                    </Text>
+                  </View>
+                </View>
+                <CodigoSeisCajas
+                  valor={codigoOtp}
+                  onCambio={cambiarCodigo}
+                  autoFocus
+                  ok={codigoOk}
+                  deshabilitado={loading || codigoOk}
+                />
+                {codigoOk ? (
+                  <View style={s.verificado}>
+                    <Ionicons
+                      name="checkmark"
+                      size={14}
+                      color={colors.successText}
+                    />
+                    <Text style={s.verificadoTexto}>Correo verificado</Text>
+                  </View>
+                ) : (
+                  <Text style={s.ayuda}>
+                    {loading
+                      ? "Verificando..."
+                      : "Toca los recuadros para escribir. ¿No llegó? Revisa spam."}
+                  </Text>
+                )}
+              </GlassPanel>
+              <View style={s.creada}>
+                <View style={s.puntoVerde} />
+                <Text style={s.creadaTexto}>Tu cuenta ya fue creada</Text>
+              </View>
+              {!codigoOk ? (
+                <Toque
+                  onPress={reenviarCodigo}
+                  disabled={reenviando}
+                  hitSlop={8}
+                  accessibilityLabel="Reenviar código"
+                  style={{
+                    alignSelf: "center",
+                    minHeight: 44,
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={s.reenviar}>
+                    {reenviando ? "Reenviando..." : "Reenviar código"}
+                  </Text>
+                </Toque>
+              ) : null}
+            </Aparece>
+          )}
+
+          {/* ── PASO 3: Documentos ── */}
+          {paso === 3 && (
+            <Aparece key="paso3">
+              <GlassPanel variant="light" radius={26} style={s.grupo}>
+                <SubidaDocumentos
+                  fotos={fotos}
+                  onChange={setFotos}
+                  deshabilitado={loading}
+                  tipoDocumento={form.tipo_documento}
+                />
+              </GlassPanel>
+              <View style={s.creada}>
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={15}
+                  color={colors.goldText}
+                />
+                <Text style={[s.creadaTexto, { color: colors.text2 }]}>
+                  Tus fotos se guardan cifradas
                 </Text>
               </View>
-            )}
-
-            <TouchableOpacity
-              style={[s.btnPrimary, loading && s.btnDisabled]}
-              onPress={enviarCodigoVerificacion}
-              disabled={loading}
-            >
-              <Text style={s.btnPrimaryText}>
-                {loading ? "Enviando codigo..." : "Continuar"}
-              </Text>
-              {!loading && (
-                <Ionicons
-                  name="arrow-forward"
-                  size={18}
-                  color={COLORS.primaryDark}
-                />
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => router.replace("/login")}
-              style={s.linkRow}
-            >
-              <Text style={s.linkText}>Ya tienes cuenta?</Text>
-              <Text style={s.linkBold}> Inicia sesion</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ── PASO 2: Verificar correo ── */}
-        {paso === 2 && (
-          <View style={s.form}>
-            <View style={s.otpCard}>
-              <View style={s.otpIconBg}>
-                <Ionicons
-                  name="mail-open-outline"
-                  size={36}
-                  color={COLORS.primary}
-                />
-              </View>
-              <Text style={s.otpTitle}>Revisa tu correo</Text>
-              <Text style={s.otpSub}>Enviamos un codigo de verificacion a</Text>
-              <Text style={s.otpEmail}>{form.email.trim()}</Text>
-            </View>
-
-            <View style={s.otpInputRow}>
-              <TextInput
-                style={s.otpInput}
-                placeholder="000000"
-                value={codigoOtp}
-                onChangeText={(v) =>
-                  setCodigoOtp(v.replace(/\D/g, "").slice(0, 6))
-                }
-                keyboardType="numeric"
-                maxLength={6}
-                textAlign="center"
-                placeholderTextColor={COLORS.textLight}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[
-                s.btnPrimary,
-                (loading || codigoOtp.length !== 6) && s.btnDisabled,
-              ]}
-              onPress={verificarCodigo}
-              disabled={loading || codigoOtp.length !== 6}
-            >
-              <Text style={s.btnPrimaryText}>
-                {loading ? "Verificando..." : "Verificar codigo"}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={reenviarCodigo}
-              disabled={reenviando}
-              style={s.resendBtn}
-            >
-              <Ionicons
-                name="refresh-outline"
-                size={16}
-                color={COLORS.primary}
-              />
-              <Text style={s.resendText}>
-                {reenviando ? "Reenviando..." : "Reenviar codigo"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ── PASO 3: Documentos ── */}
-        {paso === 3 && (
-          <View style={s.form}>
-            <SubidaDocumentos
-              fotos={fotos}
-              onChange={setFotos}
-              deshabilitado={loading}
-            />
-
-            <TouchableOpacity
-              style={[
-                s.btnPrimary,
-                (loading || !documentosCompletos(fotos)) && s.btnDisabled,
-              ]}
-              onPress={finalizarRegistro}
-              disabled={loading || !documentosCompletos(fotos)}
-            >
-              <Text style={s.btnPrimaryText}>
-                {loading ? "Subiendo documentos..." : "Crear mi cuenta"}
-              </Text>
-              {!loading && (
-                <Ionicons
-                  name="checkmark-circle"
-                  size={18}
-                  color={COLORS.primaryDark}
-                />
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
+            </Aparece>
+          )}
+        </View>
       </ScrollView>
+
+      {conBarra ? (
+        <BarraFija>
+          {paso === 1 ? (
+            <Boton
+              titulo={loading ? "Enviando código..." : "Continuar"}
+              icono="arrow-forward"
+              onPress={continuar}
+              cargando={loading}
+              style={{ height: 58 }}
+            />
+          ) : (
+            <Boton
+              titulo={
+                loading
+                  ? "Subiendo documentos..."
+                  : faltanFotos
+                    ? `Faltan ${faltanFotos} foto${faltanFotos === 1 ? "" : "s"}`
+                    : "Enviar a revisión"
+              }
+              icono={faltanFotos ? undefined : "arrow-forward"}
+              onPress={finalizarRegistro}
+              cargando={loading}
+              deshabilitado={!documentosCompletos(fotos)}
+              style={{ height: 58 }}
+            />
+          )}
+        </BarraFija>
+      ) : null}
+
+      {/* Elegir departamento, provincia o distrito */}
+      <Hoja
+        visible={Boolean(elegir)}
+        onCerrar={() => setElegir(null)}
+        titulo={
+          {
+            departamento: "Departamento",
+            provincia: "Provincia",
+            distrito: "Distrito",
+          }[elegir] || ""
+        }
+        altoMax={0.8}
+      >
+        {elegir && elegir !== "departamento" ? (
+          <Text style={s.ruta} numberOfLines={1}>
+            {elegir === "provincia"
+              ? form.departamento
+              : `${form.provincia}, ${form.departamento}`}
+          </Text>
+        ) : null}
+        {conBuscador ? (
+          <View style={s.buscador}>
+            <Ionicons name="search" size={18} color={colors.text3} />
+            <TextInput
+              value={busqueda}
+              onChangeText={setBusqueda}
+              placeholder={`Buscar ${elegir || ""}`}
+              placeholderTextColor={colors.textFaint}
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="search"
+              accessibilityLabel={`Buscar ${elegir || ""}`}
+              style={s.buscadorTexto}
+            />
+            {busqueda ? (
+              <Toque
+                onPress={() => setBusqueda("")}
+                hitSlop={10}
+                accessibilityLabel="Borrar búsqueda"
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={18}
+                  color={colors.textFaint}
+                />
+              </Toque>
+            ) : null}
+          </View>
+        ) : null}
+        <ScrollView
+          style={{ flexGrow: 0, flexShrink: 1 }}
+          contentContainerStyle={{ gap: 4 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {opcionesUbigeo.length === 0 ? (
+            <Text style={s.sinResultados}>
+              No encontramos “{busqueda.trim()}”. Revisa cómo se escribe.
+            </Text>
+          ) : null}
+          {opcionesUbigeo.map((op) => {
+            const sel = form[elegir] === op;
+            return (
+              <Toque
+                key={op}
+                escala={0.99}
+                onPress={() => elegirUbigeo(op)}
+                accessibilityState={{ selected: sel }}
+                style={[s.opcion, sel && s.opcionSel]}
+              >
+                <Text
+                  style={[s.opcionTexto, sel && { fontFamily: fonts.heavy }]}
+                >
+                  {op}
+                </Text>
+                {sel ? (
+                  <Ionicons name="checkmark" size={16} color={colors.success} />
+                ) : null}
+              </Toque>
+            );
+          })}
+        </ScrollView>
+      </Hoja>
+
+      {/* Lo que falta, en una lista: más claro que un aviso que se va. */}
+      <Modal
+        visible={faltanVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFaltanVisible(false)}
+        statusBarTranslucent
+      >
+        <View style={s.velo}>
+          <View style={s.dialogo} accessibilityViewIsModal>
+            <View style={s.dialogoIcono}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={26}
+                color={colors.error}
+              />
+            </View>
+            <View style={{ gap: 4 }}>
+              <Text style={s.dialogoTitulo}>Faltan algunos datos</Text>
+              <Text style={s.dialogoTexto}>
+                Completa los campos marcados en rojo:
+              </Text>
+            </View>
+            <View style={s.dialogoLista}>
+              {faltantes.map((f) => (
+                <View
+                  key={f}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: colors.error,
+                    }}
+                  />
+                  <Text style={s.dialogoItem}>{f}</Text>
+                </View>
+              ))}
+            </View>
+            <Boton
+              titulo="Revisar"
+              onPress={() => {
+                setFaltanVisible(false);
+                scrollRef.current?.scrollTo({ y: 0, animated: true });
+              }}
+              style={{ height: 54 }}
+            />
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
 const s = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.background },
-  // Header
-  header: {
-    backgroundColor: COLORS.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 54,
-    paddingBottom: 14,
-    paddingHorizontal: 16,
-  },
-  backBtn: { padding: 6 },
-  headerCenter: { flexDirection: "row", alignItems: "center", gap: 8 },
-  headerLogo: { width: 28, height: 28 },
-  headerBrand: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.secondary,
-    letterSpacing: 0.5,
-  },
-  // Stepper
-  stepperContainer: {
-    backgroundColor: COLORS.primary,
-    paddingBottom: 24,
-    alignItems: "center",
-  },
-  stepper: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
-  stepRow: { flexDirection: "row", alignItems: "center" },
-  stepCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  stepCircleActive: { backgroundColor: COLORS.secondary },
-  stepCircleCurrent: { borderWidth: 2, borderColor: COLORS.white },
-  stepLine: {
-    width: 50,
-    height: 2,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    marginHorizontal: 4,
-  },
-  stepLineActive: { backgroundColor: COLORS.secondary },
-  stepLabel: { fontSize: 13, color: "rgba(255,255,255,0.7)" },
-  // Content
-  scrollView: {
-    flex: 1,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    backgroundColor: COLORS.background,
-    marginTop: -12,
-  },
-  content: { padding: 22, paddingTop: 28, paddingBottom: 40 },
-  form: { gap: 14 },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.primary,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginTop: 6,
-    marginBottom: -4,
-  },
-  // Input
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  pantalla: { flex: 1, backgroundColor: colors.ground },
+  cuerpo: { marginTop: -64, paddingHorizontal: 16, gap: 12 },
+  grupo: { padding: 18, paddingHorizontal: 16, gap: 14 },
+  documento: { gap: 6 },
+  grupoTitulo: { fontFamily: fonts.heavy, fontSize: 14, color: colors.text },
+
+  ubigeo: {
+    height: 56,
+    borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    backgroundColor: COLORS.white,
-  },
-  inputIcon: { paddingLeft: 14 },
-  input: { flex: 1, padding: 14, fontSize: 15, color: COLORS.text },
-  eyeBtn: { paddingRight: 14 },
-  // Phone
-  phoneRow: { flexDirection: "row", gap: 8 },
-  phonePrefix: {
+    borderColor: colors.fieldBorder,
+    backgroundColor: colors.field,
+    paddingLeft: 14,
+    paddingRight: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    backgroundColor: COLORS.white,
   },
-  phonePrefixFlag: { fontSize: 18 },
-  phonePrefixText: { fontSize: 15, fontWeight: "600", color: COLORS.text },
-  // Selectors
-  selectorBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: 14,
-    backgroundColor: COLORS.white,
+  ubigeoEtiqueta: {
+    fontFamily: fonts.strong,
+    fontSize: 12,
+    color: colors.text2,
   },
-  selectorValue: { flex: 1, fontSize: 15, color: COLORS.text },
-  selectorPlaceholder: { flex: 1, fontSize: 15, color: COLORS.textLight },
-  selectorList: {
-    maxHeight: 200,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    backgroundColor: COLORS.white,
-    marginTop: 4,
-  },
-  selectorItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 13,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  selectorItemText: { fontSize: 15, color: COLORS.text },
-  selectorItemActive: { color: COLORS.primary, fontWeight: "600" },
-  // Password checks
-  checkList: {
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  checkRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  checkText: { fontSize: 13, color: COLORS.textLight },
-  checkTextOk: { color: COLORS.success },
-  matchRow: { flexDirection: "row", alignItems: "center", paddingLeft: 4 },
-  // Buttons
-  btnPrimary: {
-    backgroundColor: COLORS.secondary,
-    borderRadius: 12,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 6,
-  },
-  btnDisabled: { opacity: 0.5 },
-  btnPrimaryText: {
-    color: COLORS.primaryDark,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  linkRow: { flexDirection: "row", justifyContent: "center", marginTop: 16 },
-  linkText: { fontSize: 14, color: COLORS.textSecondary },
-  linkBold: { fontSize: 14, color: COLORS.primary, fontWeight: "600" },
-  // OTP
-  otpCard: {
-    backgroundColor: COLORS.white,
+  ubigeoValor: { fontFamily: fonts.strong, fontSize: 15, color: colors.text },
+
+  promo: {
+    height: 52,
     borderRadius: 16,
-    padding: 28,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: "#BCC7D8",
+    flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  otpIconBg: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: COLORS.secondaryLight,
     justifyContent: "center",
+    gap: 8,
+  },
+  promoMas: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.goldCream,
     alignItems: "center",
-    marginBottom: 16,
+    justifyContent: "center",
   },
-  otpTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginBottom: 6,
+  promoMasTexto: {
+    fontFamily: fonts.heavy,
+    fontSize: 16,
+    lineHeight: 18,
+    color: colors.goldText,
   },
-  otpSub: { fontSize: 14, color: COLORS.textSecondary },
-  otpEmail: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.primary,
-    marginTop: 4,
+  promoTexto: { fontFamily: fonts.strong, fontSize: 14, color: colors.text2 },
+  enlace: {
+    alignSelf: "center",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 12,
   },
-  otpInputRow: { alignItems: "center" },
-  otpInput: {
-    borderWidth: 2,
-    borderColor: COLORS.primary,
+  enlaceTexto: { fontFamily: fonts.body, fontSize: 14, color: colors.text2 },
+  enlaceFuerte: { fontFamily: fonts.strong, color: colors.navy },
+
+  sobre: {
+    width: 44,
+    height: 44,
     borderRadius: 14,
-    padding: 18,
-    fontSize: 32,
-    fontWeight: "700",
-    letterSpacing: 12,
-    backgroundColor: COLORS.white,
-    color: COLORS.text,
-    width: "100%",
+    backgroundColor: colors.night,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  enviadoA: { fontFamily: fonts.strong, fontSize: 13, color: colors.text2 },
+  correo: { fontFamily: fonts.heavy, fontSize: 15, color: colors.text },
+  ayuda: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.text3,
     textAlign: "center",
   },
-  resendBtn: {
+  verificado: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 32,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: colors.successBg,
+  },
+  verificadoTexto: {
+    fontFamily: fonts.heavy,
+    fontSize: 13,
+    color: colors.successText,
+  },
+  creada: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
+    gap: 8,
+    paddingTop: 14,
   },
-  resendText: { fontSize: 14, color: COLORS.primary, fontWeight: "500" },
-  // Documents
-  docInfoCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: COLORS.successLight,
-    borderRadius: 12,
-    padding: 14,
+  puntoVerde: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.success,
   },
-  docInfoText: { fontSize: 13, color: COLORS.success, flex: 1, lineHeight: 19 },
-  docCard: {
-    backgroundColor: COLORS.white,
+  creadaTexto: {
+    fontFamily: fonts.strong,
+    fontSize: 12,
+    color: colors.successText,
+  },
+  reenviar: { fontFamily: fonts.strong, fontSize: 13, color: colors.goldText },
+
+  ruta: {
+    fontFamily: fonts.strong,
+    fontSize: 13,
+    color: colors.text2,
+    paddingHorizontal: 4,
+    marginTop: -6,
+  },
+  buscador: {
+    height: 48,
     borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  docHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
-  },
-  docLabel: { fontSize: 15, fontWeight: "600", color: COLORS.text },
-  docDesc: { fontSize: 12, color: COLORS.textLight, marginTop: 1 },
-  docPreview: { alignItems: "center", gap: 10 },
-  docImage: {
-    width: "100%",
-    height: 180,
-    borderRadius: 12,
-    backgroundColor: COLORS.inputBg,
-  },
-  docChangeBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 4,
-  },
-  docChangeText: { fontSize: 14, color: COLORS.primary, fontWeight: "500" },
-  docBtns: { flexDirection: "row", gap: 10 },
-  docBtn: {
-    flex: 1,
     borderWidth: 1.5,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: 16,
+    borderColor: colors.fieldBorder,
+    backgroundColor: colors.ground,
+    paddingHorizontal: 12,
+    flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: COLORS.inputBg,
+    gap: 8,
   },
-  docBtnText: { fontSize: 13, color: COLORS.text, fontWeight: "500" },
+  buscadorTexto: {
+    flex: 1,
+    height: "100%",
+    fontFamily: fonts.label,
+    fontSize: 15,
+    color: colors.text,
+  },
+  sinResultados: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.text2,
+    textAlign: "center",
+    paddingVertical: 20,
+  },
+  opcion: {
+    minHeight: 50,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    backgroundColor: "#F7F9FC",
+  },
+  opcionSel: { backgroundColor: colors.successBg },
+  opcionTexto: { fontFamily: fonts.label, fontSize: 15, color: colors.text },
+
+  velo: {
+    flex: 1,
+    backgroundColor: "rgba(15,27,51,0.45)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  dialogo: {
+    backgroundColor: colors.surface,
+    borderRadius: 28,
+    padding: 20,
+    paddingTop: 24,
+    gap: 16,
+  },
+  dialogoIcono: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.errorBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dialogoTitulo: {
+    fontFamily: fonts.display,
+    fontSize: 24,
+    lineHeight: 27,
+    color: colors.text,
+  },
+  dialogoTexto: { fontFamily: fonts.body, fontSize: 14, color: colors.text2 },
+  dialogoLista: {
+    gap: 8,
+    padding: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: colors.ground,
+  },
+  dialogoItem: {
+    flex: 1,
+    fontFamily: fonts.strong,
+    fontSize: 14,
+    color: colors.text,
+  },
 });

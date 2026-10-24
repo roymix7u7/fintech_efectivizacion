@@ -73,3 +73,17 @@ export function hora(fecha) {
   const d = new Date(fecha);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
+
+/** Días completos que faltan para una fecha. Negativo si ya pasó. */
+export function diasHasta(fecha, ahora = Date.now()) {
+  return Math.ceil((new Date(fecha).getTime() - ahora) / 86400000);
+}
+
+/** "Quedan 5 días", "Queda 1 día", "Último día"; null sin fecha de fin. */
+export function quedanTexto(fechaFin, ahora = Date.now()) {
+  if (!fechaFin) return null;
+  const q = diasHasta(fechaFin, ahora);
+  if (q <= 0) return "Último día";
+  if (q === 1) return "Queda 1 día";
+  return `Quedan ${q} días`;
+}

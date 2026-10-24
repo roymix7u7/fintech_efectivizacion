@@ -1,17 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Animated,
-  Easing,
-  AppState,
-} from "react-native";
+import { View, Text, StyleSheet, Animated, AppState } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import COLORS from "../theme/colors";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { alertLevel, fonts } from "../theme/tokens";
+import { CURVA, useReducirMovimiento } from "../lib/movimiento";
+import { Toque } from "./ui/Toque";
 import { supabase } from "../lib/supabase";
+import { invalidar } from "../lib/cache";
 import {
   listarAlertas,
   marcarVistas,
@@ -44,9 +40,18 @@ import {
  */
 const ESPERA_MS = 7000;
 
+/** Gravedad de la alerta -> bloque sólido del diseño (tokens.alertLevel). */
+const NIVEL = {
+  critico: alertLevel.urgente,
+  advertencia: alertLevel.importante,
+  info: alertLevel.aviso,
+};
+
 export default function BurbujaAlerta() {
   const [alerta, setAlerta] = useState(null);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const reducir = useReducirMovimiento();
 
   const desliz = useRef(new Animated.Value(0)).current;
   // Ids ya mostrados en este arranque. Sin esto, volver del segundo
@@ -58,11 +63,11 @@ export default function BurbujaAlerta() {
     clearTimeout(temporizador.current);
     Animated.timing(desliz, {
       toValue: 0,
-      duration: 180,
-      easing: Easing.in(Easing.cubic),
+      duration: reducir ? 0 : 180,
+      easing: CURVA,
       useNativeDriver: true,
     }).start(() => setAlerta(null));
-  }, [desliz]);
+  }, [desliz, reducir]);
 
   const buscar = useCallback(async () => {
     const { alertas } = await listarAlertas();
@@ -76,15 +81,15 @@ export default function BurbujaAlerta() {
 
     Animated.timing(desliz, {
       toValue: 1,
-      duration: 320,
-      easing: Easing.out(Easing.cubic),
+      duration: reducir ? 0 : 350,
+      easing: CURVA,
       useNativeDriver: true,
     }).start();
 
     if (!gravedadDe(pendiente.tipo).permanece) {
       temporizador.current = setTimeout(esconder, ESPERA_MS);
     }
-  }, [desliz, esconder]);
+  }, [desliz, esconder, reducir]);
 
   useEffect(() => {
     buscar();
@@ -107,7 +112,11 @@ export default function BurbujaAlerta() {
           table: "alertas_sistema",
           filter: "categoria=eq.alerta",
         },
-        () => buscar(),
+        () => {
+          buscar();
+          // Inicio y Noticias muestran la alerta desde su copia guardada.
+          invalidar("noticias");
+        },
       )
       .subscribe();
 
@@ -121,6 +130,7 @@ export default function BurbujaAlerta() {
   if (!alerta) return null;
 
   const g = gravedadDe(alerta.tipo);
+  const n = NIVEL[alerta.tipo] || NIVEL.info;
 
   function cerrar() {
     marcarVistas([alerta.id]);
@@ -132,53 +142,53 @@ export default function BurbujaAlerta() {
     router.push("/(tabs)/noticias?seccion=alertas");
   }
 
+  // Alerta = bloque de color sólido con ícono y etiqueta. Nunca se
+  // confunde con una noticia, que siempre es tarjeta blanca.
   return (
     <Animated.View
       style={[
         s.contenedor,
         {
+          top: insets.top + 70,
           opacity: desliz,
           transform: [
             {
               translateY: desliz.interpolate({
                 inputRange: [0, 1],
-                outputRange: [-70, 0],
+                outputRange: [reducir ? 0 : -70, 0],
               }),
             },
           ],
         },
       ]}
     >
-      <TouchableOpacity
-        activeOpacity={0.92}
+      <Toque
         onPress={abrir}
-        style={[s.burbuja, { borderLeftColor: g.color }]}
+        escala={0.98}
+        accessibilityRole="alert"
+        accessibilityLabel={`${g.etiqueta}: ${alerta.titulo}. ${alerta.mensaje || ""}`}
+        accessibilityHint="Abre el detalle en Alertas"
+        style={[s.burbuja, { backgroundColor: n.bg }]}
       >
-        <View style={[s.icono, { backgroundColor: g.fondo }]}>
-          <Ionicons name={g.icono} size={19} color={g.color} />
-        </View>
+        <Ionicons name={n.icon} size={22} color={n.fg} style={{ marginTop: 2 }} />
 
         <View style={s.texto}>
-          <Text style={[s.etiqueta, { color: g.color }]}>{g.etiqueta}</Text>
-          <Text style={s.titulo} numberOfLines={1}>
+          <Text style={[s.etiqueta, { color: n.fg }]}>{n.label}</Text>
+          <Text style={[s.titulo, { color: n.fg }]} numberOfLines={1}>
             {alerta.titulo}
           </Text>
-          <Text style={s.mensaje} numberOfLines={2}>
-            {alerta.mensaje}
-          </Text>
-          <Text style={s.pista}>Toca para ver el detalle</Text>
+          {alerta.mensaje ? (
+            <Text style={[s.mensaje, { color: n.fg }]} numberOfLines={2}>
+              {alerta.mensaje}
+            </Text>
+          ) : null}
+          <Text style={[s.pista, { color: n.fg }]}>Toca para ver el detalle</Text>
         </View>
 
-        <TouchableOpacity
-          onPress={cerrar}
-          hitSlop={14}
-          accessibilityRole="button"
-          accessibilityLabel="Marcar como vista"
-          style={s.cerrar}
-        >
-          <Ionicons name="close" size={18} color={COLORS.textLight} />
-        </TouchableOpacity>
-      </TouchableOpacity>
+        <Toque onPress={cerrar} accessibilityLabel="Marcar como vista" style={s.cerrar}>
+          <Ionicons name="close" size={20} color={n.fg} />
+        </Toque>
+      </Toque>
     </Animated.View>
   );
 }
@@ -186,40 +196,27 @@ export default function BurbujaAlerta() {
 const s = StyleSheet.create({
   contenedor: {
     position: "absolute",
-    top: 96,
     left: 14,
     right: 14,
     zIndex: 90,
   },
   burbuja: {
     flexDirection: "row",
-    gap: 11,
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    borderLeftWidth: 4,
-    padding: 13,
-    shadowColor: COLORS.primaryDark,
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    gap: 12,
+    borderRadius: 22,
+    paddingVertical: 14,
+    paddingLeft: 16,
+    paddingRight: 4,
+    shadowColor: "#0F1B33",
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
   },
-  icono: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  texto: { flex: 1, gap: 1 },
-  etiqueta: {
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  titulo: { fontSize: 14, fontWeight: "700", color: COLORS.text },
-  mensaje: { fontSize: 12, color: COLORS.textSecondary, lineHeight: 17 },
-  pista: { fontSize: 11, color: COLORS.textLight, marginTop: 3 },
-  cerrar: { alignSelf: "flex-start", padding: 2 },
+  texto: { flex: 1, gap: 2 },
+  etiqueta: { fontFamily: fonts.heavy, fontSize: 11, letterSpacing: 1.4 },
+  titulo: { fontFamily: fonts.strong, fontSize: 15, lineHeight: 20 },
+  mensaje: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, opacity: 0.92 },
+  pista: { fontFamily: fonts.strong, fontSize: 12, marginTop: 4, opacity: 0.85 },
+  cerrar: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginTop: -8 },
 });

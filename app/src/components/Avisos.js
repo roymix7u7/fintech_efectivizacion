@@ -6,18 +6,11 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Animated,
-  Easing,
-  TouchableOpacity,
-  Platform,
-} from "react-native";
+import { View, Text, StyleSheet, Animated, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import COLORS from "../theme/colors";
-import TIPO from "../theme/tipografia";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors, fonts, motion } from "../theme/tokens";
+import { CURVA, useReducirMovimiento } from "../lib/movimiento";
 
 /**
  * Avisos que no interrumpen.
@@ -38,43 +31,39 @@ export function useAviso() {
   return useContext(Contexto);
 }
 
+// La píldora es blanca: casi todas las pantallas tienen la cabecera
+// azul noche arriba, justo donde aparece el aviso, y una píldora azul
+// se perdía contra ella. El tono lo dan el ícono, su círculo y el borde,
+// para que no dependa solo del color.
 const TONOS = {
-  exito: {
-    icono: "checkmark-circle",
-    fondo: COLORS.success,
-    texto: COLORS.white,
-  },
-  error: {
-    icono: "alert-circle",
-    fondo: COLORS.error,
-    texto: COLORS.white,
-  },
-  info: {
-    icono: "information-circle",
-    fondo: COLORS.primary,
-    texto: COLORS.white,
-  },
-  atencion: {
-    icono: "warning",
-    fondo: COLORS.secondary,
-    texto: COLORS.primaryDark,
-  },
+  exito: { icono: "checkmark", fondo: colors.success, color: colors.white, borde: "#A9DCC6" },
+  error: { icono: "alert", fondo: colors.errorStrong, color: colors.white, borde: "#F1B5AF" },
+  info: { icono: "information", fondo: colors.navy, color: colors.white, borde: "#C9D3E6" },
+  atencion: { icono: "alert", fondo: colors.gold, color: colors.night, borde: "#EBCF73" },
 };
+
+const FUERA = -90;
 
 export function ProveedorAvisos({ children }) {
   const [aviso, setAviso] = useState(null);
-  const desliz = useRef(new Animated.Value(-140)).current;
+  const desliz = useRef(new Animated.Value(FUERA)).current;
+  const opacidad = useRef(new Animated.Value(0)).current;
   const temporizador = useRef(null);
+  const insets = useSafeAreaInsets();
+  const reducir = useReducirMovimiento();
 
   const ocultar = useCallback(() => {
     clearTimeout(temporizador.current);
-    Animated.timing(desliz, {
-      toValue: -140,
-      duration: 220,
-      easing: Easing.in(Easing.cubic),
-      useNativeDriver: true,
-    }).start(({ finished }) => finished && setAviso(null));
-  }, [desliz]);
+    Animated.parallel([
+      Animated.timing(desliz, {
+        toValue: reducir ? 0 : FUERA,
+        duration: reducir ? 0 : 220,
+        easing: CURVA,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacidad, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(({ finished }) => finished && setAviso(null));
+  }, [desliz, opacidad, reducir]);
 
   const mostrar = useCallback(
     (texto, tono = "info", duracion) => {
@@ -82,20 +71,24 @@ export function ProveedorAvisos({ children }) {
       clearTimeout(temporizador.current);
       setAviso({ texto: String(texto), tono });
 
-      Animated.spring(desliz, {
-        toValue: 0,
-        useNativeDriver: true,
-        damping: 18,
-        stiffness: 180,
-        mass: 0.9,
-      }).start();
+      // Con menos movimiento pedido, aparece en su sitio sin deslizarse.
+      desliz.setValue(reducir ? 0 : FUERA);
+      Animated.parallel([
+        Animated.timing(desliz, {
+          toValue: 0,
+          duration: reducir ? 0 : motion.toast,
+          easing: CURVA,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacidad, { toValue: 1, duration: reducir ? 0 : 200, useNativeDriver: true }),
+      ]).start();
 
       // Un error se lee mas despacio que una confirmacion, y suele
       // traer instrucciones. Por eso dura mas en pantalla.
       const ms = duracion ?? (tono === "error" ? 5000 : 3000);
       temporizador.current = setTimeout(ocultar, ms);
     },
-    [desliz, ocultar],
+    [desliz, opacidad, ocultar, reducir],
   );
 
   useEffect(() => () => clearTimeout(temporizador.current), []);
@@ -109,22 +102,24 @@ export function ProveedorAvisos({ children }) {
       {aviso && (
         <Animated.View
           pointerEvents="box-none"
-          style={[s.capa, { transform: [{ translateY: desliz }] }]}
+          style={[
+            s.capa,
+            { paddingTop: insets.top + 10, opacity: opacidad, transform: [{ translateY: desliz }] },
+          ]}
         >
-          <TouchableOpacity
-            activeOpacity={0.9}
+          <Pressable
             onPress={ocultar}
-            style={[s.aviso, { backgroundColor: t.fondo }]}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+            accessibilityLabel={aviso.texto}
+            accessibilityHint="Toca para cerrar"
+            style={[s.aviso, { borderColor: t.borde }]}
           >
-            <Ionicons name={t.icono} size={20} color={t.texto} />
-            <Text style={[s.texto, { color: t.texto }]}>{aviso.texto}</Text>
-            <Ionicons
-              name="close"
-              size={17}
-              color={t.texto}
-              style={{ opacity: 0.65 }}
-            />
-          </TouchableOpacity>
+            <View style={[s.circulo, { backgroundColor: t.fondo }]}>
+              <Ionicons name={t.icono} size={15} color={t.color} />
+            </View>
+            <Text style={s.texto}>{aviso.texto}</Text>
+          </Pressable>
         </Animated.View>
       )}
     </Contexto.Provider>
@@ -137,29 +132,32 @@ const s = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    // Debajo de la barra de estado, por encima de todo lo demas.
-    paddingTop: Platform.OS === "ios" ? 56 : 40,
-    paddingHorizontal: 14,
+    alignItems: "center",
+    paddingHorizontal: 16,
+    // Por encima de todo lo demas, incluso de los modales de la app.
     zIndex: 999,
     elevation: 999,
   },
   aviso: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 11,
-    borderRadius: 14,
-    paddingVertical: 13,
-    paddingHorizontal: 15,
-    shadowColor: "#0B1426",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    elevation: 10,
+    gap: 10,
+    maxWidth: 440,
+    minHeight: 48,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    paddingVertical: 10,
+    paddingLeft: 10,
+    paddingRight: 18,
+    backgroundColor: colors.white,
+    // Sombra marcada: sobre el fondo claro de una pantalla, es lo que
+    // separa la píldora blanca de lo que tiene detrás.
+    shadowColor: colors.night,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 14,
   },
-  texto: {
-    ...TIPO.cuerpo,
-    flex: 1,
-    fontWeight: "500",
-    lineHeight: 19,
-  },
+  circulo: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  texto: { flexShrink: 1, fontFamily: fonts.strong, fontSize: 14, lineHeight: 19, color: colors.text },
 });

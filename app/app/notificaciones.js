@@ -1,207 +1,252 @@
-import { useCallback, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
-  ActivityIndicator,
-} from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from "react-native";
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../src/lib/supabase";
-import COLORS from "../src/theme/colors";
+import { useDatos, invalidar } from "../src/lib/cache";
 import { mensajeError } from "../src/lib/ui";
 import { useAviso } from "../src/components/Avisos";
 import { EsqueletoLista, Aparece } from "../src/components/Cargando";
+import { CabeceraNoche } from "../src/components/ui/CabeceraNoche";
+import { GlassPanel } from "../src/components/ui/GlassPanel";
+import { Toque } from "../src/components/ui/Toque";
+import { BotonIcono, Tarjeta } from "../src/components/ui/Piezas";
+import { colors, fonts } from "../src/theme/tokens";
 
-/** Icono y color segun el tipo de aviso que manda el panel. */
-const ESTILOS = {
-  kyc_aprobado: { icon: "checkmark-circle", color: COLORS.success },
-  kyc_observado: { icon: "alert-circle", color: COLORS.warning },
-  tarjeta_aprobada: { icon: "card", color: COLORS.success },
-  tarjeta_rechazada: { icon: "close-circle", color: COLORS.error },
-  solicitud_aprobada: { icon: "checkmark-done-circle", color: COLORS.success },
-  solicitud_rechazada: { icon: "close-circle", color: COLORS.error },
-  pago_enviado: { icon: "cash", color: COLORS.success },
-  pago_en_revision: { icon: "time", color: COLORS.warning },
-};
+const LUCES = [
+  { color: colors.glowGold, opacity: 0.38, size: 260, top: -70, right: -100 },
+  { color: colors.glowBlue, opacity: 0.75, size: 300, bottom: -170, left: -110 },
+];
 
-function estiloDe(tipo) {
-  return ESTILOS[tipo] || { icon: "notifications", color: COLORS.primary };
-}
+// Lo de los últimos tres días va en "Recientes"; lo demás, en "Anteriores".
+const RECIENTE_MS = 3 * 24 * 60 * 60 * 1000;
 
 function fechaRelativa(iso) {
   const minutos = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (minutos < 1) return "Hace un momento";
-  if (minutos < 60) return `Hace ${minutos} min`;
+  if (minutos < 1) return "Ahora";
+  if (minutos < 60) return `${minutos} min`;
   const horas = Math.floor(minutos / 60);
-  if (horas < 24) return `Hace ${horas} h`;
-  const dias = Math.floor(horas / 24);
-  if (dias === 1) return "Ayer";
-  if (dias < 7) return `Hace ${dias} días`;
-  return new Date(iso).toLocaleDateString("es-PE", {
-    day: "numeric",
-    month: "short",
-  });
+  if (horas < 24) return new Date(iso).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+  if (Math.floor(horas / 24) === 1) return "Ayer";
+  return new Date(iso).toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 }
 
+/**
+ * Ícono del aviso, con los mismos colores que los estados de la app:
+ * crema para aprobado, azul para en revisión, verde para el pago y rojo
+ * para lo rechazado u observado. Lo deciden el tipo y el título, que
+ * escribe la base al cambiar el estado.
+ */
+function estiloAviso(a) {
+  const t = `${a.titulo || ""} ${a.cuerpo || ""}`.toLowerCase();
+  if (/rechaz|observ|bloque/.test(t)) return { icono: "close", bg: colors.errorBg, fg: colors.error };
+  if (/pag|deposit/.test(t)) return { icono: "paper-plane-outline", bg: colors.successBg, fg: colors.success };
+  if (/aprob|verificad|activ/.test(t)) return { icono: "checkmark", bg: colors.goldCream, fg: colors.goldText };
+  return { icono: "time-outline", bg: colors.infoBg, fg: colors.navyLight };
+}
+
+/**
+ * Mis avisos: lo que el equipo le respondió al cliente (identidad,
+ * tarjetas, solicitudes, pagos). Cada aviso se marca como leído al
+ * tocarlo, como en el prototipo: abrir la pantalla no basta para decir
+ * que se leyó todo.
+ */
 export default function NotificacionesScreen() {
-  const [avisos, setAvisos] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [abierto, setAbierto] = useState(null);
+  // Leídos en este rato: se apagan en pantalla al instante, sin esperar
+  // a que la copia guardada se actualice.
+  const [leidosAqui, setLeidosAqui] = useState([]);
   const { mostrar } = useAviso();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  useFocusEffect(
-    useCallback(() => {
-      cargar();
-    }, []),
-  );
-
-  async function cargar() {
-    try {
+  // Guardados en el teléfono: solo se vuelven a descargar si llegó un
+  // aviso nuevo o cambió alguno (huella "avisos").
+  const {
+    datos,
+    cargando,
+    refrescando: refreshing,
+    error,
+    recargar,
+  } = useDatos(
+    "avisos",
+    async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
+      if (!user) return [];
+      const { data, error: e } = await supabase
         .from("notificaciones")
         .select("id, tipo, titulo, cuerpo, leida, created_at")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(50);
+      if (e) throw e;
+      return data || [];
+    },
+    { grupos: ["avisos"] },
+  );
+  useEffect(() => {
+    if (error) mostrar(mensajeError(error), "error");
+  }, [error]);
 
-      if (error) {
-        mostrar(mensajeError(error), "error");
-        return;
-      }
-      setAvisos(data || []);
+  const avisos = useMemo(
+    () => (datos || []).map((a) => (leidosAqui.includes(a.id) ? { ...a, leida: true } : a)),
+    [datos, leidosAqui],
+  );
 
-      // Se marcan como leidas al abrir la pantalla. Si falla, no pasa
-      // nada grave: solo sigue apareciendo el punto azul.
-      const sinLeer = (data || []).filter((a) => !a.leida).map((a) => a.id);
-      if (sinLeer.length > 0) {
-        await supabase
-          .from("notificaciones")
-          .update({ leida: true })
-          .in("id", sinLeer);
-      }
-    } finally {
-      setCargando(false);
-      setRefreshing(false);
-    }
+  async function leer(aviso) {
+    setAbierto(abierto === aviso.id ? null : aviso.id);
+    if (aviso.leida) return;
+    // Se marca en pantalla de inmediato; si la base falla, solo vuelve a
+    // aparecer el punto la próxima vez.
+    setLeidosAqui((l) => [...l, aviso.id]);
+    await supabase.from("notificaciones").update({ leida: true }).eq("id", aviso.id);
+    invalidar("avisos");
   }
 
-  if (cargando) {
-    return (
-      <View style={s.container}>
-        <View style={s.content}>
-          <EsqueletoLista filas={5} alto={86} />
-        </View>
-      </View>
-    );
+  async function leerTodos() {
+    const ids = avisos.filter((a) => !a.leida).map((a) => a.id);
+    if (!ids.length) return;
+    setLeidosAqui((l) => [...l, ...ids]);
+    await supabase.from("notificaciones").update({ leida: true }).in("id", ids);
+    invalidar("avisos");
   }
+
+  const ahora = Date.now();
+  const recientes = avisos.filter((a) => ahora - new Date(a.created_at).getTime() < RECIENTE_MS);
+  const anteriores = avisos.filter((a) => ahora - new Date(a.created_at).getTime() >= RECIENTE_MS);
+  const sinLeer = avisos.filter((a) => !a.leida).length;
+
+  const volver = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/inicio"));
+
+  const lista = (items) => (
+    <Tarjeta style={s.lista}>
+      {items.map((a, i) => {
+        const e = estiloAviso(a);
+        const nuevo = !a.leida;
+        return (
+          <Toque
+            key={a.id}
+            onPress={() => leer(a)}
+            escala={0.99}
+            accessibilityLabel={`${nuevo ? "Sin leer. " : ""}${a.titulo}`}
+            accessibilityState={{ expanded: abierto === a.id }}
+            style={[s.fila, i > 0 && s.separador, nuevo && s.filaNueva]}
+          >
+            <View style={[s.icono, { backgroundColor: e.bg }]}>
+              <Ionicons name={e.icono} size={18} color={e.fg} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <Text style={[s.titulo, nuevo && { fontFamily: fonts.heavy }]}>{a.titulo}</Text>
+              {a.cuerpo ? (
+                <Text style={s.cuerpo} numberOfLines={abierto === a.id ? 0 : 1}>
+                  {a.cuerpo}
+                </Text>
+              ) : null}
+            </View>
+            <View style={{ alignItems: "flex-end", gap: 6 }}>
+              <Text style={s.fecha}>{fechaRelativa(a.created_at)}</Text>
+              {nuevo ? <View style={s.punto} /> : null}
+            </View>
+          </Toque>
+        );
+      })}
+    </Tarjeta>
+  );
 
   return (
-    <ScrollView
-      style={s.container}
-      contentContainerStyle={s.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            cargar();
-          }}
-          tintColor={COLORS.primary}
-          colors={[COLORS.primary]}
-        />
-      }
-    >
-      {avisos.length === 0 ? (
-        <View style={s.vacio}>
-          <Ionicons
-            name="notifications-off-outline"
-            size={44}
-            color={COLORS.textLight}
+    <View style={s.pantalla}>
+      <StatusBar style="light" />
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: insets.bottom + 48 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={recargar}
+            tintColor={colors.white}
+            colors={[colors.navy]}
           />
-          <Text style={s.vacioTitulo}>Sin avisos</Text>
-          <Text style={s.vacioTexto}>
-            Aquí te avisaremos cuando revisemos tus documentos, tus tarjetas o
-            tus solicitudes.
-          </Text>
+        }
+      >
+        <CabeceraNoche luces={LUCES} style={s.cabecera}>
+          <View style={s.barra}>
+            <BotonIcono variante="noche" icono="chevron-back" onPress={volver} accessibilityLabel="Volver" />
+            <Text style={s.barraTitulo} accessibilityRole="header">
+              Mis avisos
+            </Text>
+            <Toque onPress={leerTodos} disabled={!sinLeer} accessibilityLabel={sinLeer ? `${sinLeer} sin leer. Marcar todos como leídos` : "Todo leído"}>
+              <GlassPanel variant="onNight" radius={999} style={s.sinLeer}>
+                <Text style={s.sinLeerTexto}>{sinLeer ? `${sinLeer} sin leer` : "Al día"}</Text>
+              </GlassPanel>
+            </Toque>
+          </View>
+        </CabeceraNoche>
+
+        <View style={s.cuerpoPantalla}>
+          {cargando ? (
+            <EsqueletoLista filas={4} alto={70} />
+          ) : avisos.length === 0 ? (
+            <View style={s.vacio}>
+              <View style={s.vacioIcono}>
+                <Ionicons name="notifications-outline" size={28} color={colors.goldText} />
+              </View>
+              <Text style={s.vacioTitulo}>Sin avisos todavía</Text>
+              <Text style={s.vacioTexto}>Aquí te contamos cada vez que revisemos algo tuyo.</Text>
+            </View>
+          ) : (
+            <>
+              {recientes.length ? (
+                <Aparece>
+                  <Text style={s.seccion}>Recientes</Text>
+                  {lista(recientes)}
+                </Aparece>
+              ) : null}
+              {anteriores.length ? (
+                <Aparece retraso={80}>
+                  <Text style={s.seccion}>Anteriores</Text>
+                  {lista(anteriores)}
+                </Aparece>
+              ) : null}
+            </>
+          )}
         </View>
-      ) : (
-        avisos.map((a, i) => {
-          const est = estiloDe(a.tipo);
-          return (
-            <Aparece key={a.id} retraso={Math.min(i, 8) * 45}>
-              <View style={[s.card, !a.leida && s.cardSinLeer]}>
-              <View style={[s.iconoBg, { backgroundColor: est.color + "1A" }]}>
-                <Ionicons name={est.icon} size={20} color={est.color} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={s.tituloRow}>
-                  <Text style={s.titulo}>{a.titulo}</Text>
-                  {!a.leida && <View style={s.punto} />}
-                </View>
-                <Text style={s.cuerpo}>{a.cuerpo}</Text>
-                <Text style={s.fecha}>{fechaRelativa(a.created_at)}</Text>
-              </View>
-              </View>
-            </Aparece>
-          );
-        })
-      )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  centrado: { justifyContent: "center", alignItems: "center" },
-  content: { padding: 18, paddingBottom: 40, gap: 10 },
-  card: {
-    flexDirection: "row",
-    gap: 12,
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  cardSinLeer: { borderColor: COLORS.primary, borderWidth: 1.5 },
-  iconoBg: {
-    width: 38,
-    height: 38,
+  pantalla: { flex: 1, backgroundColor: colors.ground },
+  cabecera: { paddingHorizontal: 20, paddingBottom: 26, gap: 16 },
+  barra: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  barraTitulo: { fontFamily: fonts.heavy, fontSize: 17, color: colors.white },
+  sinLeer: { height: 32, paddingHorizontal: 12, justifyContent: "center" },
+  sinLeerTexto: { fontFamily: fonts.heavy, fontSize: 12, color: colors.white },
+
+  cuerpoPantalla: { paddingHorizontal: 16, paddingTop: 6 },
+  seccion: { fontFamily: fonts.heavy, fontSize: 13, color: colors.text2, paddingHorizontal: 6, paddingTop: 12, paddingBottom: 8 },
+  lista: { borderRadius: 20, overflow: "hidden" },
+  fila: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 16 },
+  filaNueva: { backgroundColor: "#FFFBEB" },
+  separador: { borderTopWidth: 1, borderTopColor: colors.lineSoft },
+  icono: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  titulo: { fontFamily: fonts.label, fontSize: 15, color: colors.text },
+  cuerpo: { fontFamily: fonts.label, fontSize: 13, lineHeight: 18, color: colors.text2 },
+  fecha: { fontFamily: fonts.strong, fontSize: 12, color: colors.text3 },
+  punto: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.gold },
+  vacio: { alignItems: "center", marginTop: 40, gap: 10, paddingHorizontal: 30 },
+  vacioIcono: {
+    width: 60,
+    height: 60,
     borderRadius: 19,
-    justifyContent: "center",
+    backgroundColor: colors.goldCream,
     alignItems: "center",
+    justifyContent: "center",
   },
-  tituloRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  titulo: { fontSize: 15, fontWeight: "700", color: COLORS.text, flex: 1 },
-  punto: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.primary,
-  },
-  cuerpo: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
-    marginTop: 3,
-  },
-  fecha: { fontSize: 12, color: COLORS.textLight, marginTop: 6 },
-  vacio: { alignItems: "center", paddingTop: 80, gap: 10 },
-  vacioTitulo: { fontSize: 18, fontWeight: "700", color: COLORS.text },
-  vacioTexto: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    lineHeight: 20,
-    paddingHorizontal: 20,
-  },
+  vacioTitulo: { fontFamily: fonts.display, fontSize: 19, color: colors.text },
+  vacioTexto: { fontFamily: fonts.body, fontSize: 14, color: colors.text2, textAlign: "center" },
 });

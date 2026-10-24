@@ -1,508 +1,391 @@
-import { useEffect, useRef } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Linking,
-  TouchableOpacity,
-  Image,
-  Animated,
-  Easing,
-} from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, Linking, Animated, Easing } from "react-native";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
-import COLORS from "../src/theme/colors";
-import TIPO from "../src/theme/tipografia";
 import { Aparece } from "../src/components/Cargando";
+import { Logo } from "../src/components/brand/Logo";
+import { BankIcon } from "../src/components/brand/BankIcon";
+import { CabeceraNoche } from "../src/components/ui/CabeceraNoche";
+import { GlassPanel } from "../src/components/ui/GlassPanel";
+import { BankBadge } from "../src/components/ui/BankBadge";
+import { Boton } from "../src/components/ui/Boton";
+import { Toque } from "../src/components/ui/Toque";
+import { AvisoMarcas } from "../src/components/AvisoMarcas";
+import { BotonIcono, MiniTarjeta, Tarjeta } from "../src/components/ui/Piezas";
+import { CURVA, useReducirMovimiento } from "../src/lib/movimiento";
+import { colors, fonts } from "../src/theme/tokens";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const WHATSAPP = "51995766986";
 const CORREO = "contacto@altoqueperu.com";
 
+const LUCES = [
+  { color: colors.glowGold, opacity: 0.4, size: 300, top: 20, left: 20 },
+  { color: colors.glowBlue, opacity: 0.75, size: 320, bottom: -170, right: -110 },
+];
+
 /**
- * Los cuatro pasos del circuito, explicados desde lo que hace el
- * cliente y no desde lo que hace el sistema.
+ * El camino del dinero, contado desde lo que vive el cliente: de su
+ * línea de crédito a su cuenta de ahorros. Lenguaje neutro y exacto
+ * (docs/guia-lenguaje.md): se dice qué pasa, sin palabras de más.
  */
-const PASOS = [
-  {
-    icono: "person-add-outline",
-    titulo: "Crea tu cuenta",
-    detalle:
-      "Necesitamos tu DNI por ambas caras y una selfie sosteniéndolo. Es lo que exige la ley para operar con dinero, y lo revisa una persona.",
-    espera: "Revisión en pocas horas",
-  },
-  {
-    icono: "card-outline",
-    titulo: "Registra tu tarjeta",
-    detalle:
-      "Sube una foto donde se vea tu nombre y los últimos 4 dígitos, con el número completo cubierto. Verificamos que la tarjeta sea tuya.",
-    espera: "Verificación en pocas horas",
-  },
-  {
-    icono: "swap-horizontal-outline",
-    titulo: "Haz la operación en tu banco",
-    detalle:
-      "Desde la app de tu banco, siguiendo la guía que te mostramos para esa entidad. Cada banco tiene su camino y te lo indicamos paso a paso.",
-    espera: "Lo haces tú, cuando quieras",
-  },
-  {
-    icono: "cloud-upload-outline",
-    titulo: "Envíanos el comprobante",
-    detalle:
-      "Una foto clara del voucher. Lo revisamos y depositamos en la cuenta bancaria que tengas registrada.",
-    espera: "Te avisamos al resolverlo",
-  },
+const ETAPAS = [
+  { clave: "linea", titulo: "Tu línea de crédito", texto: "El saldo disponible de tu tarjeta de crédito." },
+  { clave: "banco", titulo: "Operas desde la app de tu banco", texto: "Sigues nuestra guía paso a paso. El monto se carga a tu tarjeta." },
+  { clave: "revision", titulo: "Revisamos tu operación", texto: "Una persona confirma tu comprobante y que la tarjeta es tuya." },
+  { clave: "comision", titulo: "Descontamos la comisión", texto: "Un porcentaje que depende del banco de tu tarjeta." },
+  { clave: "deposito", titulo: "Te depositamos en tu cuenta", texto: "En tu cuenta de ahorros, a tu nombre." },
 ];
 
 const GARANTIAS = [
-  {
-    icono: "lock-closed-outline",
-    titulo: "Tus documentos están cifrados",
-    detalle: "Solo el personal autorizado puede verlos, y queda registro.",
-  },
-  {
-    icono: "eye-outline",
-    titulo: "Una persona revisa cada caso",
-    detalle: "Nada se aprueba de forma automática.",
-  },
-  {
-    icono: "receipt-outline",
-    titulo: "Sabes siempre en qué va",
-    detalle: "Cada solicitud muestra su estado, y el motivo si se rechaza.",
-  },
+  { clave: "cifrado", texto: "Documentos\ncifrados" },
+  { clave: "nombre", texto: "Depósito\na tu nombre" },
+  { clave: "clara", texto: "Comisión\nclara" },
 ];
 
-export default function EmpresaScreen() {
-  const linea = useRef(new Animated.Value(0)).current;
+function IconoEtapa({ clave }) {
+  if (clave === "linea") return <MiniTarjeta ancho={26} alto={18} />;
+  if (clave === "banco") return <Ionicons name="phone-portrait-outline" size={22} color={colors.navy} />;
+  if (clave === "revision") return <Logo width={30} letterColor={colors.night} />;
+  if (clave === "comision") return <Ionicons name="pricetag-outline" size={21} color={colors.goldText} />;
+  return <BankIcon size={22} color={colors.success} />;
+}
 
-  // La línea que une los pasos se dibuja sola al entrar. Refuerza que
-  // es una secuencia y no cuatro cosas sueltas.
+function IconoGarantia({ clave }) {
+  if (clave === "nombre") return <BankIcon size={20} color={colors.goldText} />;
+  return <Ionicons name={clave === "cifrado" ? "lock-closed-outline" : "eye-outline"} size={20} color={colors.goldText} />;
+}
+
+/** La moneda "S/" que baja por la línea punteada, una y otra vez. */
+function Moneda({ recorrido }) {
+  const reducir = useReducirMovimiento();
+  const t = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
-    Animated.timing(linea, {
-      toValue: 1,
-      duration: 900,
-      delay: 300,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [linea]);
+    if (reducir || !recorrido) return;
+    const ciclo = Animated.loop(
+      Animated.timing(t, { toValue: 1, duration: 5000, easing: Easing.bezier(0.45, 0, 0.55, 1), useNativeDriver: true }),
+    );
+    ciclo.start();
+    return () => ciclo.stop();
+  }, [reducir, recorrido]);
 
-  const router = useRouter();
+  if (reducir || !recorrido) return null;
 
   return (
-    <ScrollView
-      style={s.pantalla}
-      contentContainerStyle={s.contenido}
-      showsVerticalScrollIndicator={false}
+    <Animated.View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[
+        s.moneda,
+        {
+          opacity: t.interpolate({ inputRange: [0, 0.08, 0.88, 1], outputRange: [0, 1, 1, 0] }),
+          transform: [{ translateY: t.interpolate({ inputRange: [0, 1], outputRange: [0, recorrido] }) }],
+        },
+      ]}
     >
-      {/* ── Portada ── */}
-      <Aparece>
-        <View style={s.portada}>
-          <View style={s.haloPortada} />
-          <View style={s.logoPlaca}>
-            <Image
-              source={require("../assets/LOGOATK.png")}
-              style={s.logo}
-              resizeMode="contain"
+      <Text style={s.monedaTexto}>S/</Text>
+    </Animated.View>
+  );
+}
+
+/** Barra de referencia: el monto entero, y cómo se reparte. */
+function Reparto() {
+  const reducir = useReducirMovimiento();
+  const ancho = useRef(new Animated.Value(reducir ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (reducir) return;
+    Animated.timing(ancho, { toValue: 1, duration: 700, delay: 150, easing: CURVA, useNativeDriver: false }).start();
+  }, [reducir]);
+
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ gap: 6 }}>
+        <Text style={s.repartoEtiqueta}>Monto de tu operación</Text>
+        <View style={[s.barra, { backgroundColor: colors.navy }]} />
+      </View>
+      <View style={{ gap: 6 }}>
+        <View style={[s.barra, { flexDirection: "row", overflow: "hidden" }]}>
+          <View style={{ width: "86%" }}>
+            <Animated.View
+              style={{
+                height: 18,
+                backgroundColor: colors.success,
+                width: ancho.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }),
+              }}
             />
           </View>
-          <Text style={s.marca}>ALTOQUE PERÚ WK</Text>
-          <Text style={s.lema}>
-            Convertimos la línea de tu tarjeta de crédito en efectivo, en tu
-            propia cuenta bancaria.
-          </Text>
+          <View style={{ width: "14%", backgroundColor: colors.gold }} />
         </View>
-      </Aparece>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={[s.repartoParte, { color: colors.successText }]}>Tu depósito</Text>
+          <Text style={[s.repartoParte, { color: colors.goldText }]}>Comisión</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
 
-      {/* ── Cómo funciona ── */}
-      <Aparece retraso={120}>
-        <Text style={s.tituloSeccion}>Cómo funciona</Text>
-        <Text style={s.subSeccion}>
-          Cuatro pasos. Los dos primeros se hacen una sola vez.
-        </Text>
-      </Aparece>
+export default function EmpresaScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [alto, setAlto] = useState(0);
+  const volver = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/inicio"));
 
-      <View style={s.pasos}>
-        {/* Riel que conecta los pasos */}
-        <View style={s.rielFondo} />
-        <Animated.View
-          style={[
-            s.riel,
-            {
-              height: linea.interpolate({
-                inputRange: [0, 1],
-                outputRange: ["0%", "100%"],
-              }),
-            },
-          ]}
-        />
-
-        {PASOS.map((p, i) => (
-          <Aparece key={p.titulo} retraso={200 + i * 110}>
-            <View style={s.paso}>
-              <View style={s.pasoIzquierda}>
-                <View style={s.pasoCirculo}>
-                  <Text style={s.pasoNumero}>{i + 1}</Text>
-                </View>
-              </View>
-
-              <View style={s.pasoCuerpo}>
-                <View style={s.pasoEncabezado}>
-                  <Ionicons name={p.icono} size={18} color={COLORS.primary} />
-                  <Text style={s.pasoTitulo}>{p.titulo}</Text>
-                </View>
-                <Text style={s.pasoDetalle}>{p.detalle}</Text>
-                <View style={s.pasoEspera}>
-                  <Ionicons
-                    name="time-outline"
-                    size={12}
-                    color={COLORS.secondaryDark}
-                  />
-                  <Text style={s.pasoEsperaTexto}>{p.espera}</Text>
-                </View>
-              </View>
+  return (
+    <View style={s.pantalla}>
+      <StatusBar style="light" />
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 48 }} showsVerticalScrollIndicator={false}>
+        <CabeceraNoche luces={LUCES} style={s.cabecera}>
+          <BotonIcono variante="noche" icono="chevron-back" onPress={volver} accessibilityLabel="Volver" />
+          <Aparece>
+            <View style={s.marca}>
+              <Logo width={170} />
+              <Text style={s.lema} accessibilityRole="header">
+                Tu aliado <Text style={{ color: "#F4DC8A" }}>financiero.</Text>
+              </Text>
             </View>
           </Aparece>
-        ))}
-      </View>
+        </CabeceraNoche>
 
-      {/* ── La comisión ── */}
-      <Aparece retraso={660}>
-        <View style={s.comision}>
-          <View style={s.comisionEncabezado}>
-            <Ionicons name="pricetag-outline" size={19} color={COLORS.secondary} />
-            <Text style={s.comisionTitulo}>Sobre la comisión</Text>
-          </View>
+        <View style={s.cuerpo}>
+          <Aparece retraso={100}>
+            <GlassPanel variant="light" radius={24} style={s.garantias}>
+              {GARANTIAS.map((g) => (
+                <View key={g.clave} style={s.garantia} accessible accessibilityLabel={g.texto.replace("\n", " ")}>
+                  <View style={s.garantiaIcono}>
+                    <IconoGarantia clave={g.clave} />
+                  </View>
+                  <Text style={s.garantiaTexto}>{g.texto}</Text>
+                </View>
+              ))}
+            </GlassPanel>
+          </Aparece>
 
-          <Text style={s.comisionTexto}>
-            Cobramos un porcentaje sobre el monto de cada operación. Se descuenta
-            del depósito, así que no tienes que pagar nada por adelantado ni por
-            separado.
-          </Text>
-
-          <View style={s.formula}>
-            <View style={s.formulaCaja}>
-              <Text style={s.formulaEtiqueta}>Operación</Text>
-              <Text style={s.formulaValor}>100%</Text>
-            </View>
-            <Ionicons name="remove-outline" size={18} color={COLORS.textLight} />
-            <View style={s.formulaCaja}>
-              <Text style={s.formulaEtiqueta}>Comisión</Text>
-              <Text style={[s.formulaValor, { color: COLORS.secondaryDark }]}>
-                tu %
+          <Aparece retraso={160}>
+            <Text style={s.seccion}>Cómo funciona</Text>
+            <Tarjeta style={s.etapas}>
+              <View
+                style={s.etapasLista}
+                onLayout={(e) => setAlto(e.nativeEvent.layout.height)}
+              >
+                {/* Línea punteada dorada que une las etapas */}
+                <View style={[s.riel, { height: Math.max(0, alto - 70) }]} />
+                <Moneda recorrido={Math.max(0, alto - 76)} />
+                {ETAPAS.map((e, i) => (
+                  <View key={e.clave} style={[s.etapa, i === ETAPAS.length - 1 && { paddingBottom: 4 }]}>
+                    <View style={s.etapaIcono}>
+                      <IconoEtapa clave={e.clave} />
+                    </View>
+                    <View style={{ flex: 1, gap: 3, paddingTop: 2 }}>
+                      <Text style={s.etapaTitulo}>{e.titulo}</Text>
+                      <Text style={s.etapaTexto}>{e.texto}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </Tarjeta>
+            <View style={s.unaVez}>
+              <Ionicons name="person-outline" size={18} color={colors.navyLight} />
+              <Text style={s.unaVezTexto}>
+                Antes de tu primera operación verificamos tu identidad y tu tarjeta. Se hace una sola vez.
               </Text>
             </View>
-            <Ionicons name="arrow-forward" size={18} color={COLORS.textLight} />
-            <View style={[s.formulaCaja, s.formulaCajaFinal]}>
-              <Text style={[s.formulaEtiqueta, { color: COLORS.white }]}>
-                Recibes
-              </Text>
-              <Text style={[s.formulaValor, { color: COLORS.white }]}>
-                el resto
-              </Text>
+          </Aparece>
+
+          <Aparece retraso={220}>
+            <Text style={s.seccion}>Cuánto cuesta</Text>
+            <Tarjeta style={s.costo}>
+              <Reparto />
+              <Text style={s.costoNota}>Gráfico de referencia: la comisión real depende del banco de tu tarjeta.</Text>
+              <Toque
+                onPress={() => router.push("/(tabs)/perfil")}
+                accessibilityLabel="Ver mi comisión"
+                hitSlop={8}
+                style={s.verComision}
+              >
+                <Text style={s.verComisionTexto}>Ver mi comisión</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.goldText} />
+              </Toque>
+            </Tarjeta>
+          </Aparece>
+
+          <Aparece retraso={260}>
+            <Text style={s.seccion}>Dónde te depositamos</Text>
+            <Tarjeta style={s.destinos}>
+              <View style={[s.destino, s.destinoSeparado]}>
+                <View style={{ flexDirection: "row", gap: 6 }}>
+                  {["BCP", "BBVA", "Interbank", "Scotiabank", "BanBif"].map((b) => (
+                    <BankBadge key={b} bank={b} size={26} />
+                  ))}
+                </View>
+                <View style={s.destinoFila}>
+                  <Ionicons name="arrow-forward" size={16} color={colors.gold} />
+                  <BankIcon size={18} color={colors.navy} />
+                  <Text style={s.destinoTexto}>Cuenta de ahorros del mismo banco</Text>
+                </View>
+              </View>
+              <View style={s.destino}>
+                <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                  <BankBadge bank="CMR" size={26} />
+                  <View style={s.otras}>
+                    <Text style={s.otrasTexto}>Otras</Text>
+                  </View>
+                </View>
+                <View style={s.destinoFila}>
+                  <Ionicons name="arrow-forward" size={16} color={colors.gold} />
+                  <BankIcon size={18} color={colors.navy} />
+                  <Text style={s.destinoTexto}>Cuenta de ahorros de cualquier banco</Text>
+                </View>
+              </View>
+            </Tarjeta>
+            <Text style={s.nota}>Siempre a una cuenta a tu nombre.</Text>
+          </Aparece>
+
+          <Aparece retraso={300}>
+            <Text style={s.seccion}>¿Tienes dudas?</Text>
+            <View style={s.contacto}>
+              <Boton
+                titulo="WhatsApp"
+                iconoIzq="logo-whatsapp"
+                onPress={() => Linking.openURL(`https://wa.me/${WHATSAPP}`)}
+                style={s.contactoBoton}
+              />
+              <Boton
+                variante="contorno"
+                titulo="Correo"
+                iconoIzq="mail-outline"
+                onPress={() => Linking.openURL(`mailto:${CORREO}`)}
+                style={s.contactoBoton}
+              />
             </View>
-          </View>
-
-          <Text style={s.comisionNota}>
-            El porcentaje depende del banco de tu tarjeta, y puede tener
-            condiciones especiales según tu caso. El tuyo está siempre a la
-            vista en tu perfil, antes de que operes.
-          </Text>
-
-          <TouchableOpacity
-            style={s.comisionBoton}
-            onPress={() => router.dismissTo("/(tabs)/perfil")}
-            activeOpacity={0.8}
+          </Aparece>
+          {/* Indecopi: el Libro de Reclamaciones tiene que estar a la vista. */}
+          <Toque
+            onPress={() => router.push("/reclamaciones")}
+            accessibilityLabel="Libro de Reclamaciones"
+            style={s.libro}
           >
-            <Text style={s.comisionBotonTexto}>Ver mi comisión</Text>
-            <Ionicons name="arrow-forward" size={16} color={COLORS.primaryDark} />
-          </TouchableOpacity>
+            <Ionicons name="book-outline" size={20} color={colors.navy} />
+            <Text style={s.libroTexto}>Libro de Reclamaciones</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+          </Toque>
+          <AvisoMarcas conEmpresa />
         </View>
-      </Aparece>
-
-      {/* ── Garantías ── */}
-      <Aparece retraso={760}>
-        <Text style={s.tituloSeccion}>Cómo cuidamos tus datos</Text>
-      </Aparece>
-
-      {GARANTIAS.map((g, i) => (
-        <Aparece key={g.titulo} retraso={820 + i * 90}>
-          <View style={s.garantia}>
-            <View style={s.garantiaIcono}>
-              <Ionicons name={g.icono} size={19} color={COLORS.success} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.garantiaTitulo}>{g.titulo}</Text>
-              <Text style={s.garantiaDetalle}>{g.detalle}</Text>
-            </View>
-          </View>
-        </Aparece>
-      ))}
-
-      {/* ── Contacto ── */}
-      <Aparece retraso={1120}>
-        <View style={s.contacto}>
-          <Text style={s.contactoTitulo}>¿Tienes dudas?</Text>
-          <Text style={s.contactoTexto}>
-            Escríbenos y te respondemos en horario de oficina.
-          </Text>
-
-          <TouchableOpacity
-            style={[s.contactoBoton, s.contactoWhatsapp]}
-            onPress={() => Linking.openURL(`https://wa.me/${WHATSAPP}`)}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="logo-whatsapp" size={20} color={COLORS.white} />
-            <Text style={s.contactoBotonTexto}>WhatsApp</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={s.contactoBoton}
-            onPress={() => Linking.openURL(`mailto:${CORREO}`)}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="mail-outline" size={20} color={COLORS.primary} />
-            <Text style={[s.contactoBotonTexto, { color: COLORS.primary }]}>
-              {CORREO}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </Aparece>
-
-      <Text style={s.version}>AlToque Perú WK · Versión 1.0.0</Text>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  pantalla: { flex: 1, backgroundColor: COLORS.background },
-  contenido: { padding: 20, paddingBottom: 48 },
-
-  // Portada
-  portada: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 22,
-    paddingVertical: 32,
-    paddingHorizontal: 24,
+  libro: {
+    flexDirection: "row",
     alignItems: "center",
-    overflow: "hidden",
-    marginBottom: 30,
-  },
-  haloPortada: {
-    position: "absolute",
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    top: -140,
-    right: -110,
-    backgroundColor: COLORS.secondary,
-    opacity: 0.1,
-  },
-  logoPlaca: {
-    width: 82,
-    height: 82,
-    borderRadius: 26,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    gap: 12,
+    minHeight: 56,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+    borderColor: colors.line,
+    marginTop: 6,
+  },
+  libroTexto: { flex: 1, fontFamily: fonts.heavy, fontSize: 15, color: colors.text },
+  pantalla: { flex: 1, backgroundColor: colors.ground },
+  cabecera: { paddingHorizontal: 20, paddingBottom: 84, gap: 12 },
+  marca: { alignItems: "center", gap: 16, paddingTop: 10 },
+  lema: { fontFamily: fonts.display, fontSize: 32, lineHeight: 34, letterSpacing: -0.6, color: colors.white },
+
+  cuerpo: { marginTop: -54, paddingHorizontal: 16, gap: 10 },
+  garantias: { flexDirection: "row", paddingVertical: 16, paddingHorizontal: 8, gap: 4 },
+  garantia: { flex: 1, alignItems: "center", gap: 8 },
+  garantiaIcono: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.goldCream,
     alignItems: "center",
     justifyContent: "center",
   },
-  logo: { width: 52, height: 52 },
-  marca: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: COLORS.secondary,
-    letterSpacing: 2.4,
-    marginTop: 18,
-  },
-  lema: {
-    ...TIPO.cuerpo,
-    color: "rgba(255,255,255,0.72)",
-    textAlign: "center",
-    marginTop: 12,
-    lineHeight: 21,
-  },
+  garantiaTexto: { fontFamily: fonts.heavy, fontSize: 12, lineHeight: 15, color: colors.text, textAlign: "center" },
 
-  tituloSeccion: { ...TIPO.seccion, marginBottom: 4 },
-  subSeccion: { ...TIPO.apoyo, marginBottom: 18 },
-
-  // Pasos
-  pasos: { position: "relative", marginBottom: 30 },
-  rielFondo: {
-    position: "absolute",
-    left: 17,
-    top: 18,
-    bottom: 30,
-    width: 2,
-    backgroundColor: COLORS.borderLight,
-    borderRadius: 2,
-  },
+  seccion: { fontFamily: fonts.heavy, fontSize: 13, color: colors.text2, paddingHorizontal: 6, paddingTop: 12, paddingBottom: 10 },
+  etapas: { borderRadius: 22, paddingTop: 18, paddingHorizontal: 16, paddingBottom: 8 },
+  etapasLista: { position: "relative" },
   riel: {
     position: "absolute",
-    left: 17,
-    top: 18,
-    width: 2,
-    backgroundColor: COLORS.secondary,
-    borderRadius: 2,
-    opacity: 0.5,
+    left: 20,
+    top: 22,
+    width: 0,
+    borderLeftWidth: 3,
+    borderStyle: "dashed",
+    borderColor: colors.gold,
   },
-  paso: { flexDirection: "row", gap: 14, marginBottom: 18 },
-  pasoIzquierda: { width: 36, alignItems: "center" },
-  pasoCirculo: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pasoNumero: { color: COLORS.secondary, fontSize: 15, fontWeight: "800" },
-  pasoCuerpo: {
-    flex: 1,
-    backgroundColor: COLORS.white,
+  moneda: {
+    position: "absolute",
+    left: 8,
+    top: 16,
+    width: 28,
+    height: 28,
     borderRadius: 14,
-    padding: 15,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  pasoEncabezado: { flexDirection: "row", alignItems: "center", gap: 8 },
-  pasoTitulo: { ...TIPO.tarjeta, flex: 1 },
-  pasoDetalle: { ...TIPO.apoyo, marginTop: 7 },
-  pasoEspera: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 10,
-    alignSelf: "flex-start",
-    backgroundColor: COLORS.secondaryLight,
-    borderRadius: 7,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  pasoEsperaTexto: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: COLORS.secondaryDark,
-  },
-
-  // Comisión
-  comision: {
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 30,
-  },
-  comisionEncabezado: { flexDirection: "row", alignItems: "center", gap: 9 },
-  comisionTitulo: { ...TIPO.seccion },
-  comisionTexto: { ...TIPO.cuerpo, color: COLORS.textSecondary, marginTop: 10 },
-  formula: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 6,
-    marginTop: 18,
-  },
-  formulaCaja: {
-    flex: 1,
-    backgroundColor: COLORS.inputBg,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  formulaCajaFinal: {
-    backgroundColor: COLORS.success,
-    borderColor: COLORS.success,
-  },
-  formulaEtiqueta: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    color: COLORS.textLight,
-  },
-  formulaValor: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginTop: 4,
-  },
-  comisionNota: { ...TIPO.apoyo, marginTop: 16 },
-  comisionBoton: {
-    flexDirection: "row",
+    backgroundColor: colors.gold,
+    borderWidth: 4,
+    borderColor: colors.white,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    backgroundColor: COLORS.secondary,
-    borderRadius: 12,
-    paddingVertical: 13,
-    marginTop: 16,
+    zIndex: 2,
+    shadowColor: colors.gold,
+    shadowOpacity: 0.45,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
-  comisionBotonTexto: {
-    color: COLORS.primaryDark,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-
-  // Garantías
-  garantia: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 13,
-    backgroundColor: COLORS.white,
+  monedaTexto: { fontFamily: fonts.heavy, fontSize: 8, color: colors.night },
+  etapa: { flexDirection: "row", gap: 14, paddingBottom: 18 },
+  etapaIcono: {
+    width: 44,
+    height: 44,
     borderRadius: 14,
-    padding: 15,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  garantiaIcono: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: COLORS.successLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  garantiaTitulo: { ...TIPO.tarjeta, fontSize: 14 },
-  garantiaDetalle: { ...TIPO.apoyo, marginTop: 3 },
-
-  // Contacto
-  contacto: {
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginTop: 20,
-  },
-  contactoTitulo: { ...TIPO.seccion },
-  contactoTexto: { ...TIPO.apoyo, marginTop: 4, marginBottom: 16 },
-  contactoBoton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    borderRadius: 12,
-    paddingVertical: 14,
-    marginBottom: 10,
+    backgroundColor: colors.surface,
     borderWidth: 1.5,
-    borderColor: COLORS.border,
+    borderColor: colors.line,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1,
   },
-  contactoWhatsapp: {
-    backgroundColor: "#25D366",
-    borderColor: "#25D366",
+  etapaTitulo: { fontFamily: fonts.heavy, fontSize: 15, color: colors.text },
+  etapaTexto: { fontFamily: fonts.label, fontSize: 13, lineHeight: 18, color: colors.text2 },
+  unaVez: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: colors.infoBg,
   },
-  contactoBotonTexto: { fontSize: 15, fontWeight: "600", color: COLORS.white },
+  unaVezTexto: { flex: 1, fontFamily: fonts.strong, fontSize: 13, lineHeight: 18, color: colors.text },
 
-  version: {
-    ...TIPO.micro,
-    textAlign: "center",
-    marginTop: 26,
-  },
+  costo: { borderRadius: 22, padding: 18, paddingHorizontal: 16, gap: 12 },
+  barra: { height: 18, borderRadius: 6 },
+  repartoEtiqueta: { fontFamily: fonts.strong, fontSize: 13, color: colors.text2 },
+  repartoParte: { fontFamily: fonts.heavy, fontSize: 13 },
+  costoNota: { fontFamily: fonts.label, fontSize: 12, color: colors.text3 },
+  verComision: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-end", minHeight: 32 },
+  verComisionTexto: { fontFamily: fonts.heavy, fontSize: 13, color: colors.goldText },
+
+  destinos: { borderRadius: 22, paddingVertical: 6, paddingHorizontal: 16 },
+  destino: { gap: 8, paddingVertical: 12 },
+  destinoSeparado: { borderBottomWidth: 1, borderBottomColor: colors.lineSoft },
+  destinoFila: { flexDirection: "row", alignItems: "center", gap: 8 },
+  destinoTexto: { flex: 1, fontFamily: fonts.strong, fontSize: 14, color: colors.text },
+  otras: { height: 26, paddingHorizontal: 9, borderRadius: 8, backgroundColor: colors.muted, justifyContent: "center" },
+  otrasTexto: { fontFamily: fonts.heavy, fontSize: 11, color: colors.text2 },
+  nota: { fontFamily: fonts.strong, fontSize: 13, color: colors.text2, paddingHorizontal: 6, paddingTop: 8 },
+
+  contacto: { flexDirection: "row", gap: 8 },
+  contactoBoton: { flex: 1, height: 56 },
 });

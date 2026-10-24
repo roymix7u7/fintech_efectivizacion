@@ -1,19 +1,26 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  Image,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
-import COLORS from "../src/theme/colors";
-import TIPO from "../src/theme/tipografia";
+import { colors, fonts } from "../src/theme/tokens";
+import { Logo } from "../src/components/brand/Logo";
+import { Boton } from "../src/components/ui/Boton";
+import { Toque } from "../src/components/ui/Toque";
+import { BotonIcono } from "../src/components/ui/Piezas";
+import { CabeceraNoche } from "../src/components/ui/CabeceraNoche";
+import { GlassPanel } from "../src/components/ui/GlassPanel";
+import { Aparece } from "../src/components/Cargando";
+import { Campo } from "../src/components/ui/Campos";
 import { mensajeError } from "../src/lib/ui";
 import { useAviso } from "../src/components/Avisos";
 import { validarEmail } from "../src/lib/validaciones";
@@ -25,15 +32,27 @@ import {
 } from "../src/lib/sesion";
 import CuentaBloqueada from "../src/components/CuentaBloqueada";
 
+const LUCES = [
+  { color: colors.glowGold, opacity: 0.36, size: 280, top: 40, right: -120 },
+  { color: colors.glowBlue, opacity: 0.75, size: 320, bottom: -170, left: -120 },
+];
+
+/**
+ * Ingreso. Misma estructura que el registro y recuperar acceso: la
+ * cabecera azul noche con el logo y, montada sobre su borde, la tarjeta
+ * de cristal con los campos.
+ */
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   // El bloqueo se muestra en ventana y no como aviso flotante: el
   // motivo hay que poder leerlo con calma.
   const [bloqueo, setBloqueo] = useState(null);
+  // "Siguiente" en el teclado del correo salta directo a la contraseña.
+  const refClave = useRef(null);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { mostrar } = useAviso();
 
   async function handleLogin() {
@@ -122,7 +141,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={s.container}
+      style={s.pantalla}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <CuentaBloqueada
@@ -131,205 +150,126 @@ export default function LoginScreen() {
         onCerrar={() => setBloqueo(null)}
       />
 
-      {/* Header azul */}
-      <View style={s.header}>
-        {/* Al ocultar la cabecera nativa, el botón de volver tiene que
-            vivir aquí: sin él no habría forma de regresar al inicio. */}
-        <TouchableOpacity
-          onPress={() =>
-            router.canGoBack() ? router.back() : router.replace("/")
-          }
-          style={s.volver}
-          hitSlop={12}
-        >
-          <Ionicons name="arrow-back" size={22} color={COLORS.white} />
-        </TouchableOpacity>
-
-        <Image
-          source={require("../assets/LOGOATK.png")}
-          style={s.logo}
-          resizeMode="contain"
-        />
-        <Text style={s.brand}>ALTOQUE PERÚ WK</Text>
-        <Text style={s.headerSub}>Tu aliado financiero</Text>
-      </View>
-
-      {/* Formulario */}
-      <View style={s.formContainer}>
-        <Text style={s.title}>Iniciar sesión</Text>
-        <Text style={s.subtitle}>Ingresa con tu cuenta para continuar</Text>
-
-        <View style={s.form}>
-          <View style={s.inputContainer}>
-            <Ionicons
-              name="mail-outline"
-              size={20}
-              color={COLORS.textLight}
-              style={s.inputIcon}
+      <StatusBar style="light" />
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 28 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+      >
+        <CabeceraNoche luces={LUCES} style={s.cabecera}>
+          <View style={s.arriba}>
+            {/* Al ocultar la cabecera nativa, el botón de volver tiene que
+                vivir aquí: sin él no habría forma de regresar al inicio. */}
+            <BotonIcono
+              variante="noche"
+              icono="chevron-back"
+              accessibilityLabel="Volver"
+              onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
             />
-            <TextInput
-              style={s.input}
-              placeholder="Correo electrónico"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              returnKeyType="next"
-              placeholderTextColor={COLORS.textLight}
-            />
+            <Logo width={56} />
+            <View style={{ width: 44 }} />
           </View>
+          <Aparece>
+            <View style={{ gap: 6 }}>
+              <Text style={s.titulo} accessibilityRole="header">
+                Hola de nuevo.
+              </Text>
+              <Text style={s.subtitulo}>Ingresa con tu correo y tu contraseña.</Text>
+            </View>
+          </Aparece>
+        </CabeceraNoche>
 
-          <View style={s.inputContainer}>
-            <Ionicons
-              name="lock-closed-outline"
-              size={20}
-              color={COLORS.textLight}
-              style={s.inputIcon}
-            />
-            <TextInput
-              style={s.input}
-              placeholder="Contraseña"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              returnKeyType="go"
-              onSubmitEditing={handleLogin}
-              placeholderTextColor={COLORS.textLight}
-            />
-            <TouchableOpacity
-              onPress={() => setShowPassword(!showPassword)}
-              style={s.eyeBtn}
-            >
-              <Ionicons
-                name={showPassword ? "eye-off-outline" : "eye-outline"}
-                size={20}
-                color={COLORS.textLight}
+        <View style={s.cuerpo}>
+          <Aparece retraso={60}>
+            <GlassPanel variant="light" radius={26} style={s.tarjeta}>
+              {/* El foco lo maneja cada Campo por dentro: así enfocar uno no
+                  vuelve a dibujar la pantalla entera mientras el teclado
+                  cambia de un campo al otro. */}
+              <Campo
+                etiqueta="Correo"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => refClave.current?.focus()}
+                placeholder="tucorreo@ejemplo.com"
               />
-            </TouchableOpacity>
+
+              <Campo
+                ref={refClave}
+                etiqueta="Contraseña"
+                value={password}
+                onChangeText={setPassword}
+                secreto
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="current-password"
+                textContentType="password"
+                returnKeyType="go"
+                onSubmitEditing={handleLogin}
+                placeholder="••••••••"
+              />
+
+              <Toque
+                onPress={() => router.push("/recuperar")}
+                hitSlop={8}
+                style={s.olvido}
+                accessibilityLabel="Olvidé mi contraseña"
+              >
+                <Text style={s.enlaceGris}>¿Olvidaste tu contraseña?</Text>
+              </Toque>
+
+              <Boton
+                titulo={loading ? "Ingresando..." : "Ingresar"}
+                icono={loading ? undefined : "arrow-forward"}
+                onPress={handleLogin}
+                cargando={loading}
+                style={{ height: 58 }}
+              />
+            </GlassPanel>
+          </Aparece>
+
+          <View style={s.seguro}>
+            <Ionicons name="lock-closed-outline" size={14} color={colors.goldText} />
+            <Text style={s.seguroTexto}>Tu sesión se cierra sola a las 2 horas</Text>
           </View>
 
-          <TouchableOpacity
-            onPress={() => router.push("/recuperar")}
-            style={s.forgotLink}
+          <View style={{ flex: 1, minHeight: 24 }} />
+
+          <Toque
+            onPress={() => router.push("/registro")}
+            accessibilityLabel="Crear cuenta"
+            style={s.crear}
           >
-            <Text style={s.forgotText}>¿Olvidaste tu contraseña?</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[s.btn, loading && s.btnDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <Text style={s.btnText}>Ingresando...</Text>
-            ) : (
-              <View style={s.btnInner}>
-                <Text style={s.btnText}>Ingresar</Text>
-                <Ionicons
-                  name="arrow-forward"
-                  size={18}
-                  color={COLORS.primaryDark}
-                />
-              </View>
-            )}
-          </TouchableOpacity>
+            <Text style={s.enlaceTexto}>
+              ¿No tienes cuenta? <Text style={s.enlaceOro}>Crea una</Text>
+            </Text>
+          </Toque>
         </View>
-
-        <View style={s.dividerRow}>
-          <View style={s.dividerLine} />
-          <Text style={s.dividerText}>o</Text>
-          <View style={s.dividerLine} />
-        </View>
-
-        <TouchableOpacity
-          style={s.registerBtn}
-          onPress={() => router.push("/registro")}
-        >
-          <Text style={s.registerText}>Crear cuenta nueva</Text>
-        </TouchableOpacity>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.primary },
-  // Header
-  header: {
-    backgroundColor: COLORS.primary,
-    alignItems: "center",
-    paddingTop: 64,
-    paddingBottom: 30,
-  },
-  volver: {
-    position: "absolute",
-    top: 54,
-    left: 18,
-    padding: 6,
-  },
-  logo: { width: 64, height: 64, marginBottom: 12 },
-  brand: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: COLORS.secondary,
-    letterSpacing: 1,
-  },
-  headerSub: { fontSize: 14, color: COLORS.white, opacity: 0.7, marginTop: 4 },
-  // Form
-  formContainer: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 28,
-    paddingTop: 32,
-  },
-  title: { ...TIPO.titulo },
-  subtitle: { ...TIPO.apoyo, marginTop: 4, marginBottom: 28 },
-  form: { gap: 16 },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    backgroundColor: COLORS.inputBg,
-  },
-  inputIcon: { paddingLeft: 14 },
-  input: {
-    flex: 1,
-    padding: 14,
-    fontSize: 16,
-    color: COLORS.text,
-  },
-  eyeBtn: { paddingRight: 14 },
-  forgotLink: { alignItems: "flex-end" },
-  forgotText: { color: COLORS.primary, fontSize: 14, fontWeight: "500" },
-  btn: {
-    backgroundColor: COLORS.secondary,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    marginTop: 4,
-  },
-  btnDisabled: { opacity: 0.7 },
-  btnInner: { flexDirection: "row", alignItems: "center", gap: 8 },
-  btnText: { color: COLORS.primaryDark, fontSize: 16, fontWeight: "700" },
-  // Divider
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 24,
-  },
-  dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.borderLight },
-  dividerText: { paddingHorizontal: 14, fontSize: 13, color: COLORS.textLight },
-  // Register
-  registerBtn: {
-    borderWidth: 1.5,
-    borderColor: COLORS.primary,
-    borderRadius: 12,
-    padding: 15,
-    alignItems: "center",
-  },
-  registerText: { color: COLORS.primary, fontSize: 15, fontWeight: "600" },
+  pantalla: { flex: 1, backgroundColor: colors.ground },
+  cabecera: { paddingHorizontal: 20, paddingBottom: 92, gap: 22 },
+  arriba: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  titulo: { fontFamily: fonts.display, fontSize: 34, lineHeight: 38, letterSpacing: -0.7, color: colors.white },
+  subtitulo: { fontFamily: fonts.body, fontSize: 15, color: "rgba(255,255,255,0.75)" },
+  cuerpo: { flexGrow: 1, marginTop: -64, paddingHorizontal: 16, gap: 14 },
+  tarjeta: { padding: 18, paddingHorizontal: 16, gap: 14 },
+  olvido: { alignSelf: "flex-end", minHeight: 32, justifyContent: "center", marginTop: -4 },
+  enlaceGris: { fontFamily: fonts.strong, fontSize: 13, color: colors.navy },
+  seguro: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  seguroTexto: { fontFamily: fonts.strong, fontSize: 12, color: colors.text2 },
+  crear: { alignSelf: "center", minHeight: 48, justifyContent: "center", paddingHorizontal: 12 },
+  enlaceTexto: { fontFamily: fonts.body, fontSize: 14, color: colors.text2 },
+  enlaceOro: { fontFamily: fonts.heavy, color: colors.goldText },
 });

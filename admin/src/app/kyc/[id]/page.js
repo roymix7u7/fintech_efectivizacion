@@ -39,6 +39,9 @@ export default function KYCDetallePage() {
   const [session, setSession] = useState(sesionEnCache);
   const [cliente, setCliente] = useState(null);
   const [perfil, setPerfil] = useState(null);
+  // Lo que aceptó el cliente (términos, privacidad, fotos): la
+  // constancia ante un reclamo.
+  const [aceptaciones, setAceptaciones] = useState([]);
   const [documento, setDocumento] = useState(DOCUMENTOS[0].campo);
   const [motivo, setMotivo] = useState("");
   const [modoObservar, setModoObservar] = useState(false);
@@ -98,11 +101,15 @@ export default function KYCDetallePage() {
     // Si el cliente no tiene bloque, se propone el predeterminado.
     setBloqueId((actual) => actual || lista.find((b) => b.es_default)?.id || null);
 
-    const { data: perfilData } = await supabase
-      .from("perfiles_cliente")
-      .select("*")
-      .eq("user_id", params.id)
-      .maybeSingle();
+    const [{ data: perfilData }, { data: consentimientos }] = await Promise.all([
+      supabase.from("perfiles_cliente").select("*").eq("user_id", params.id).maybeSingle(),
+      supabase
+        .from("consentimientos")
+        .select("id, tipo, version, aceptado_en, dispositivo")
+        .eq("user_id", params.id)
+        .order("aceptado_en", { ascending: false }),
+    ]);
+    setAceptaciones(consentimientos || []);
 
     // Se firma el path guardado en la columna en vez de reconstruirlo a
     // mano. Antes se asumia el nombre "<uid>/<campo>.jpg", asi que una
@@ -372,7 +379,7 @@ export default function KYCDetallePage() {
             </p>
             <ul className="mt-1.5 space-y-1 text-[13px] text-foreground">
               <li>
-                El DNI del documento coincide con{" "}
+                El {perfil?.tipo_documento === "ce" ? "carnet de extranjería" : "DNI"} del documento coincide con{" "}
                 <span className="cifras font-mono font-semibold">
                   {perfil?.dni || "—"}
                 </span>
@@ -395,7 +402,7 @@ export default function KYCDetallePage() {
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
               <Dato etiqueta="Nombres">{perfil?.nombres}</Dato>
               <Dato etiqueta="Apellidos">{perfil?.apellidos}</Dato>
-              <Dato etiqueta="DNI" mono>
+              <Dato etiqueta={perfil?.tipo_documento === "ce" ? "Carnet de extranjería" : "DNI"} mono>
                 {perfil?.dni}
               </Dato>
               <Dato etiqueta="Teléfono" mono>
@@ -409,6 +416,52 @@ export default function KYCDetallePage() {
                 {fechaLarga(cliente?.created_at)}
               </Dato>
             </dl>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
+            <h3 className="mb-1 text-[13px] font-semibold">Consentimientos</h3>
+            {(() => {
+              const NOMBRES = {
+                terminos: "Términos y condiciones",
+                privacidad: "Política de privacidad",
+                biometria: "Autorización de fotos de identidad",
+              };
+              const falta = Object.keys(NOMBRES).filter((t) => !aceptaciones.some((a) => a.tipo === t));
+              return (
+                <>
+                  {falta.includes("biometria") && (
+                    <p className="mb-2 rounded-md bg-oro-50 px-2.5 py-1.5 text-[0.75rem] text-oro-700">
+                      No consta la autorización para usar sus fotos de identidad.
+                    </p>
+                  )}
+                  <ul className="divide-y divide-border">
+                    {Object.entries(NOMBRES).map(([tipo, nombre]) => {
+                      const a = aceptaciones.find((x) => x.tipo === tipo);
+                      const d = a?.dispositivo || {};
+                      return (
+                        <li key={tipo} className="flex items-start justify-between gap-3 py-2">
+                          <span className="text-[0.8rem]">{nombre}</span>
+                          <span className="text-right text-[0.75rem] text-muted-foreground">
+                            {a ? (
+                              <>
+                                v{a.version} · {fechaLarga(a.aceptado_en)}
+                                {d.plataforma && (
+                                  <span className="block">
+                                    {[d.modelo, d.plataforma, d.app && `app ${d.app}`].filter(Boolean).join(" · ")}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              "Sin aceptar"
+                            )}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              );
+            })()}
           </div>
 
           {perfil?.motivo_observacion && cliente?.estado === "observado" && (
