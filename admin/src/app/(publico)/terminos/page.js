@@ -1,10 +1,10 @@
 import { DocumentoLegal, leerVigente } from "../documento-legal";
 
-// Se vuelve a leer de la base cada 5 minutos.
-export const revalidate = 300;
+// Se vuelve a leer de la base cada minuto.
+export const revalidate = 60;
 
 export const metadata = { title: "Términos y condiciones | AlToque Perú WK" };
 
 export default async function Pagina() {
-  return <DocumentoLegal documento={await leerVigente("terminos")} nombre="Términos y condiciones" />;
+  return <DocumentoLegal documento={await leerVigente("terminos")} nombre="Términos y condiciones" tipo="terminos" />;
 }

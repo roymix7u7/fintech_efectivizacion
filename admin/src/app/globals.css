@@ -327,3 +327,67 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─────────────────────── Web pública ───────────────────────
+   Animaciones de la landing. Lo que no está marcado como por-revelar
+   se ve siempre: sin JavaScript la página está completa. */
+.por-revelar {
+  opacity: 0;
+  transform: translateY(28px);
+}
+.por-revelar.revelado {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--retraso, 0ms);
+}
+
+@keyframes progreso {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes pantalla {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes flotar {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes flotar-lento {
+  0%, 100% { transform: translateY(0) rotate(var(--giro, 0deg)); }
+  50% { transform: translateY(-8px) rotate(var(--giro, 0deg)); }
+}
+
+@keyframes marquesina {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes pulso-oro {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 184, 0, 0.45); }
+  50% { box-shadow: 0 0 0 10px rgba(232, 184, 0, 0); }
+}
+
+.flotar {
+  animation: flotar 6s ease-in-out infinite;
+}
+.flotar-lento {
+  animation: flotar-lento 7s ease-in-out infinite;
+}
+.marquesina {
+  animation: marquesina 30s linear infinite;
+}
+.marquesina:hover {
+  animation-play-state: paused;
+}
+
+html:has(.sitio-publico) {
+  scroll-behavior: smooth;
+  scroll-padding-top: 84px;
+}
