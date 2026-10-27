@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -9,14 +9,11 @@ import { extraerPath } from "@/lib/storage";
 import { useRetraso } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { recibeDeposito, BANCOS_PRINCIPALES } from "@/lib/bancos";
-import Shell, { Lupa, Check, Cruz, Billete } from "@/components/shell";
+import Shell, { Check, Cruz, Billete, Documento, Enviar } from "@/components/shell";
 import { Vacio, Aviso } from "@/components/marca";
-import {
-  EsqueletoFilas,
-  BotonAccion,
-  Rueda,
-  BarraCarga,
-} from "@/components/carga";
+import { EsqueletoFilas, BotonAccion, Rueda, BarraCarga, CargaPantalla } from "@/components/carga";
+import { Segmentos, Buscador, Barra, Leyenda, Dialogo, Motivo, Tostada, Copiar, IconoAlerta } from "@/components/piezas";
+import Pista from "@/components/pista";
 import Paginador from "@/components/paginador";
 
 const BUCKET_COMPROBANTES = "comprobantes";
@@ -81,140 +78,73 @@ function motivoDe(error, contexto) {
   return explicarError(error, contexto);
 }
 
+
 // ── Piezas ────────────────────────────────────────────────────
-
-function Copiar({ texto, etiqueta = "Copiar" }) {
-  const [hecho, setHecho] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={async (e) => {
-        e.stopPropagation();
-        try {
-          await navigator.clipboard.writeText(String(texto).replace(/\s/g, ""));
-          setHecho(true);
-          setTimeout(() => setHecho(false), 1400);
-        } catch {}
-      }}
-      className={cn(
-        "pulsable rounded px-1.5 py-0.5 text-[11px] font-medium",
-        hecho
-          ? "bg-emerald-50 text-emerald-700"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-      aria-label={`${etiqueta} ${texto}`}
-    >
-      {hecho ? "Copiado" : etiqueta}
-    </button>
-  );
-}
-
-/** Ventana modal sencilla. */
-function Modal({ titulo, children, onCerrar }) {
-  useEffect(() => {
-    const tecla = (e) => e.key === "Escape" && onCerrar();
-    window.addEventListener("keydown", tecla);
-    return () => window.removeEventListener("keydown", tecla);
-  }, [onCerrar]);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-marca-950/50 p-4"
-      onClick={onCerrar}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div
-        className="entra max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-panel"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <h2 className="text-base font-semibold text-foreground">{titulo}</h2>
-          <button
-            onClick={onCerrar}
-            className="rounded p-1 text-muted-foreground hover:bg-muted"
-            aria-label="Cerrar"
-          >
-            <Cruz className="h-4 w-4" />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 /**
  * Una solicitud en la lista.
  *
  * Es una vista para pagar, no para revisar: lo grande es el nombre, el
- * DNI y las cuentas. El comprobante queda como un enlace pequeño, por
- * si hace falta mirarlo.
+ * DNI y las cuentas. El comprobante queda como un botón pequeño, por si
+ * hace falta mirarlo.
  */
 function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar }) {
   const tomadaPorOtro = fila.marcada_por && !fila.marcada_por_mi;
-  const seleccionable =
-    estado === "aprobado" && fila.puedo_pagar && !tomadaPorOtro;
+  const seleccionable = estado === "aprobado" && fila.puedo_pagar && !tomadaPorOtro;
   const marcada = fila.marcada_por_mi;
+  const ningunaRecibe = fila.cuentas?.length > 0 && !fila.cuentas.some((c) => recibeDeposito(fila.banco, c));
 
   return (
     <li
       className={cn(
         "flex gap-3 rounded-xl border bg-card p-3.5 transition",
-        marcada ? "border-marca-400 bg-marca-50/40" : "border-border",
+        marcada ? "border-marca-500 bg-marca-50/50 ring-1 ring-marca-500/40" : "border-border",
         tomadaPorOtro && "opacity-70",
       )}
     >
       {estado === "aprobado" && (
-        <button
-          type="button"
-          onClick={() => seleccionable && onMarcar(fila)}
-          disabled={!seleccionable || ocupado}
-          aria-pressed={marcada}
-          aria-label={marcada ? "Quitar del lote" : "Agregar al lote"}
-          title={
+        <Pista
+          texto={
             !fila.puedo_pagar
               ? "Este banco lo atiende otro compañero"
               : tomadaPorOtro
                 ? `Marcada por ${fila.marcada_por}`
-                : undefined
+                : marcada
+                  ? "Quitar del lote"
+                  : "Agregar al lote"
           }
-          className={cn(
-            "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition",
-            marcada
-              ? "border-marca-700 bg-marca-700 text-white"
-              : "border-slate-300 bg-card hover:border-marca-500",
-            "disabled:cursor-not-allowed disabled:opacity-40",
-          )}
+          lado="right"
         >
-          {ocupado ? (
-            <Rueda className="h-3 w-3" claro={marcada} />
-          ) : (
-            marcada && <Check className="h-3.5 w-3.5" />
-          )}
-        </button>
+          <button
+            type="button"
+            onClick={() => seleccionable && onMarcar(fila)}
+            disabled={!seleccionable || ocupado}
+            aria-pressed={marcada}
+            aria-label={marcada ? "Quitar del lote" : "Agregar al lote"}
+            className={cn(
+              "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition",
+              marcada ? "border-marca-700 bg-marca-700 text-white" : "border-marca-200 bg-card hover:border-marca-500",
+              "disabled:cursor-not-allowed disabled:opacity-40",
+            )}
+          >
+            {ocupado ? <Rueda className="h-3 w-3" claro={marcada} /> : marcada && <Check className="h-4 w-4" />}
+          </button>
+        </Pista>
       )}
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <p className="text-[0.9333rem] font-semibold text-foreground">
-            {nombreDe(fila.cliente) || "Cliente sin nombre"}
-          </p>
+          <p className="text-md font-bold text-foreground">{nombreDe(fila.cliente) || "Cliente sin nombre"}</p>
           <span className="inline-flex items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5">
-            <span className="cifras text-[12px] font-semibold text-foreground">
-              DNI {fila.cliente?.dni}
-            </span>
-            <Copiar texto={fila.cliente?.dni} />
+            <span className="cifras text-chico font-bold text-foreground">DNI {fila.cliente?.dni}</span>
+            <Copiar texto={fila.cliente?.dni} soloIcono etiqueta="Copiar DNI" />
           </span>
         </div>
 
-        <p className="mt-0.5 text-[12px] text-muted-foreground">
-          <span className="cifras">{fila.codigo}</span>
-          {" · "}
-          Tarjeta {fila.banco}
-          {fila.ultimos_4 && (
-            <span className="cifras"> •••• {fila.ultimos_4}</span>
-          )}
+        <p className="mt-0.5 text-chico text-muted-foreground">
+          <span className="cifras font-mono">{fila.codigo}</span>
+          {" · "}Tarjeta {fila.banco}
+          {fila.ultimos_4 && <span className="cifras"> ···· {fila.ultimos_4}</span>}
           {" · "}
           {estado === "pagado"
             ? `pagada ${haceCuanto(fila.pagado_en)}${fila.pagado_por ? ` por ${fila.pagado_por}` : ""}`
@@ -223,95 +153,70 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar }) {
               : `enviada ${haceCuanto(fila.created_at)}`}
         </p>
 
-        {/* Cuentas: lo que de verdad se necesita para pagar. La que
-            recibe va primero y resaltada: con normal y CCI del mismo
-            banco, o con una tarjeta CMR y cuentas en varios bancos, el
-            pagador no tiene que deducir a cuál depositar. */}
+        {/* La cuenta que recibe va primera y resaltada: el pagador no
+            tiene que deducir a cuál depositar. */}
         <div className="mt-2 flex flex-wrap gap-1.5">
           {fila.cuentas?.length ? (
             [...fila.cuentas]
               .sort((a, b) => recibeDeposito(fila.banco, b) - recibeDeposito(fila.banco, a))
               .map((c, i) => {
-              const recibe = recibeDeposito(fila.banco, c);
-              return (
-              <span
-                key={i}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-lg border px-2 py-1",
-                  recibe
-                    ? "border-emerald-300 bg-emerald-50"
-                    : "border-border bg-background opacity-70",
-                )}
-              >
-                {recibe && (
-                  <span className="rounded bg-emerald-600 px-1 text-[10px] font-bold uppercase tracking-wide text-white">
-                    Recibe
+                const recibe = recibeDeposito(fila.banco, c);
+                return (
+                  <span
+                    key={i}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-lg border px-2 py-1",
+                      recibe ? "border-emerald-300 bg-emerald-50" : "border-border bg-background opacity-70",
+                    )}
+                  >
+                    {recibe && (
+                      <span className="inline-flex items-center gap-0.5 rounded bg-emerald-600 px-1.5 py-px text-xs font-bold text-white">
+                        <Check className="h-3 w-3" />
+                        Recibe
+                      </span>
+                    )}
+                    <span className="text-xs font-bold uppercase tracking-wide text-marca-700">{c.banco}</span>
+                    <span className="text-xs font-semibold text-muted-foreground">{c.tipo === "interbancaria" ? "CCI" : "Ahorros"}</span>
+                    <span className="cifras font-mono text-sm font-semibold text-foreground">{agrupar(c.numero)}</span>
+                    <Copiar texto={c.numero} soloIcono etiqueta="Copiar el número" />
                   </span>
-                )}
-                <span className="text-[11px] font-bold uppercase tracking-wide text-marca-700">
-                  {c.banco}
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  {c.tipo === "interbancaria" ? "CCI" : "Ahorros"}
-                </span>
-                <span className="cifras font-mono text-[12.5px] text-foreground">
-                  {agrupar(c.numero)}
-                </span>
-                <Copiar texto={c.numero} />
-              </span>
-              );
-            })
+                );
+              })
           ) : (
-            <span className="rounded-lg bg-red-50 px-2 py-1 text-[12px] font-medium text-red-700">
+            <span className="rounded-lg bg-red-50 px-2 py-1 text-chico font-semibold text-red-700">
               Sin cuentas registradas: contacta al cliente antes de pagar
             </span>
           )}
         </div>
 
-        {/* Solicitudes de antes de la regla: tienen cuentas, pero
-            ninguna sirve para esta tarjeta (solo CCI, u otro banco). */}
-        {fila.cuentas?.length > 0 &&
-          !fila.cuentas.some((c) => recibeDeposito(fila.banco, c)) && (
-            <p className="mt-1.5 text-[12px] font-medium text-red-700">
-              Ninguna cuenta recibe esta operación: falta la cuenta de ahorros
-              {BANCOS_PRINCIPALES.includes(fila.banco) ? ` ${fila.banco}` : ""}.
-              Contacta al cliente antes de pagar.
-            </p>
-          )}
-
-        {fila.nota_cliente && (
-          <p className="mt-1.5 text-[12px] italic text-muted-foreground">
-            “{fila.nota_cliente}”
+        {ningunaRecibe && (
+          <p className="mt-1.5 text-chico font-semibold text-red-700">
+            Ninguna cuenta recibe esta operación: falta la cuenta de ahorros
+            {BANCOS_PRINCIPALES.includes(fila.banco) ? ` ${fila.banco}` : ""}. Contacta al cliente antes de pagar.
           </p>
         )}
+
+        {fila.nota_cliente && <p className="mt-1.5 text-chico italic text-muted-foreground">“{fila.nota_cliente}”</p>}
       </div>
 
       <div className="flex shrink-0 flex-col items-end gap-1.5">
         {tomadaPorOtro && (
-          <span className="max-w-[160px] truncate rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-inset ring-amber-200">
+          <span className="max-w-[170px] truncate rounded-full bg-oro-100 px-2 py-0.5 text-xs font-bold text-oro-700">
             Marcada por {fila.marcada_por}
           </span>
         )}
         {!fila.puedo_pagar && estado === "aprobado" && !tomadaPorOtro && (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-            Solo lectura
-          </span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">Solo lectura</span>
         )}
         {fila.comprobante_url && (
-          <button
-            onClick={() => onComprobante(fila.comprobante_url)}
-            className="pulsable rounded-md px-2 py-1 text-[12px] font-medium text-marca-700 hover:bg-marca-50"
-          >
+          <BotonAccion tono="suave" tamano="chico" onClick={() => onComprobante(fila.comprobante_url)} icono={<Documento className="h-3.5 w-3.5" />}>
             Comprobante
-          </button>
+          </BotonAccion>
         )}
         {estado === "pagado" && fila.puedo_pagar && (
-          <button
-            onClick={() => onCancelar(fila)}
-            className="pulsable rounded-md px-2 py-1 text-[12px] font-medium text-red-600 hover:bg-red-50"
-          >
+          <BotonAccion tono="peligroSuave" tamano="chico" onClick={() => onCancelar(fila)}>
             Cancelar envío
-          </button>
+          </BotonAccion>
         )}
       </div>
     </li>
@@ -601,53 +506,26 @@ export default function PagosPage() {
     return Object.entries(m);
   }, [lote]);
 
-  if (!session) return null;
+  if (!session) return <CargaPantalla />;
 
   const esPagos = session.rol === "pagos";
-  // banco deja de ser undefined cuando ya llego el resumen: antes de eso
-  // no se sabe si tiene bancos y el aviso parpadearia al entrar.
+  // banco deja de ser undefined cuando ya llegó el resumen: antes de eso
+  // no se sabe si tiene bancos y el aviso parpadearía al entrar.
   const sinBancos = esPagos && banco !== undefined && misBancos.length === 0;
 
   return (
     <Shell
       session={session}
       titulo="Pagos"
-      descripcion={
-        esPagos
-          ? misBancos.length
-            ? `Tus bancos: ${misBancos.join(", ")}`
-            : "Sin bancos asignados"
-          : "Todos los bancos"
-      }
+      descripcion={esPagos ? (misBancos.length ? `Tus bancos: ${misBancos.join(", ")}` : "Sin bancos asignados") : "Todos los bancos"}
+      ayuda="Marca las solicitudes aprobadas que vas a transferir, haz las transferencias desde el banco y confirma el lote. Cada cliente recibe un aviso de que su pago fue enviado."
     >
       <BarraCarga activa={refrescando} />
 
       <div className="space-y-4">
-        {/* Vista */}
-        <div className="inline-flex gap-1 rounded-lg border border-border bg-muted/60 p-1">
-          {[
-            { clave: "cola", titulo: "Por pagar" },
-            { clave: "historial", titulo: "Historial de lotes" },
-          ].map((v) => (
-            <button
-              key={v.clave}
-              onClick={() => setVista(v.clave)}
-              className={cn(
-                "pulsable rounded-md px-4 py-1.5 text-[0.8667rem] font-medium",
-                vista === v.clave
-                  ? "bg-card text-foreground shadow-panel"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {v.titulo}
-            </button>
-          ))}
-        </div>
-
         {sinBancos && (
           <Aviso tono="espera" titulo="Todavía no tienes bancos asignados">
-            Puedes ver el trabajo de todos, pero para marcar y pagar el
-            administrador tiene que asignarte tus bancos desde Equipo.
+            Puedes ver el trabajo de todos, pero para marcar y pagar el administrador tiene que asignarte tus bancos desde Equipo.
           </Aviso>
         )}
         {error && (
@@ -655,20 +533,46 @@ export default function PagosPage() {
             {error}
           </Aviso>
         )}
-        {ok && (
-          <Aviso tono="info" onCerrar={() => setOk("")}>
-            {ok}
-          </Aviso>
-        )}
+
+        <Barra className="mb-0">
+          <Segmentos
+            valor={vista}
+            onCambio={setVista}
+            opciones={[
+              { clave: "cola", etiqueta: "Para pagar" },
+              { clave: "historial", etiqueta: "Lotes enviados" },
+            ]}
+          />
+          {vista === "cola" && (
+            <Segmentos
+              valor={estado}
+              onCambio={setEstado}
+              tamano="chico"
+              opciones={ESTADOS.map((x) => ({
+                clave: x.clave,
+                etiqueta: x.titulo,
+                pista:
+                  x.clave === "aprobado"
+                    ? "Aprobadas por un revisor: listas para transferir."
+                    : x.clave === "pendiente"
+                      ? "Todavía no las valida un revisor. Se muestran para responder si el cliente pregunta; se pagan cuando pasan a «Por pagar»."
+                      : "Ya transferidas, las más recientes primero. Si un envío salió mal, cancélalo y vuelve a «Por pagar».",
+              }))}
+            />
+          )}
+          <Buscador
+            valor={buscar}
+            onCambio={setBuscar}
+            pendiente={buscar !== termino}
+            placeholder={vista === "cola" ? "DNI, nombre o código" : "DNI o código"}
+            className="w-full sm:w-72"
+            autoFocus
+          />
+        </Barra>
 
         {/* Bancos */}
         <div className="scroll-fino -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-          <PestanaBanco
-            activa={banco === null}
-            onClick={() => setBanco(null)}
-            titulo="Todos"
-            cuenta={vista === "cola" ? totalTodos : null}
-          />
+          <PestanaBanco activa={banco === null} onClick={() => setBanco(null)} titulo="Todos" cuenta={vista === "cola" ? totalTodos : null} />
           {resumen.map((r) => (
             <PestanaBanco
               key={r.banco}
@@ -682,71 +586,18 @@ export default function PagosPage() {
           ))}
         </div>
 
-        {/* Buscador */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[240px] max-w-md flex-1">
-            <Lupa className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              value={buscar}
-              onChange={(e) => setBuscar(e.target.value)}
-              placeholder={
-                vista === "cola" ? "DNI, nombre o código" : "DNI o código"
-              }
-              inputMode="search"
-              autoFocus
-              className="w-full rounded-lg border border-input bg-card py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
-            />
-          </div>
-
-          {vista === "cola" && (
-            <div className="inline-flex gap-1 rounded-lg border border-border bg-card p-1">
-              {ESTADOS.map((x) => (
-                <button
-                  key={x.clave}
-                  onClick={() => setEstado(x.clave)}
-                  className={cn(
-                    "pulsable rounded-md px-3 py-1.5 text-[0.8rem] font-medium",
-                    estado === x.clave
-                      ? "bg-marca-700 text-white"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {x.titulo}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
         {vista === "cola" ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-            <div className="min-w-0">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="min-w-0 space-y-3">
               {bancoPropio === false && estado === "aprobado" && (
-                <p className="mb-3 rounded-lg bg-muted px-3 py-2 text-[12.5px] text-muted-foreground">
-                  {banco} lo atiende otro compañero. Puedes ver sus solicitudes,
-                  pero no marcarlas.
-                </p>
-              )}
-              {estado === "pendiente" && (
-                <p className="mb-3 rounded-lg bg-muted px-3 py-2 text-[12.5px] text-muted-foreground">
-                  Todavía no las valida un revisor. Se muestran para que puedas
-                  responder si el cliente pregunta; se pagan cuando pasan a “Por
-                  pagar”.
-                </p>
-              )}
-              {estado === "pagado" && (
-                <p className="mb-3 rounded-lg bg-muted px-3 py-2 text-[12.5px] text-muted-foreground">
-                  Las más recientes primero. Si un envío salió mal, cancélalo
-                  con su motivo y volverá a “Por pagar”.
-                </p>
+                <Aviso tono="info">{banco} lo atiende otro compañero. Puedes ver sus solicitudes, pero no marcarlas.</Aviso>
               )}
 
               {cargando ? (
-                <EsqueletoFilas filas={5} alto="h-[92px]" />
+                <EsqueletoFilas filas={5} alto="h-[96px]" />
               ) : filas.length === 0 ? (
                 <Vacio
-                  icono={<Billete className="h-5 w-5" />}
+                  icono={<Billete />}
                   titulo={
                     termino
                       ? "Nada coincide con esa búsqueda"
@@ -758,7 +609,7 @@ export default function PagosPage() {
                   }
                   detalle={
                     termino
-                      ? "Revisa el DNI o prueba en “Todos” los bancos."
+                      ? "Revisa el DNI o prueba en «Todos» los bancos."
                       : estado === "aprobado"
                         ? "Cuando un revisor apruebe una solicitud, aparecerá aquí."
                         : undefined
@@ -782,93 +633,86 @@ export default function PagosPage() {
                       />
                     ))}
                   </ul>
-                  <Paginador
-                    pagina={pagina}
-                    porPagina={POR_PAGINA}
-                    total={total}
-                    cargando={refrescando}
-                    onCambio={setPagina}
-                  />
+                  <Paginador pagina={pagina} porPagina={POR_PAGINA} total={total} cargando={refrescando} onCambio={setPagina} />
                 </>
+              )}
+
+              {estado === "aprobado" && filas.length > 0 && (
+                <Leyenda
+                  items={[
+                    {
+                      texto: "Recibe",
+                      marca: <span className="h-2.5 w-2.5 rounded-sm bg-emerald-600" />,
+                      pista: "La cuenta a la que hay que depositar: ahorros del mismo banco de la tarjeta.",
+                    },
+                    {
+                      texto: "Tu banco",
+                      marca: <span className="h-2 w-2 rounded-full bg-oro-500" />,
+                      pista: "Bancos que te asignaron. En los demás solo puedes mirar.",
+                    },
+                    {
+                      texto: "Marcadas por ti",
+                      marca: <span className="rounded bg-oro-100 px-1 text-xs font-bold text-oro-700">✓3</span>,
+                      pista: "Cuántas tienes en tu lote en ese banco.",
+                    },
+                  ]}
+                />
               )}
             </div>
 
-            {/* Lote en preparacion */}
-            <aside className="lg:sticky lg:top-[84px] lg:self-start">
-              <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-                <div className="flex items-baseline justify-between">
-                  <h2 className="text-[0.9333rem] font-semibold text-foreground">
-                    Lote en preparación
-                  </h2>
-                  <span className="cifras text-[1.25rem] font-bold text-marca-700">
-                    {lote.length}
-                  </span>
+            {/* Lote en preparación */}
+            <aside className="lg:sticky lg:top-[76px] lg:self-start">
+              <div className="overflow-hidden rounded-xl border border-border bg-card shadow-panel">
+                <div className="flex items-center gap-2 border-b border-border bg-marca-900 px-4 py-3 text-white">
+                  <h2 className="t-seccion">Tu lote</h2>
+                  <Pista texto="Lo marcado queda guardado para ti hasta que confirmes el envío o lo quites. Puedes buscar otro DNI, cambiar de banco o cerrar la pantalla y seguir después." />
+                  <span className="cifras ml-auto font-heading text-2xl font-semibold text-oro-500">{lote.length}</span>
                 </div>
 
-                {lote.length === 0 ? (
-                  <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground">
-                    Marca las solicitudes que vas a pagar. Puedes buscar otro
-                    DNI o cambiar de banco: lo marcado se queda aquí.
-                  </p>
-                ) : (
-                  <>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {desglose.map(([b, n]) => (
-                        <span
-                          key={b}
-                          className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
-                        >
-                          {b} · <span className="cifras">{n}</span>
-                        </span>
-                      ))}
-                    </div>
+                <div className="p-4">
+                  {lote.length === 0 ? (
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      Marca las casillas de las solicitudes que vas a transferir.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-1">
+                        {desglose.map(([b, n]) => (
+                          <span key={b} className="rounded-full bg-muted px-2 py-0.5 text-xs font-bold text-muted-foreground">
+                            {b} · <span className="cifras">{n}</span>
+                          </span>
+                        ))}
+                      </div>
 
-                    <ul className="scroll-fino mt-3 max-h-[46vh] space-y-1 overflow-y-auto">
-                      {lote.map((f) => (
-                        <li
-                          key={f.id}
-                          className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-[12.5px] font-medium text-foreground">
-                              {nombreDe(f.cliente)}
-                            </p>
-                            <p className="cifras text-[11px] text-muted-foreground">
-                              {f.cliente?.dni} · {f.banco} · {f.codigo}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => quitarDelLote([f.id])}
-                            className="rounded p-1 text-muted-foreground opacity-60 hover:bg-card hover:text-red-600 group-hover:opacity-100"
-                            aria-label="Quitar del lote"
-                          >
-                            <Cruz className="h-3.5 w-3.5" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                      <ul className="scroll-fino mt-3 max-h-[42vh] space-y-0.5 overflow-y-auto">
+                        {lote.map((f) => (
+                          <li key={f.id} className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold text-foreground">{nombreDe(f.cliente)}</p>
+                              <p className="cifras text-xs text-muted-foreground">
+                                {f.cliente?.dni} · {f.banco} · {f.codigo}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => quitarDelLote([f.id])}
+                              className="rounded p-1 text-muted-foreground opacity-60 hover:bg-card hover:text-red-600 group-hover:opacity-100"
+                              aria-label={`Quitar a ${nombreDe(f.cliente)} del lote`}
+                            >
+                              <Cruz className="h-4 w-4" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
 
-                    <BotonAccion
-                      tono="exito"
-                      className="mt-3 w-full"
-                      onClick={() => setConfirmando(true)}
-                    >
-                      Confirmar envío de {lote.length}
-                    </BotonAccion>
-                    <button
-                      onClick={() => quitarDelLote(lote.map((f) => f.id))}
-                      className="mt-1.5 w-full rounded-lg px-3 py-1.5 text-[12px] text-muted-foreground hover:bg-muted"
-                    >
-                      Vaciar lote
-                    </button>
-                  </>
-                )}
-
-                <p className="mt-3 border-t border-border pt-3 text-[11px] leading-relaxed text-muted-foreground">
-                  Lo marcado queda guardado para ti hasta que confirmes el
-                  envío o lo quites. Puedes cerrar la pantalla y seguir
-                  después.
-                </p>
+                      <BotonAccion tono="exito" className="mt-3 w-full" onClick={() => setConfirmando(true)} icono={<Enviar className="h-4 w-4" />}>
+                        Confirmar envío de {lote.length}
+                      </BotonAccion>
+                      <BotonAccion tono="suave" tamano="chico" className="mt-1.5 w-full" onClick={() => quitarDelLote(lote.map((f) => f.id))}>
+                        Vaciar lote
+                      </BotonAccion>
+                    </>
+                  )}
+                </div>
               </div>
             </aside>
           </div>
@@ -879,12 +723,8 @@ export default function PagosPage() {
               <EsqueletoFilas filas={4} />
             ) : lotes.length === 0 ? (
               <Vacio
-                icono={<Billete className="h-5 w-5" />}
-                titulo={
-                  termino
-                    ? "Ningún lote con ese DNI o código"
-                    : "Todavía no hay lotes"
-                }
+                icono={<Billete />}
+                titulo={termino ? "Ningún lote con ese DNI o código" : "Todavía no hay lotes"}
                 detalle="Cada vez que alguien confirma un envío, el lote queda registrado aquí."
               />
             ) : (
@@ -892,14 +732,9 @@ export default function PagosPage() {
                 <ul className="space-y-2">
                   {lotes.map((l) => {
                     const abierto = abiertos.has(l.id);
-                    const canceladas = l.items.filter(
-                      (i) => i.cancelacion,
-                    ).length;
+                    const canceladas = l.items.filter((i) => i.cancelacion).length;
                     return (
-                      <li
-                        key={l.id}
-                        className="overflow-hidden rounded-xl border border-border bg-card"
-                      >
+                      <li key={l.id} className="overflow-hidden rounded-xl border border-border bg-card shadow-panel">
                         <button
                           onClick={() =>
                             setAbiertos((s) => {
@@ -911,68 +746,59 @@ export default function PagosPage() {
                           className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left hover:bg-muted/50"
                           aria-expanded={abierto}
                         >
-                          <span className="text-[0.8667rem] font-semibold text-foreground">
-                            {fechaHora(l.creado_en)}
-                          </span>
-                          <span className="text-[12.5px] text-muted-foreground">
-                            {l.creado_por}
-                          </span>
-                          <span className="cifras text-[12.5px] text-foreground">
+                          <span className="text-md font-bold text-foreground">{fechaHora(l.creado_en)}</span>
+                          <span className="text-sm text-muted-foreground">{l.creado_por}</span>
+                          <span className="cifras text-sm font-semibold text-foreground">
                             {l.cantidad} solicitud{l.cantidad === 1 ? "" : "es"}
                           </span>
                           <span className="flex gap-1">
                             {(l.bancos || []).map((b) => (
-                              <span
-                                key={b}
-                                className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
-                              >
+                              <span key={b} className="rounded bg-muted px-1.5 py-0.5 text-xs font-bold text-muted-foreground">
                                 {b}
                               </span>
                             ))}
                           </span>
                           {canceladas > 0 && (
-                            <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700 ring-1 ring-inset ring-red-200">
-                              {canceladas} cancelada
-                              {canceladas === 1 ? "" : "s"}
+                            <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
+                              {canceladas} cancelada{canceladas === 1 ? "" : "s"}
                             </span>
                           )}
-                          <span className="ml-auto text-muted-foreground">
-                            {abierto ? "▴" : "▾"}
-                          </span>
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            className={cn("ml-auto h-4 w-4 text-muted-foreground transition-transform", abierto && "rotate-180")}
+                          >
+                            <path d="m6 9 6 6 6-6" />
+                          </svg>
                         </button>
 
                         {abierto && (
                           <ul className="divide-y divide-border border-t border-border">
                             {l.items.map((it) => (
-                              <li
-                                key={it.solicitud_id}
-                                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5"
-                              >
+                              <li key={it.solicitud_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
                                 <div className="min-w-[200px] flex-1">
-                                  <p className="text-[12.5px] font-medium text-foreground">
-                                    {nombreDe(it.cliente)}
-                                  </p>
-                                  <p className="cifras text-[11px] text-muted-foreground">
-                                    DNI {it.cliente?.dni} · {it.codigo} ·
-                                    Tarjeta {it.banco}
+                                  <p className="text-sm font-semibold text-foreground">{nombreDe(it.cliente)}</p>
+                                  <p className="cifras text-xs text-muted-foreground">
+                                    DNI {it.cliente?.dni} · {it.codigo} · Tarjeta {it.banco}
                                   </p>
                                   {it.cancelacion && (
-                                    <p className="mt-0.5 text-[11.5px] text-red-700">
-                                      Cancelada por {it.cancelacion.por} (
-                                      {fechaHora(it.cancelacion.en)}):{" "}
-                                      {it.cancelacion.motivo}
+                                    <p className="mt-0.5 text-chico text-red-700">
+                                      Cancelada por {it.cancelacion.por} ({fechaHora(it.cancelacion.en)}): {it.cancelacion.motivo}
                                     </p>
                                   )}
                                 </div>
 
                                 <span
                                   className={cn(
-                                    "rounded-full px-2 py-0.5 text-[11px] font-medium",
+                                    "rounded-full px-2 py-0.5 text-xs font-bold",
                                     it.en_este_lote && it.estado === "pagado"
                                       ? "bg-emerald-50 text-emerald-700"
                                       : it.estado === "pagado"
                                         ? "bg-marca-50 text-marca-700"
-                                        : "bg-amber-50 text-amber-700",
+                                        : "bg-oro-100 text-oro-700",
                                   )}
                                 >
                                   {it.en_este_lote && it.estado === "pagado"
@@ -983,20 +809,16 @@ export default function PagosPage() {
                                 </span>
 
                                 {it.puedo_cancelar && (
-                                  <button
+                                  <BotonAccion
+                                    tono="peligroSuave"
+                                    tamano="chico"
                                     onClick={() => {
-                                      setACancelar({
-                                        id: it.solicitud_id,
-                                        codigo: it.codigo,
-                                        cliente: it.cliente,
-                                        banco: it.banco,
-                                      });
+                                      setACancelar({ id: it.solicitud_id, codigo: it.codigo, cliente: it.cliente, banco: it.banco });
                                       setMotivo("");
                                     }}
-                                    className="pulsable rounded-md px-2 py-1 text-[12px] font-medium text-red-600 hover:bg-red-50"
                                   >
                                     Cancelar envío
-                                  </button>
+                                  </BotonAccion>
                                 )}
                               </li>
                             ))}
@@ -1020,161 +842,119 @@ export default function PagosPage() {
       </div>
 
       {/* Confirmar lote */}
-      {confirmando && (
-        <Modal
-          titulo={`Confirmar envío de ${lote.length}`}
-          onCerrar={() => !enviando && setConfirmando(false)}
-        >
-          <p className="text-[13px] leading-relaxed text-muted-foreground">
-            Confírmalo <strong className="text-foreground">después</strong> de
-            haber hecho las transferencias. Cada cliente recibirá un aviso de
-            que su pago fue enviado.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {desglose.map(([b, n]) => (
-              <span
-                key={b}
-                className="rounded-full bg-muted px-2.5 py-1 text-[12px] font-medium"
-              >
-                {b}: <span className="cifras">{n}</span>
-              </span>
-            ))}
-          </div>
-          <ul className="scroll-fino mt-3 max-h-[40vh] divide-y divide-border overflow-y-auto rounded-lg border border-border">
-            {lote.map((f) => (
-              <li
-                key={f.id}
-                className="flex items-center justify-between gap-3 px-3 py-2"
-              >
-                <span className="truncate text-[12.5px] text-foreground">
-                  {nombreDe(f.cliente)}
-                </span>
-                <span className="cifras shrink-0 text-[11.5px] text-muted-foreground">
-                  {f.cliente?.dni} · {f.banco}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-4 flex gap-2">
-            <BotonAccion
-              tono="exito"
-              cargando={enviando}
-              onClick={confirmarLote}
-              className="flex-1"
-            >
+      <Dialogo
+        abierto={confirmando}
+        onCerrar={() => setConfirmando(false)}
+        bloqueado={enviando}
+        titulo={`Confirmar envío de ${lote.length}`}
+        descripcion="Confírmalo después de haber hecho las transferencias. Cada cliente recibirá un aviso de que su pago fue enviado."
+        tono="exito"
+        icono={<Enviar className="h-5 w-5" />}
+        ancho="max-w-lg"
+        pie={
+          <>
+            <BotonAccion tono="neutro" disabled={enviando} onClick={() => setConfirmando(false)}>
+              Volver
+            </BotonAccion>
+            <BotonAccion tono="exito" cargando={enviando} onClick={confirmarLote}>
               Ya transferí, confirmar
             </BotonAccion>
-            <BotonAccion
-              tono="neutro"
-              disabled={enviando}
-              onClick={() => setConfirmando(false)}
-            >
+          </>
+        }
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {desglose.map(([b, n]) => (
+            <span key={b} className="rounded-full bg-muted px-2.5 py-1 text-chico font-bold">
+              {b}: <span className="cifras">{n}</span>
+            </span>
+          ))}
+        </div>
+        <ul className="scroll-fino mt-3 max-h-[40vh] divide-y divide-border overflow-y-auto rounded-lg border border-border">
+          {lote.map((f) => (
+            <li key={f.id} className="flex items-center justify-between gap-3 px-3 py-2">
+              <span className="truncate text-sm text-foreground">{nombreDe(f.cliente)}</span>
+              <span className="cifras shrink-0 text-chico text-muted-foreground">
+                {f.cliente?.dni} · {f.banco}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Dialogo>
+
+      {/* Cancelar envío */}
+      <Dialogo
+        abierto={Boolean(aCancelar)}
+        onCerrar={() => setACancelar(null)}
+        bloqueado={cancelando}
+        titulo={`Cancelar envío de ${aCancelar?.codigo || ""}`}
+        descripcion={
+          aCancelar
+            ? `${nombreDe(aCancelar.cliente)} · DNI ${aCancelar.cliente?.dni}. Volverá a «Por pagar» en ${aCancelar.banco} y el cliente recibirá un aviso de que su pago se está revisando.`
+            : ""
+        }
+        tono="peligro"
+        icono={<IconoAlerta />}
+        pie={
+          <>
+            <BotonAccion tono="neutro" disabled={cancelando} onClick={() => setACancelar(null)}>
               Volver
             </BotonAccion>
-          </div>
-        </Modal>
-      )}
-
-      {/* Cancelar envio */}
-      {aCancelar && (
-        <Modal
-          titulo={`Cancelar envío de ${aCancelar.codigo}`}
-          onCerrar={() => !cancelando && setACancelar(null)}
-        >
-          <p className="text-[13px] leading-relaxed text-muted-foreground">
-            {nombreDe(aCancelar.cliente)} · DNI {aCancelar.cliente?.dni}. La
-            solicitud volverá a “Por pagar” en {aCancelar.banco} y el cliente
-            recibirá un aviso de que su pago se está revisando.
-          </p>
-          <label
-            htmlFor="motivo"
-            className="mt-3 block text-[0.8rem] font-medium text-foreground"
-          >
-            Motivo
-          </label>
-          <textarea
-            id="motivo"
-            autoFocus
-            rows={3}
-            maxLength={300}
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-            placeholder="Ej: La transferencia fue rechazada por el banco / cuenta equivocada"
-            className="mt-1 w-full resize-y rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-marca-400"
-          />
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Queda en el historial con tu nombre. Es obligatorio.
-          </p>
-          <div className="mt-4 flex gap-2">
-            <BotonAccion
-              tono="peligro"
-              cargando={cancelando}
-              disabled={motivo.trim().length < 5}
-              onClick={cancelarEnvio}
-              className="flex-1"
-            >
+            <BotonAccion tono="peligro" cargando={cancelando} disabled={motivo.trim().length < 5} onClick={cancelarEnvio}>
               Cancelar envío
             </BotonAccion>
-            <BotonAccion
-              tono="neutro"
-              disabled={cancelando}
-              onClick={() => setACancelar(null)}
-            >
-              Volver
-            </BotonAccion>
-          </div>
-        </Modal>
-      )}
+          </>
+        }
+      >
+        <Motivo
+          id="motivo"
+          etiqueta="Motivo"
+          ayuda="Queda en el historial con tu nombre. Es obligatorio."
+          valor={motivo}
+          onCambio={setMotivo}
+          minimo={5}
+          maximo={300}
+          sugerencias={["La transferencia fue rechazada por el banco.", "Se transfirió a una cuenta equivocada."]}
+          placeholder="Ej: La transferencia fue rechazada por el banco"
+        />
+      </Dialogo>
+
+      <Tostada mensaje={ok} onCerrar={() => setOk("")} />
     </Shell>
   );
 }
 
 function PestanaBanco({ activa, onClick, titulo, cuenta, propio, mias }) {
-  return (
+  const boton = (
     <button
       onClick={onClick}
       className={cn(
-        "pulsable flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-[0.8667rem] font-medium",
+        "pulsable flex h-10 shrink-0 items-center gap-2 rounded-lg border px-3 text-sm font-bold",
         activa
           ? "border-marca-700 bg-marca-700 text-white"
           : propio
             ? "border-marca-300 bg-card text-foreground hover:bg-marca-50"
             : "border-border bg-card text-muted-foreground hover:text-foreground",
       )}
-      title={
-        propio === false ? "Banco de otro compañero: solo lectura" : undefined
-      }
     >
+      {propio && <span className={cn("h-2 w-2 rounded-full", activa ? "bg-oro-300" : "bg-oro-500")} aria-label="Tu banco" />}
       {titulo}
-      {propio && !activa && (
-        <span
-          className="h-1.5 w-1.5 rounded-full bg-oro-500"
-          aria-label="Tu banco"
-        />
-      )}
       {cuenta !== null && cuenta !== undefined && (
-        <span
-          className={cn(
-            "cifras rounded-full px-1.5 py-0.5 text-[11px] font-bold",
-            activa
-              ? "bg-white/20 text-white"
-              : "bg-muted text-muted-foreground",
-          )}
-        >
+        <span className={cn("cifras rounded-full px-1.5 py-0.5 text-xs font-bold", activa ? "bg-white/20 text-white" : "bg-muted text-muted-foreground")}>
           {cuenta}
         </span>
       )}
       {mias > 0 && (
-        <span
-          className={cn(
-            "cifras rounded-full px-1.5 py-0.5 text-[10px] font-bold",
-            activa ? "bg-oro-500 text-marca-900" : "bg-oro-100 text-oro-700",
-          )}
-          title="Marcadas por ti"
-        >
+        <span className={cn("cifras rounded-full px-1.5 py-0.5 text-xs font-bold", activa ? "bg-oro-500 text-marca-900" : "bg-oro-100 text-oro-700")}>
           ✓{mias}
         </span>
       )}
     </button>
+  );
+  return propio === false ? (
+    <Pista texto="Banco de otro compañero: solo lectura" lado="bottom">
+      {boton}
+    </Pista>
+  ) : (
+    boton
   );
 }

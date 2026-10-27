@@ -5,19 +5,28 @@ import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { registrarAuditoria, explicarError } from "@/lib/acciones";
-import {
-  subirImagenes,
-  borrarImagenes,
-  urlPublica,
-  TIPOS_ACEPTADOS,
-} from "@/lib/imagenes";
+import { subirImagenes, borrarImagenes, urlPublica, TIPOS_ACEPTADOS } from "@/lib/imagenes";
 import { cn } from "@/lib/utils";
-import Shell, { Megafono, Cruz } from "@/components/shell";
+import Shell, { Megafono, Cruz, Mas, Lapiz, Basura, Campana } from "@/components/shell";
 import { Vacio, Aviso, Estado } from "@/components/marca";
-import { EsqueletoFilas, BotonAccion, Rueda } from "@/components/carga";
+import { EsqueletoFilas, BotonAccion, Rueda, CargaPantalla } from "@/components/carga";
+import { Segmentos, Barra, Campo, Tostada, Leyenda, Panel, useConfirmar } from "@/components/piezas";
+import Pista from "@/components/pista";
 
 const BUCKET = "noticias-fotos";
 const MAX_IMAGENES = 4;
+
+/** Qué falta o está mal en el formulario, campo por campo. */
+function erroresDe(form) {
+  const e = {};
+  if (form.titulo.trim().length < 5) e.titulo = "Ponle un título de al menos 5 letras.";
+  if (form.mensaje.trim().length < 10) e.mensaje = "Escribe el mensaje para el cliente (al menos 10 letras).";
+  if (form.fecha_fin && form.fecha_inicio && new Date(form.fecha_fin) <= new Date(form.fecha_inicio))
+    e.fecha_fin = "Tiene que terminar después de empezar.";
+  if (form.fecha_fin && new Date(form.fecha_fin) <= new Date()) e.fecha_fin = e.fecha_fin || "Esa fecha ya pasó: no se vería nunca.";
+  return e;
+}
+
 
 /**
  * Dos cosas distintas que antes vivian mezcladas.
@@ -173,14 +182,14 @@ function vigenciaDe(n) {
 
 // ── Vistas previas ────────────────────────────────────────────
 
-/** Marco de telefono, compartido por las dos previas. */
+const COLOR_ALERTA = { critico: "#D93025", advertencia: "#E8B800", info: "#2C4270" };
+
+/** Marco de teléfono, compartido por las dos previas. */
 function Telefono({ etiqueta, children }) {
   return (
-    <div className="mx-auto w-full max-w-[300px] rounded-[26px] border-[7px] border-slate-800 bg-slate-800 shadow-panel">
-      <div className="rounded-[19px] bg-[#F0F2F5] p-3">
-        <p className="px-1 pb-2 pt-1 text-[11px] font-semibold text-slate-500">
-          {etiqueta}
-        </p>
+    <div className="mx-auto w-full max-w-[320px] rounded-[30px] border-[8px] border-marca-950 bg-marca-950 shadow-alzado">
+      <div className="min-h-[360px] rounded-[22px] bg-[#EFF3F9] p-3">
+        <p className="px-1 pb-2 pt-1 text-xs font-bold text-marca-600">{etiqueta}</p>
         {children}
       </div>
     </div>
@@ -188,7 +197,7 @@ function Telefono({ etiqueta, children }) {
 }
 
 /**
- * Como se vera. Con contenido que lleva imagen, describir el resultado
+ * Cómo se verá. Con contenido que lleva imagen, describir el resultado
  * con palabras no alcanza: hace falta verlo antes de publicarlo a
  * treinta mil personas.
  */
@@ -196,42 +205,24 @@ function VistaPrevia({ form, urls }) {
   const t = tipoDe(form.tipo);
 
   if (form.categoria === "alerta") {
+    const color = COLOR_ALERTA[t.valor] || COLOR_ALERTA.info;
     return (
-      <Telefono etiqueta="Al abrir el app">
-        <div
-          className="flex gap-2.5 rounded-xl border-l-[3px] bg-white p-2.5 shadow-lg shadow-slate-300/60"
-          style={{
-            borderLeftColor: t.punto.includes("red")
-              ? "#D93025"
-              : t.punto.includes("amber")
-                ? "#E8A500"
-                : "#1A73E8",
-          }}
-        >
-          <span className={cn("h-7 w-7 shrink-0 rounded-full", t.chip)} />
+      <Telefono etiqueta="Al abrir la app">
+        <div className="flex gap-2.5 rounded-2xl border-l-4 bg-white p-3 shadow-lg shadow-marca-200/60" style={{ borderLeftColor: color }}>
+          <span className="mt-0.5 h-8 w-8 shrink-0 rounded-full" style={{ backgroundColor: color + "22" }} />
           <div className="min-w-0 flex-1">
-            <p
-              className={cn(
-                "text-[8px] font-bold uppercase tracking-wide",
-                t.chip.split(" ")[1],
-              )}
-            >
+            <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: t.valor === "advertencia" ? "#8C6A00" : color }}>
               {t.titulo}
             </p>
-            <p className="truncate text-[11px] font-bold text-slate-800">
-              {form.titulo || "Título de la alerta"}
-            </p>
-            <p className="line-clamp-2 text-[9px] leading-[1.5] text-slate-500">
+            <p className="text-sm font-bold leading-snug text-marca-700">{form.titulo || "Título de la alerta"}</p>
+            <p className="mt-0.5 line-clamp-3 text-xs leading-relaxed text-[#4F5B74]">
               {form.mensaje || "Qué está pasando y qué debe hacer el cliente."}
             </p>
-            <p className="mt-1 text-[8px] text-slate-400">
-              Toca para ver el detalle
-            </p>
+            <p className="mt-1.5 text-xs font-semibold text-[#626D82]">Toca para ver el detalle</p>
           </div>
-          <span className="text-[10px] text-slate-400">✕</span>
+          <Cruz className="h-4 w-4 shrink-0 text-[#8A93A6]" />
         </div>
-
-        <p className="px-1 pt-3 text-[9px] leading-relaxed text-slate-500">
+        <p className="px-1 pt-3 text-xs leading-relaxed text-[#4F5B74]">
           {t.valor === "critico"
             ? "Urgente: la burbuja espera a que la toquen, no se cierra sola."
             : "Se cierra sola a los 7 segundos, pero sigue marcada como nueva en la pestaña Alertas."}
@@ -240,68 +231,35 @@ function VistaPrevia({ form, urls }) {
     );
   }
 
-  const dias = form.fecha_fin
-    ? Math.ceil((new Date(form.fecha_fin).getTime() - Date.now()) / 86400000)
-    : null;
+  const dias = form.fecha_fin ? Math.ceil((new Date(form.fecha_fin).getTime() - Date.now()) / 86400000) : null;
 
   return (
     <Telefono etiqueta="Noticias">
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className="overflow-hidden rounded-2xl border border-[#E3E9F2] bg-white">
         {urls.length > 0 ? (
           <div className="relative">
-            <img
-              src={urls[0]}
-              alt=""
-              className="h-[110px] w-full object-cover"
-            />
-            <span
-              className={cn(
-                "absolute left-2 top-2 rounded-full bg-white px-2 py-0.5 text-[9px] font-bold",
-                t.chip.split(" ")[1],
-              )}
-            >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={urls[0]} alt="" className="h-[140px] w-full object-cover" />
+            <span className={cn("absolute left-2 top-2 rounded-full bg-white px-2 py-0.5 text-xs font-bold", t.chip.split(" ")[1])}>
               {t.titulo}
             </span>
             {urls.length > 1 && (
-              <span className="absolute right-2 top-2 rounded-lg bg-slate-900/60 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+              <span className="absolute right-2 top-2 rounded-lg bg-marca-950/60 px-1.5 py-0.5 text-xs font-bold text-white">
                 1/{urls.length}
               </span>
             )}
           </div>
         ) : (
-          <div
-            className={cn(
-              "flex h-14 items-center justify-center text-[9px] font-bold",
-              t.chip,
-            )}
-          >
-            {t.titulo}
-          </div>
+          <div className={cn("flex h-14 items-center justify-center text-xs font-bold", t.chip)}>{t.titulo}</div>
         )}
 
         <div className="space-y-1 p-3">
-          <p className="text-[12px] font-bold leading-tight text-slate-800">
-            {form.titulo || "Título de la noticia"}
-          </p>
-          <p className="line-clamp-4 text-[10px] leading-[1.5] text-slate-500">
-            {form.mensaje || "Aquí va el texto que leerá el cliente."}
-          </p>
-          <div className="flex items-center gap-1 border-t border-slate-100 pt-2 text-[9px] text-slate-400">
-            <span>
-              {new Date(form.fecha_inicio || Date.now()).toLocaleDateString(
-                "es-PE",
-                { day: "numeric", month: "short" },
-              )}
-            </span>
+          <p className="text-md font-bold leading-snug text-marca-700">{form.titulo || "Título de la noticia"}</p>
+          <p className="line-clamp-4 text-chico leading-relaxed text-[#4F5B74]">{form.mensaje || "Aquí va el texto que leerá el cliente."}</p>
+          <div className="flex items-center gap-1 border-t border-[#E8EDF5] pt-2 text-xs text-[#626D82]">
+            <span>{new Date(form.fecha_inicio || Date.now()).toLocaleDateString("es-PE", { day: "numeric", month: "short" })}</span>
             {dias !== null && (
-              <span
-                className={cn(
-                  "ml-auto rounded-full px-1.5 py-0.5 font-semibold",
-                  dias <= 3
-                    ? "bg-red-50 text-red-600"
-                    : "bg-slate-100 text-slate-500",
-                )}
-              >
+              <span className={cn("ml-auto rounded-full px-2 py-0.5 font-bold", dias <= 3 ? "bg-red-50 text-red-600" : "bg-[#E8EDF5] text-[#4F5B74]")}>
                 {dias <= 0
                   ? "Último día"
                   : dias === 1
@@ -334,6 +292,9 @@ export default function NoticiasPage() {
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const archivoRef = useRef(null);
+  const [filtroVig, setFiltroVig] = useState("todas");
+  const [tocado, setTocado] = useState(false);
+  const [confirmar, ventanaConfirmar] = useConfirmar();
   const router = useRouter();
 
   const cargar = useCallback(async () => {
@@ -375,7 +336,6 @@ export default function NoticiasPage() {
     [form.imagenes],
   );
 
-  const sec = SECCIONES.find((x) => x.clave === seccion);
   const esAlerta = form.categoria === "alerta";
 
   function abrirNueva() {
@@ -387,6 +347,7 @@ export default function NoticiasPage() {
       fecha_fin: seccion === "alerta" ? sumarHoras(null, 24) : "",
     });
     setEditando("nueva");
+    setTocado(false);
     setError("");
     setOk("");
   }
@@ -405,6 +366,7 @@ export default function NoticiasPage() {
       notificar: false,
     });
     setEditando(n.id);
+    setTocado(false);
     setError("");
     setOk("");
   }
@@ -462,20 +424,15 @@ export default function NoticiasPage() {
   }
 
   function validar() {
-    if (!form.titulo.trim()) return "Ponle un título.";
-    if (!form.mensaje.trim()) return "Escribe el mensaje para el cliente.";
-    if (
-      form.fecha_fin &&
-      form.fecha_inicio &&
-      new Date(form.fecha_fin) <= new Date(form.fecha_inicio)
-    )
-      return "La fecha de fin tiene que ser posterior a la de inicio.";
-    return null;
+    return Object.values(erroresDe(form))[0] || null;
   }
 
   async function guardar() {
     const fallo = validar();
-    if (fallo) return setError(fallo);
+    if (fallo) {
+      setTocado(true);
+      return;
+    }
 
     setGuardando(true);
     setError("");
@@ -606,12 +563,13 @@ export default function NoticiasPage() {
   }
 
   async function eliminar(n) {
-    if (
-      !window.confirm(
-        `Se borrará "${n.titulo}" y sus imágenes. Esto no se puede deshacer.`,
-      )
-    )
-      return;
+    const si = await confirmar({
+      titulo: `¿Eliminar "${n.titulo}"?`,
+      texto: "Se borran el aviso y sus imágenes. Si solo quieres que deje de verse, apágalo. Esto no se puede deshacer.",
+      boton: "Eliminar",
+      tono: "peligro",
+    });
+    if (!si) return;
 
     const { error: e } = await supabase
       .from("alertas_sistema")
@@ -633,281 +591,192 @@ export default function NoticiasPage() {
     cargar();
   }
 
-  if (!session) return null;
+  if (!session) return <CargaPantalla />;
 
-  const alAire = visibles.filter(
-    (n) => vigenciaDe(n).texto === "En el app",
-  ).length;
+  const deSeccion = visibles;
+  const cuentaVig = (texto) => deSeccion.filter((n) => vigenciaDe(n).texto === texto).length;
+  const alAire = cuentaVig("En el app");
+  const lista = deSeccion.filter((n) => {
+    const v = vigenciaDe(n).texto;
+    if (filtroVig === "aire") return v === "En el app";
+    if (filtroVig === "programadas") return v === "Programada";
+    if (filtroVig === "fuera") return v === "Apagada" || v === "Vencida";
+    return true;
+  });
+  const errores = editando ? erroresDe(form) : {};
+  const err = (k) => (tocado ? errores[k] : null);
+  const nombreSec = seccion === "alerta" ? "alerta" : "noticia";
 
-  return (
-    <Shell
-      session={session}
-      titulo="Noticias y alertas"
-      descripcion={`${alAire} ${seccion === "alerta" ? "alerta" : "noticia"}${alAire === 1 ? "" : "s"} al aire ahora mismo`}
-      acciones={
-        !editando && (
-          <BotonAccion onClick={abrirNueva} icono={<span>+</span>}>
-            {seccion === "alerta" ? "Nueva alerta" : "Nueva noticia"}
-          </BotonAccion>
-        )
-      }
-    >
-      <div className="space-y-4">
-        {/* Secciones */}
-        <div>
-          <div className="inline-flex gap-1 rounded-lg border border-border bg-muted/60 p-1">
-            {SECCIONES.map((x) => (
-              <button
-                key={x.clave}
-                onClick={() => {
-                  setSeccion(x.clave);
-                  setEditando(null);
-                }}
-                className={cn(
-                  "pulsable rounded-md px-4 py-1.5 text-[0.8667rem] font-medium",
-                  seccion === x.clave
-                    ? "bg-card text-foreground shadow-panel"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {x.titulo}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 max-w-2xl text-[0.8rem] text-muted-foreground">
-            {sec.detalle}
-          </p>
-        </div>
-
+  // ── Edición: ocupa la pantalla, con la vista previa al lado ──
+  if (editando) {
+    return (
+      <Shell
+        session={session}
+        titulo={editando === "nueva" ? (esAlerta ? "Nueva alerta" : "Nueva noticia") : `Editar ${esAlerta ? "alerta" : "noticia"}`}
+        descripcion={esAlerta ? "Sale como burbuja al abrir la app y queda en su pestaña de alertas" : "Se publica para todos los clientes de la app"}
+        volver={{ onClick: cerrar, texto: "Volver a la lista sin guardar" }}
+        acciones={
+          <>
+            <BotonAccion tono="neutro" onClick={cerrar} className="hidden sm:inline-flex">
+              Cancelar
+            </BotonAccion>
+            <BotonAccion onClick={guardar} cargando={guardando} disabled={subiendo || (tocado && Object.keys(errores).length > 0)}>
+              {editando === "nueva" ? (esAlerta ? "Enviar alerta" : "Publicar") : "Guardar cambios"}
+            </BotonAccion>
+          </>
+        }
+      >
         {error && (
-          <Aviso titulo="Revisa esto" onCerrar={() => setError("")}>
+          <Aviso className="mb-4" titulo="Revisa esto" onCerrar={() => setError("")}>
             {error}
           </Aviso>
         )}
-        {ok && (
-          <Aviso tono="info" onCerrar={() => setOk("")}>
-            {ok}
-          </Aviso>
-        )}
 
-        {editando && (
-          <div className="grid gap-5 rounded-xl border border-border bg-card p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="space-y-5">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  {editando === "nueva"
-                    ? esAlerta
-                      ? "Nueva alerta"
-                      : "Nueva noticia"
-                    : "Editar"}
-                </h2>
-                <p className="mt-0.5 text-[0.8rem] text-muted-foreground">
-                  {esAlerta
-                    ? "La verán como burbuja al abrir el app, y quedará en su pestaña de alertas."
-                    : "Se publica para todos los clientes del app."}
-                </p>
-              </div>
-
-              {/* Tipo */}
-              <div className="space-y-2">
-                <p className="text-[0.8rem] font-medium text-foreground">
-                  Tono
-                </p>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {TIPOS_DE[form.categoria].map((t) => (
-                    <button
-                      key={t.valor}
-                      onClick={() => setForm({ ...form, tipo: t.valor })}
-                      className={cn(
-                        "pulsable flex items-center gap-2.5 rounded-lg border p-2.5 text-left",
-                        form.tipo === t.valor
-                          ? "border-marca-400 bg-marca-50"
-                          : "border-border hover:bg-muted",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "h-2.5 w-2.5 shrink-0 rounded-full",
-                          t.punto,
-                        )}
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-[0.8667rem] font-semibold text-foreground">
-                          {t.titulo}
-                        </span>
-                        <span className="block text-[0.75rem] text-muted-foreground">
-                          {t.detalle}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Texto */}
-              <div className="space-y-2">
-                <label
-                  htmlFor="titulo"
-                  className="text-[0.8rem] font-medium text-foreground"
-                >
-                  Título
-                </label>
-                <input
-                  id="titulo"
-                  value={form.titulo}
-                  maxLength={80}
-                  onChange={(e) => setForm({ ...form, titulo: e.target.value })}
-                  placeholder={
-                    esAlerta
-                      ? "Ej: BCP con demoras hoy"
-                      : "Ej: 20% menos de comisión en BCP"
-                  }
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm outline-none focus:border-marca-400"
-                />
-                <p className="text-right text-[0.7333rem] text-muted-foreground">
-                  {form.titulo.length}/80
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label
-                  htmlFor="mensaje"
-                  className="text-[0.8rem] font-medium text-foreground"
-                >
-                  Mensaje
-                </label>
-                <textarea
-                  id="mensaje"
-                  value={form.mensaje}
-                  maxLength={500}
-                  rows={esAlerta ? 3 : 4}
-                  onChange={(e) =>
-                    setForm({ ...form, mensaje: e.target.value })
-                  }
-                  placeholder={
-                    esAlerta
-                      ? "Qué está pasando y qué debe hacer el cliente mientras tanto."
-                      : "Explica la promoción en pocas líneas. El cliente la lee en el teléfono."
-                  }
-                  className="w-full resize-y rounded-lg border border-border bg-card px-3 py-2.5 text-sm outline-none focus:border-marca-400"
-                />
-                <p className="text-right text-[0.7333rem] text-muted-foreground">
-                  {form.mensaje.length}/500
-                </p>
-              </div>
-
-              {/* Imagenes: solo las noticias */}
-              {!esAlerta && (
-                <div className="space-y-2">
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-[0.8rem] font-medium text-foreground">
-                      Imágenes
-                    </p>
-                    <p className="text-[0.75rem] text-muted-foreground">
-                      {form.imagenes.length}/{MAX_IMAGENES} · la primera es la
-                      portada
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                    {form.imagenes.map((path, i) => (
-                      <div
-                        key={path}
-                        className="group relative overflow-hidden rounded-lg border border-border"
-                      >
-                        <img
-                          src={urlPublica(BUCKET, path)}
-                          alt=""
-                          className="aspect-[4/3] w-full object-cover"
-                        />
-                        {i === 0 && (
-                          <span className="absolute left-1 top-1 rounded bg-marca-700 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                            PORTADA
-                          </span>
-                        )}
-                        <button
-                          onClick={() => quitarImagen(path)}
-                          aria-label="Quitar imagen"
-                          className="absolute right-1 top-1 rounded-full bg-slate-900/70 p-1 text-white opacity-0 transition group-hover:opacity-100"
-                        >
-                          <Cruz className="h-3 w-3" />
-                        </button>
-                        <div className="absolute inset-x-0 bottom-0 flex justify-center gap-1 bg-slate-900/60 py-1 opacity-0 transition group-hover:opacity-100">
-                          <button
-                            onClick={() => moverImagen(i, -1)}
-                            disabled={i === 0}
-                            aria-label="Mover antes"
-                            className="px-1.5 text-xs text-white disabled:opacity-30"
-                          >
-                            ←
-                          </button>
-                          <button
-                            onClick={() => moverImagen(i, 1)}
-                            disabled={i === form.imagenes.length - 1}
-                            aria-label="Mover después"
-                            className="px-1.5 text-xs text-white disabled:opacity-30"
-                          >
-                            →
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-
-                    {form.imagenes.length < MAX_IMAGENES && (
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-w-0 space-y-4">
+            <Panel titulo="Contenido">
+              <div className="space-y-4">
+                <Campo etiqueta="Tono" ayuda="Decide el color y la etiqueta con que aparece en la app.">
+                  <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Tono">
+                    {TIPOS_DE[form.categoria].map((t) => (
                       <button
-                        onClick={() => archivoRef.current?.click()}
-                        disabled={subiendo}
-                        className="pulsable flex aspect-[4/3] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-muted-foreground hover:border-marca-400 hover:text-marca-700 disabled:opacity-50"
-                      >
-                        {subiendo ? (
-                          <Rueda />
-                        ) : (
-                          <>
-                            <span className="text-lg leading-none">+</span>
-                            <span className="text-[0.75rem]">Agregar</span>
-                          </>
+                        key={t.valor}
+                        type="button"
+                        role="radio"
+                        aria-checked={form.tipo === t.valor}
+                        onClick={() => setForm({ ...form, tipo: t.valor })}
+                        className={cn(
+                          "pulsable flex items-center gap-2.5 rounded-lg border p-2.5 text-left",
+                          form.tipo === t.valor ? "border-marca-500 bg-marca-50 ring-1 ring-marca-500" : "border-border hover:bg-muted/60",
                         )}
+                      >
+                        <span className={cn("h-3 w-3 shrink-0 rounded-full", t.punto)} />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-bold text-foreground">{t.titulo}</span>
+                          <span className="block text-xs text-muted-foreground">{t.detalle}</span>
+                        </span>
                       </button>
-                    )}
+                    ))}
                   </div>
+                </Campo>
 
+                <Campo etiqueta="Título" htmlFor="titulo" requerido error={err("titulo")} extra={`${form.titulo.length}/80`}>
                   <input
-                    ref={archivoRef}
-                    type="file"
-                    accept={TIPOS_ACEPTADOS.join(",")}
-                    multiple
-                    onChange={agregarImagenes}
-                    className="hidden"
+                    id="titulo"
+                    value={form.titulo}
+                    maxLength={80}
+                    onChange={(e) => setForm({ ...form, titulo: e.target.value })}
+                    aria-invalid={Boolean(err("titulo"))}
+                    placeholder={esAlerta ? "Ej: BCP con demoras hoy" : "Ej: 20% menos de comisión en BCP"}
+                    className="campo"
                   />
-                  <p className="text-[0.75rem] text-muted-foreground">
-                    JPG, PNG o WebP. Se reducen a 1400 px al subirlas para que
-                    el app no gaste datos de más.
-                  </p>
+                </Campo>
+
+                <Campo etiqueta="Mensaje" htmlFor="mensaje" requerido error={err("mensaje")} extra={`${form.mensaje.length}/500`}>
+                  <textarea
+                    id="mensaje"
+                    value={form.mensaje}
+                    maxLength={500}
+                    rows={esAlerta ? 3 : 5}
+                    onChange={(e) => setForm({ ...form, mensaje: e.target.value })}
+                    aria-invalid={Boolean(err("mensaje"))}
+                    placeholder={
+                      esAlerta
+                        ? "Qué está pasando y qué debe hacer el cliente mientras tanto."
+                        : "Explica la promoción en pocas líneas. El cliente la lee en el teléfono."
+                    }
+                    className="campo"
+                  />
+                </Campo>
+              </div>
+            </Panel>
+
+            {/* Imágenes: solo las noticias */}
+            {!esAlerta && (
+              <Panel
+                titulo="Imágenes"
+                ayuda="JPG, PNG o WebP. Se reducen a 1400 px al subirlas para que la app no gaste datos de más. La primera es la portada."
+                acciones={
+                  <span className="cifras text-chico font-semibold text-muted-foreground">
+                    {form.imagenes.length}/{MAX_IMAGENES}
+                  </span>
+                }
+              >
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                  {form.imagenes.map((path, i) => (
+                    <div key={path} className="group relative overflow-hidden rounded-lg border border-border">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={urlPublica(BUCKET, path)} alt="" className="aspect-[4/3] w-full object-cover" />
+                      {i === 0 && (
+                        <span className="absolute left-1.5 top-1.5 rounded bg-marca-700 px-1.5 py-0.5 text-xs font-bold text-white">Portada</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => quitarImagen(path)}
+                        aria-label="Quitar imagen"
+                        className="absolute right-1.5 top-1.5 rounded-full bg-marca-950/70 p-1 text-white opacity-0 transition focus:opacity-100 group-hover:opacity-100"
+                      >
+                        <Cruz className="h-3.5 w-3.5" />
+                      </button>
+                      <div className="absolute inset-x-0 bottom-0 flex justify-center gap-1 bg-marca-950/60 py-1 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={() => moverImagen(i, -1)}
+                          disabled={i === 0}
+                          aria-label="Mover antes"
+                          className="px-2 text-sm font-bold text-white disabled:opacity-30"
+                        >
+                          ←
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moverImagen(i, 1)}
+                          disabled={i === form.imagenes.length - 1}
+                          aria-label="Mover después"
+                          className="px-2 text-sm font-bold text-white disabled:opacity-30"
+                        >
+                          →
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {form.imagenes.length < MAX_IMAGENES && (
+                    <button
+                      type="button"
+                      onClick={() => archivoRef.current?.click()}
+                      disabled={subiendo}
+                      className="pulsable flex aspect-[4/3] flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-marca-200 text-muted-foreground hover:border-marca-400 hover:text-marca-700 disabled:opacity-50"
+                    >
+                      {subiendo ? (
+                        <Rueda />
+                      ) : (
+                        <>
+                          <Mas className="h-5 w-5" />
+                          <span className="text-chico font-semibold">Agregar</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
-              )}
+                <input ref={archivoRef} type="file" accept={TIPOS_ACEPTADOS.join(",")} multiple onChange={agregarImagenes} className="hidden" />
+              </Panel>
+            )}
 
-              {/* Vigencia */}
-              <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-3.5">
-                <p className="text-[0.8rem] font-medium text-foreground">
-                  Cuánto tiempo está en el app
-                </p>
-
+            <Panel titulo="Cuánto tiempo está en la app">
+              <div className="space-y-3">
                 <div className="flex flex-wrap gap-1.5">
                   {DURACIONES[form.categoria].map((d) => {
-                    const valor =
-                      d.horas === null
-                        ? ""
-                        : sumarHoras(form.fecha_inicio, d.horas);
+                    const valor = d.horas === null ? "" : sumarHoras(form.fecha_inicio, d.horas);
                     const elegida = form.fecha_fin === valor;
                     return (
                       <button
                         key={d.texto}
+                        type="button"
                         onClick={() => setForm({ ...form, fecha_fin: valor })}
                         className={cn(
-                          "pulsable rounded-full px-3 py-1.5 text-[0.8rem] font-medium ring-1 ring-inset",
-                          elegida
-                            ? "bg-marca-700 text-white ring-marca-700"
-                            : "bg-card text-muted-foreground ring-border hover:text-foreground",
+                          "pulsable rounded-full px-3 py-1.5 text-chico font-bold ring-1 ring-inset",
+                          elegida ? "bg-marca-700 text-white ring-marca-700" : "bg-card text-muted-foreground ring-border hover:text-foreground",
                         )}
                       >
                         {d.texto}
@@ -917,249 +786,263 @@ export default function NoticiasPage() {
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="inicio"
-                      className="text-[0.75rem] font-medium text-muted-foreground"
-                    >
-                      Empieza
-                    </label>
+                  <Campo etiqueta="Empieza" htmlFor="inicio">
                     <input
                       id="inicio"
                       type="datetime-local"
                       value={form.fecha_inicio}
-                      onChange={(e) =>
-                        setForm({ ...form, fecha_inicio: e.target.value })
-                      }
-                      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-marca-400"
+                      onChange={(e) => setForm({ ...form, fecha_inicio: e.target.value })}
+                      className="campo cifras"
                     />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="fin"
-                      className="text-[0.75rem] font-medium text-muted-foreground"
-                    >
-                      Termina
-                    </label>
+                  </Campo>
+                  <Campo etiqueta="Termina" htmlFor="fin" opcional error={err("fecha_fin")}>
                     <input
                       id="fin"
                       type="datetime-local"
                       value={form.fecha_fin}
-                      onChange={(e) =>
-                        setForm({ ...form, fecha_fin: e.target.value })
-                      }
-                      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-marca-400"
+                      onChange={(e) => setForm({ ...form, fecha_fin: e.target.value })}
+                      aria-invalid={Boolean(err("fecha_fin"))}
+                      className="campo cifras"
                     />
-                  </div>
+                  </Campo>
                 </div>
 
-                <p className="text-[0.75rem] text-muted-foreground">
+                <p className="text-chico text-muted-foreground">
                   {form.fecha_fin
-                    ? `Desaparece sola del app el ${fechaHora(form.fecha_fin)}. No hay que acordarse de apagarla.`
+                    ? `Desaparece sola de la app el ${fechaHora(form.fecha_fin)}. No hay que acordarse de apagarla.`
                     : "Sin fecha de fin: se queda hasta que la apagues a mano."}
                 </p>
               </div>
+            </Panel>
 
-              {/* Notificacion al telefono */}
-              {editando === "nueva" && (
-                <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3.5 hover:bg-muted/40">
-                  <input
-                    type="checkbox"
-                    checked={form.notificar}
-                    onChange={(e) =>
-                      setForm({ ...form, notificar: e.target.checked })
-                    }
-                    className="mt-0.5 h-4 w-4 accent-marca-700"
-                  />
-                  <span className="min-w-0">
-                    <span className="block text-[0.8667rem] font-semibold text-foreground">
-                      Avisar al teléfono
-                    </span>
-                    <span className="block text-[0.75rem] leading-relaxed text-muted-foreground">
-                      {esAlerta
-                        ? "Llega aunque el cliente tenga el app cerrada. Es lo que la hace servir cuando pasa algo en el momento."
-                        : "Para una promoción normalmente no hace falta: si suena por cada descuento, el cliente termina apagando las notificaciones y tampoco le llegan las alertas."}
-                    </span>
+            {/* Notificación al teléfono */}
+            {editando === "nueva" && (
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-card p-4 shadow-panel hover:bg-muted/30">
+                <input
+                  type="checkbox"
+                  checked={form.notificar}
+                  onChange={(e) => setForm({ ...form, notificar: e.target.checked })}
+                  className="mt-0.5 h-4 w-4 accent-marca-700"
+                />
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1.5 text-sm font-bold text-foreground">
+                    <Campana className="h-4 w-4" />
+                    Avisar al teléfono
                   </span>
-                </label>
-              )}
-
-              <div className="flex gap-2">
-                <BotonAccion
-                  onClick={guardar}
-                  cargando={guardando}
-                  disabled={subiendo}
-                >
-                  {editando === "nueva"
-                    ? esAlerta
-                      ? "Enviar alerta"
-                      : "Publicar"
-                    : "Guardar cambios"}
-                </BotonAccion>
-                <BotonAccion tono="neutro" onClick={cerrar}>
-                  Cancelar
-                </BotonAccion>
-              </div>
-            </div>
-
-            {/* Vista previa */}
-            <div className="lg:border-l lg:border-border lg:pl-5">
-              <p className="mb-3 text-[0.75rem] font-medium uppercase tracking-wide text-muted-foreground">
-                Así lo verá el cliente
-              </p>
-              <VistaPrevia form={form} urls={urlsForm} />
-            </div>
+                  <span className="mt-0.5 block text-chico leading-relaxed text-muted-foreground">
+                    {esAlerta
+                      ? "Llega aunque el cliente tenga la app cerrada. Es lo que la hace servir cuando pasa algo en el momento."
+                      : form.tipo === "promocion"
+                        ? "Solo llega a quienes aceptaron recibir promociones. Úsalo con medida: si suena por cada descuento, el cliente apaga las notificaciones."
+                        : "Para una noticia normalmente no hace falta: si suena seguido, el cliente apaga las notificaciones y tampoco le llegan las alertas."}
+                  </span>
+                </span>
+              </label>
+            )}
           </div>
-        )}
 
-        {/* Listado */}
-        {loading ? (
-          <EsqueletoFilas filas={4} />
-        ) : visibles.length === 0 ? (
-          <Vacio
-            icono={<Megafono className="h-5 w-5" />}
-            titulo={
-              seccion === "alerta"
+          {/* Vista previa */}
+          <div className="lg:sticky lg:top-[76px] lg:self-start">
+            <p className="mb-3 text-center t-etiqueta">Así lo verá el cliente</p>
+            <VistaPrevia form={form} urls={urlsForm} />
+          </div>
+        </div>
+        <Tostada mensaje={ok} onCerrar={() => setOk("")} tono="info" />
+      </Shell>
+    );
+  }
+
+  // ── Lista ──
+  return (
+    <Shell
+      session={session}
+      titulo="Noticias y alertas"
+      descripcion={`${alAire} ${nombreSec}${alAire === 1 ? "" : "s"} visible${alAire === 1 ? "" : "s"} en la app ahora`}
+      ayuda="Una noticia se navega: promociones, feriados, novedades. Una alerta interrumpe: sale como burbuja al abrir la app, para lo que pasa hoy (una caída de banco, una demora)."
+      acciones={
+        <BotonAccion onClick={abrirNueva} icono={<Mas className="h-4 w-4" />}>
+          <span className="hidden sm:inline">{seccion === "alerta" ? "Nueva alerta" : "Nueva noticia"}</span>
+        </BotonAccion>
+      }
+    >
+      {error && (
+        <Aviso className="mb-4" titulo="Revisa esto" onCerrar={() => setError("")}>
+          {error}
+        </Aviso>
+      )}
+
+      <Barra>
+        <Segmentos
+          valor={seccion}
+          onCambio={(v) => {
+            setSeccion(v);
+            setFiltroVig("todas");
+          }}
+          opciones={SECCIONES.map((x) => ({
+            clave: x.clave,
+            etiqueta: x.titulo,
+            pista: x.detalle,
+            cuenta: filas.filter((f) => (f.categoria || "noticia") === x.clave).length,
+          }))}
+        />
+        <Segmentos
+          valor={filtroVig}
+          onCambio={setFiltroVig}
+          tamano="chico"
+          opciones={[
+            { clave: "todas", etiqueta: "Todas" },
+            { clave: "aire", etiqueta: "En la app", cuenta: alAire },
+            { clave: "programadas", etiqueta: "Programadas", cuenta: cuentaVig("Programada") },
+            { clave: "fuera", etiqueta: "Apagadas o vencidas", cuenta: cuentaVig("Apagada") + cuentaVig("Vencida") },
+          ]}
+        />
+      </Barra>
+
+      {loading ? (
+        <EsqueletoFilas filas={4} />
+      ) : lista.length === 0 ? (
+        <Vacio
+          icono={<Megafono />}
+          titulo={
+            deSeccion.length > 0
+              ? "Nada con este filtro"
+              : seccion === "alerta"
                 ? "Ninguna alerta enviada"
                 : "Todavía no hay noticias"
-            }
-            detalle={
-              seccion === "alerta"
+          }
+          detalle={
+            deSeccion.length > 0
+              ? "Prueba con «Todas»."
+              : seccion === "alerta"
                 ? "Las alertas son para cosas que pasan hoy: una caída de banco, una demora en los pagos."
-                : "Publica una promoción o un aviso y aparecerá en el app de todos los clientes."
-            }
-            accion={
-              <BotonAccion onClick={abrirNueva}>
+                : "Publica una promoción o un aviso y aparecerá en la app de todos los clientes."
+          }
+          accion={
+            deSeccion.length === 0 && (
+              <BotonAccion onClick={abrirNueva} icono={<Mas className="h-4 w-4" />}>
                 {seccion === "alerta" ? "Nueva alerta" : "Nueva noticia"}
               </BotonAccion>
-            }
-          />
-        ) : (
-          <div className="space-y-2.5">
-            {visibles.map((n) => {
+            )
+          }
+        />
+      ) : (
+        <>
+          <div className="grid gap-3 2xl:grid-cols-2">
+            {lista.map((n) => {
               const t = tipoDe(n.tipo);
               const v = vigenciaDe(n);
-              const portada = n.imagenes?.[0]
-                ? urlPublica(BUCKET, n.imagenes[0])
-                : null;
+              const portada = n.imagenes?.[0] ? urlPublica(BUCKET, n.imagenes[0]) : null;
               const leida = alcance[n.id];
 
               return (
-                <div
-                  key={n.id}
-                  className={cn(
-                    "flex gap-3.5 rounded-xl border border-border bg-card p-3.5",
-                    !n.activa && "opacity-60",
-                  )}
-                >
+                <div key={n.id} className={cn("flex gap-3.5 rounded-xl border border-border bg-card p-3.5 shadow-panel", !n.activa && "opacity-70")}>
                   {seccion === "noticia" &&
                     (portada ? (
-                      <img
-                        src={portada}
-                        alt=""
-                        className="h-[72px] w-[96px] shrink-0 rounded-lg object-cover"
-                      />
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={portada} alt="" className="h-[84px] w-[112px] shrink-0 rounded-lg object-cover" />
                     ) : (
-                      <div
-                        className={cn(
-                          "flex h-[72px] w-[96px] shrink-0 items-center justify-center rounded-lg text-[10px] font-bold",
-                          t.chip,
-                        )}
-                      >
+                      <div className={cn("flex h-[84px] w-[112px] shrink-0 items-center justify-center rounded-lg text-xs font-bold", t.chip)}>
                         {t.titulo}
                       </div>
                     ))}
 
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset",
-                          t.chip,
-                        )}
-                      >
-                        {t.titulo}
-                      </span>
-                      <Estado etiqueta={v.texto} tono={v.tono} />
-                      {n.imagenes?.length > 1 && (
-                        <span className="text-[0.7333rem] text-muted-foreground">
-                          {n.imagenes.length} fotos
-                        </span>
-                      )}
-                      {seccion === "alerta" && (
-                        <span className="text-[0.7333rem] text-muted-foreground">
-                          {leida
-                            ? `Abierta por ${leida.vistas} de ${leida.clientes} clientes`
-                            : "Nadie la ha abierto todavía"}
-                        </span>
-                      )}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={cn("rounded-full px-2 py-0.5 text-xs font-bold ring-1 ring-inset", t.chip)}>{t.titulo}</span>
+                      <Estado etiqueta={v.texto === "En el app" ? "En la app" : v.texto} tono={v.tono} />
                       {n.push_enviado_en && (
-                        <span className="text-[0.7333rem] text-emerald-700">
-                          Notificada a {n.push_alcance ?? 0} teléfonos
-                        </span>
+                        <Pista texto={`Aviso al teléfono enviado el ${fechaHora(n.push_enviado_en)}`}>
+                          <span className="inline-flex cursor-help items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                            <Campana className="h-3 w-3" />
+                            {n.push_alcance ?? 0}
+                          </span>
+                        </Pista>
                       )}
                     </div>
 
-                    <p className="mt-1.5 truncate text-[0.9333rem] font-semibold text-foreground">
-                      {n.titulo}
-                    </p>
-                    <p className="line-clamp-1 text-[0.8rem] text-muted-foreground">
-                      {n.mensaje}
-                    </p>
-                    <p className="mt-1 text-[0.7333rem] text-muted-foreground">
-                      {seccion === "alerta"
-                        ? fechaHora(n.fecha_inicio)
-                        : fechaCorta(n.fecha_inicio)}
-                      {n.fecha_fin
-                        ? ` → ${seccion === "alerta" ? fechaHora(n.fecha_fin) : fechaCorta(n.fecha_fin)}`
-                        : " → sin vencimiento"}
+                    <p className="mt-1.5 truncate text-md font-bold text-foreground">{n.titulo}</p>
+                    <p className="line-clamp-1 text-sm text-muted-foreground">{n.mensaje}</p>
+                    <p className="mt-1 text-chico text-muted-foreground">
+                      {seccion === "alerta" ? fechaHora(n.fecha_inicio) : fechaCorta(n.fecha_inicio)}
+                      {n.fecha_fin ? ` → ${seccion === "alerta" ? fechaHora(n.fecha_fin) : fechaCorta(n.fecha_fin)}` : " → sin vencimiento"}
+                      {seccion === "alerta" &&
+                        (leida ? ` · abierta por ${leida.vistas} de ${leida.clientes} clientes` : " · nadie la abrió todavía")}
+                      {n.imagenes?.length > 1 && ` · ${n.imagenes.length} fotos`}
                     </p>
                   </div>
 
-                  <div className="flex shrink-0 flex-col gap-1.5">
-                    <button
-                      onClick={() => abrirEdicion(n)}
-                      className="pulsable rounded-lg border border-border px-3 py-1.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
-                    >
-                      Editar
-                    </button>
-                    {vigenciaDe(n).texto === "En el app" && (
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <div className="flex items-center gap-0.5">
+                      <BotonIcono texto="Editar" onClick={() => abrirEdicion(n)}>
+                        <Lapiz className="h-4 w-4" />
+                      </BotonIcono>
+                      <BotonIcono texto="Eliminar" peligro onClick={() => eliminar(n)}>
+                        <Basura className="h-4 w-4" />
+                      </BotonIcono>
+                    </div>
+                    <Pista texto={n.activa ? "Deja de verse en la app sin borrarla" : "Vuelve a verse en la app"} fin>
                       <button
-                        onClick={() => notificar(n.id)}
-                        disabled={notificando === n.id}
-                        className="pulsable rounded-lg border border-marca-300 px-3 py-1.5 text-[0.8rem] font-medium text-marca-700 hover:bg-marca-50 disabled:opacity-50"
+                        role="switch"
+                        aria-checked={n.activa}
+                        aria-label={n.activa ? "Apagar" : "Encender"}
+                        onClick={() => alternar(n)}
+                        className={cn("relative h-6 w-11 rounded-full transition", n.activa ? "bg-emerald-600" : "bg-marca-200")}
                       >
-                        {notificando === n.id
-                          ? "Enviando…"
-                          : n.push_enviado_en
-                            ? "Reenviar aviso"
-                            : "Avisar al teléfono"}
+                        <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all", n.activa ? "left-[22px]" : "left-0.5")} />
                       </button>
+                    </Pista>
+                    {v.texto === "En el app" && (
+                      <BotonAccion
+                        tono="neutro"
+                        tamano="chico"
+                        onClick={() => notificar(n.id)}
+                        cargando={notificando === n.id}
+                        icono={<Campana className="h-3.5 w-3.5" />}
+                      >
+                        {n.push_enviado_en ? "Reenviar" : "Avisar"}
+                      </BotonAccion>
                     )}
-                    <button
-                      onClick={() => alternar(n)}
-                      className={cn(
-                        "pulsable rounded-lg border px-3 py-1.5 text-[0.8rem] font-medium",
-                        n.activa
-                          ? "border-border text-muted-foreground hover:bg-muted"
-                          : "border-emerald-300 text-emerald-700 hover:bg-emerald-50",
-                      )}
-                    >
-                      {n.activa ? "Apagar" : "Encender"}
-                    </button>
-                    <button
-                      onClick={() => eliminar(n)}
-                      className="pulsable rounded-lg px-3 py-1.5 text-[0.8rem] font-medium text-red-600 hover:bg-red-50"
-                    >
-                      Eliminar
-                    </button>
                   </div>
                 </div>
               );
             })}
           </div>
-        )}
-      </div>
+          <Leyenda
+            className="mt-4"
+            items={[
+              { texto: "En la app", color: "bg-emerald-500", pista: "Los clientes la ven ahora mismo." },
+              { texto: "Programada", color: "bg-marca-500", pista: "Empieza a verse en la fecha de inicio." },
+              { texto: "Apagada o vencida", color: "bg-marca-200", pista: "No se ve en la app. Enciéndela o cambia la fecha de fin para volver a mostrarla." },
+              {
+                texto: "Teléfonos avisados",
+                marca: <Campana className="h-3.5 w-3.5 text-emerald-700" />,
+                pista: "A cuántos teléfonos llegó el aviso. Las promociones solo llegan a quien aceptó recibirlas.",
+              },
+            ]}
+          />
+        </>
+      )}
+
+      {ventanaConfirmar}
+      <Tostada mensaje={ok} onCerrar={() => setOk("")} />
     </Shell>
+  );
+}
+
+function BotonIcono({ texto, onClick, children, peligro }) {
+  return (
+    <Pista texto={texto}>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={texto}
+        className={cn(
+          "flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition",
+          peligro ? "hover:bg-red-50 hover:text-red-600" : "hover:bg-muted hover:text-foreground",
+        )}
+      >
+        {children}
+      </button>
+    </Pista>
   );
 }

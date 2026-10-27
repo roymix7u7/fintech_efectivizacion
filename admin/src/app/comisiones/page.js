@@ -8,9 +8,11 @@ import { explicarError } from "@/lib/acciones";
 import { BANCOS_TARJETA } from "@/lib/bancos";
 import { useRetraso } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
-import Shell, { Lupa, Porcentaje, Cruz } from "@/components/shell";
+import Shell, { Porcentaje, Mas, Check } from "@/components/shell";
 import { Vacio, Aviso } from "@/components/marca";
-import { EsqueletoFilas, BotonAccion, Rueda } from "@/components/carga";
+import { EsqueletoFilas, BotonAccion, Rueda, CargaPantalla } from "@/components/carga";
+import { Segmentos, Buscador, Barra, Campo, Dialogo, Tostada, Leyenda, useConfirmar } from "@/components/piezas";
+import Pista from "@/components/pista";
 
 /**
  * Comisiones en dos niveles.
@@ -24,17 +26,21 @@ import { EsqueletoFilas, BotonAccion, Rueda } from "@/components/carga";
  * mano. Por eso se listan aparte: son las excepciones que alguien tiene
  * que poder revisar.
  *
- * Quien hace que: el administrador arma bloques y mueve clientes entre
+ * Quién hace qué: el administrador arma bloques y mueve clientes entre
  * ellos; el supervisor solo ajusta especiales, de a un cliente.
  */
-const VISTAS = [
-  { clave: "bloques", titulo: "Bloques", soloAdmin: true },
-  { clave: "clientes", titulo: "Clientes", soloAdmin: false },
-  { clave: "especiales", titulo: "Especiales", soloAdmin: false },
-];
+const pct = (n) => (n === null || n === undefined ? "—" : `${Number(n).toFixed(2).replace(/\.00$/, "")} %`);
 
-const pct = (n) =>
-  n === null || n === undefined ? "—" : `${Number(n).toFixed(2).replace(/\.00$/, "")} %`;
+/** null si es un porcentaje válido; si no, qué está mal. */
+function fallaPorcentaje(texto) {
+  if (texto === "" || texto === null || texto === undefined) return "Escribe un porcentaje.";
+  const n = Number(String(texto).replace(",", "."));
+  if (!Number.isFinite(n)) return "Solo números.";
+  if (n < 0 || n > 100) return "Entre 0 y 100.";
+  if (Math.round(n * 100) !== n * 100) return "Máximo dos decimales.";
+  return null;
+}
+const aNumero = (t) => Number(String(t).replace(",", "."));
 
 export default function ComisionesPage() {
   const [session, setSession] = useState(sesionEnCache);
@@ -48,13 +54,14 @@ export default function ComisionesPage() {
 
   const [busqueda, setBusqueda] = useState("");
   const termino = useRetraso(busqueda);
-  const [abierto, setAbierto] = useState(null);
-  const [nuevoNombre, setNuevoNombre] = useState("");
-  const [creando, setCreando] = useState(false);
+  const [nuevoBloque, setNuevoBloque] = useState(null); // null | texto
+  const [tocadoBloque, setTocadoBloque] = useState(false);
   const [especial, setEspecial] = useState(null); // { cliente, banco, valor, motivo }
+  const [tocadoEspecial, setTocadoEspecial] = useState(false);
 
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
+  const [confirmar, ventanaConfirmar] = useConfirmar();
   const router = useRouter();
 
   const esAdmin = session?.rol === "admin";
@@ -72,16 +79,9 @@ export default function ComisionesPage() {
   }, []);
 
   const cargarClientes = useCallback(async () => {
-    let q = supabase
-      .from("perfiles_cliente")
-      .select("id, nombres, apellidos, dni, bloque_id")
-      .order("apellidos")
-      .limit(60);
-
+    let q = supabase.from("perfiles_cliente").select("id, nombres, apellidos, dni, bloque_id").order("apellidos").limit(60);
     const t = termino.trim();
-    if (t.length >= 2) {
-      q = q.or(`nombres.ilike.%${t}%,apellidos.ilike.%${t}%,dni.ilike.%${t}%`);
-    }
+    if (t.length >= 2) q = q.or(`nombres.ilike.%${t}%,apellidos.ilike.%${t}%,dni.ilike.%${t}%`);
     const { data, error: e } = await q;
     if (e) setError(explicarError(e, "No se pudieron cargar los clientes."));
     else setClientes(data || []);
@@ -103,504 +103,565 @@ export default function ComisionesPage() {
     if (session) cargarClientes();
   }, [termino, session, cargarClientes]);
 
-  const nombreBloque = useMemo(() => {
-    const m = {};
-    for (const b of bloques) m[b.id] = b.nombre;
-    return m;
-  }, [bloques]);
+  const bloquePorId = useMemo(() => Object.fromEntries(bloques.map((b) => [b.id, b])), [bloques]);
+  const tarifaDe = (bloqueId, banco) => (bloquePorId[bloqueId]?.bancos || []).find((x) => x.banco === banco)?.porcentaje;
 
   // ── Acciones ──
 
+  const fallaNombre = (() => {
+    if (nuevoBloque === null) return null;
+    const n = nuevoBloque.trim();
+    if (n.length < 3) return "El nombre necesita al menos 3 letras.";
+    if (bloques.some((b) => b.nombre.trim().toLowerCase() === n.toLowerCase())) return "Ya hay un bloque con ese nombre.";
+    return null;
+  })();
+
   async function crearBloque() {
-    const nombre = nuevoNombre.trim();
-    if (nombre.length < 3) return setError("El bloque necesita un nombre.");
+    setTocadoBloque(true);
+    if (fallaNombre) return;
+    const nombre = nuevoBloque.trim();
     setGuardando("nuevo");
-    const { error: e } = await supabase.rpc("guardar_bloque", {
-      p_id: null,
-      p_nombre: nombre,
-      p_descripcion: null,
-      p_activo: true,
-    });
+    const { error: e } = await supabase.rpc("guardar_bloque", { p_id: null, p_nombre: nombre, p_descripcion: null, p_activo: true });
     setGuardando(null);
     if (e) return setError(explicarError(e, "No se pudo crear el bloque."));
-    setNuevoNombre("");
-    setCreando(false);
-    setOk(`Bloque "${nombre}" creado. Pon sus tarifas banco por banco.`);
+    setNuevoBloque(null);
+    setOk(`Bloque "${nombre}" creado. Pon sus tarifas banco por banco en la tabla.`);
     cargarBloques();
   }
 
   async function guardarTarifa(bloque, banco, valor) {
-    const n = parseFloat(valor);
-    if (!Number.isFinite(n) || n < 0 || n > 100)
-      return setError("El porcentaje debe ser un número entre 0 y 100.");
-
+    const n = aNumero(valor);
     setGuardando(`${bloque.id}-${banco}`);
-    const { error: e } = await supabase.rpc("guardar_tarifa_bloque", {
-      p_bloque: bloque.id,
-      p_banco: banco,
-      p_porcentaje: n,
-    });
+    const { error: e } = await supabase.rpc("guardar_tarifa_bloque", { p_bloque: bloque.id, p_banco: banco, p_porcentaje: n });
     setGuardando(null);
-    if (e) return setError(explicarError(e, "No se pudo guardar la tarifa."));
-
+    if (e) {
+      setError(explicarError(e, "No se pudo guardar la tarifa."));
+      return false;
+    }
     setOk(
       `${banco} al ${pct(n)} en "${bloque.nombre}": aplica a ${bloque.clientes} cliente${bloque.clientes === 1 ? "" : "s"}, salvo los que tengan comisión especial.`,
     );
     cargarBloques();
+    return true;
   }
 
   async function moverCliente(cliente, bloqueId) {
-    setGuardando(cliente.id);
-    const { error: e } = await supabase.rpc("asignar_bloque", {
-      p_clientes: [cliente.id],
-      p_bloque: bloqueId,
+    const destino = bloquePorId[bloqueId];
+    const si = await confirmar({
+      titulo: `¿Pasar a ${cliente.nombres} al bloque ${destino?.nombre}?`,
+      texto: "Sus comisiones cambian desde su próxima solicitud. Las especiales que tenga se mantienen.",
+      detalle: (
+        <div className="flex flex-wrap gap-1.5">
+          {(destino?.bancos || []).map((x) => (
+            <span key={x.banco} className="rounded-full bg-muted px-2.5 py-1 text-chico font-semibold">
+              {x.banco} <span className="cifras">{pct(x.porcentaje)}</span>
+            </span>
+          ))}
+        </div>
+      ),
+      boton: "Cambiar bloque",
     });
+    if (!si) return;
+    setGuardando(cliente.id);
+    const { error: e } = await supabase.rpc("asignar_bloque", { p_clientes: [cliente.id], p_bloque: bloqueId });
     setGuardando(null);
     if (e) return setError(explicarError(e, "No se pudo mover al cliente."));
-    setOk(`${cliente.nombres} pasó al bloque ${nombreBloque[bloqueId]}.`);
+    setOk(`${cliente.nombres} pasó al bloque ${destino?.nombre}.`);
     cargarClientes();
     cargarBloques();
   }
 
-  async function guardarEspecial() {
-    const n = parseFloat(especial.valor);
-    if (!Number.isFinite(n) || n < 0 || n > 100)
-      return setError("El porcentaje debe ser un número entre 0 y 100.");
+  const fallasEspecial = especial
+    ? {
+        valor: fallaPorcentaje(especial.valor),
+        motivo: especial.motivo.trim().length < 5 ? "Explica el acuerdo en pocas palabras: queda en el registro." : null,
+      }
+    : {};
 
+  async function guardarEspecial() {
+    setTocadoEspecial(true);
+    if (fallasEspecial.valor || fallasEspecial.motivo) return;
+    const n = aNumero(especial.valor);
     setGuardando("especial");
     const { error: e } = await supabase.rpc("fijar_comision_especial", {
       p_cliente: especial.cliente.id,
       p_banco: especial.banco,
       p_porcentaje: n,
-      p_motivo: especial.motivo || null,
+      p_motivo: especial.motivo.trim(),
     });
     setGuardando(null);
     if (e) return setError(explicarError(e, "No se pudo guardar la comisión."));
-
-    setOk(
-      `${especial.cliente.nombres} queda al ${pct(n)} en ${especial.banco}. Los cambios de bloque ya no la tocan.`,
-    );
+    setOk(`${especial.cliente.nombres} queda al ${pct(n)} en ${especial.banco}. Los cambios de bloque ya no la tocan.`);
     setEspecial(null);
     cargarEspeciales();
   }
 
   async function quitarEspecial(fila) {
-    setGuardando(`${fila.cliente_id}-${fila.banco}`);
-    const { error: e } = await supabase.rpc("quitar_comision_especial", {
-      p_banco: fila.banco,
-      p_clientes: [fila.cliente_id],
+    const si = await confirmar({
+      titulo: `¿Quitar la comisión especial de ${fila.nombres}?`,
+      texto: `En ${fila.banco} vuelve a la tarifa de su bloque${fila.tarifa_bloque != null ? ` (${pct(fila.tarifa_bloque)})` : ""} desde su próxima solicitud.`,
+      boton: "Quitar especial",
+      tono: "atencion",
     });
+    if (!si) return;
+    setGuardando(`${fila.cliente_id}-${fila.banco}`);
+    const { error: e } = await supabase.rpc("quitar_comision_especial", { p_banco: fila.banco, p_clientes: [fila.cliente_id] });
     setGuardando(null);
     if (e) return setError(explicarError(e, "No se pudo quitar."));
-    setOk(
-      `${fila.nombres} vuelve a la tarifa de su bloque en ${fila.banco}${fila.tarifa_bloque != null ? ` (${pct(fila.tarifa_bloque)})` : ""}.`,
-    );
+    setOk(`${fila.nombres} vuelve a la tarifa de su bloque en ${fila.banco}.`);
     cargarEspeciales();
   }
 
-  if (!session) return null;
+  if (!session) return <CargaPantalla />;
 
-  const visibles = VISTAS.filter((v) => esAdmin || !v.soloAdmin);
+  const VISTAS = [
+    ...(esAdmin
+      ? [{ clave: "bloques", etiqueta: "Bloques", cuenta: bloques.length, pista: "Tarifas por banco que comparten muchos clientes." }]
+      : []),
+    { clave: "clientes", etiqueta: "Clientes", pista: "Busca un cliente para ver su bloque o darle una comisión especial." },
+    { clave: "especiales", etiqueta: "Especiales", cuenta: especiales.length, pista: "Acuerdos con un cliente en un banco: ganan sobre su bloque." },
+  ];
 
   return (
     <Shell
       session={session}
       titulo="Comisiones"
-      descripcion={
-        esAdmin
-          ? "Bloques de tarifas, clientes y excepciones"
-          : "Ajusta la comisión de un cliente en un banco"
+      descripcion={esAdmin ? "Bloques de tarifas, clientes y excepciones" : "Ajusta la comisión de un cliente en un banco"}
+      ayuda="Cada cliente pertenece a un bloque, que fija su comisión en cada banco. Una comisión especial es un acuerdo con un cliente en un banco y gana sobre la de su bloque."
+      acciones={
+        esAdmin &&
+        vista === "bloques" && (
+          <BotonAccion
+            onClick={() => {
+              setNuevoBloque("");
+              setTocadoBloque(false);
+            }}
+            icono={<Mas className="h-4 w-4" />}
+          >
+            <span className="hidden sm:inline">Nuevo bloque</span>
+          </BotonAccion>
+        )
       }
     >
-      <div className="space-y-4">
-        <div className="inline-flex gap-1 rounded-lg border border-border bg-muted/60 p-1">
-          {visibles.map((v) => (
-            <button
-              key={v.clave}
-              onClick={() => setVista(v.clave)}
-              className={cn(
-                "pulsable rounded-md px-4 py-1.5 text-[0.8667rem] font-medium",
-                vista === v.clave
-                  ? "bg-card text-foreground shadow-panel"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {v.titulo}
-            </button>
-          ))}
-        </div>
+      {error && (
+        <Aviso className="mb-4" titulo="Revisa esto" onCerrar={() => setError("")}>
+          {error}
+        </Aviso>
+      )}
 
-        {error && (
-          <Aviso titulo="Revisa esto" onCerrar={() => setError("")}>
-            {error}
-          </Aviso>
+      <Barra>
+        <Segmentos valor={vista} onCambio={setVista} opciones={VISTAS} />
+        {vista === "clientes" && (
+          <Buscador
+            valor={busqueda}
+            onCambio={setBusqueda}
+            pendiente={busqueda !== termino}
+            placeholder="Nombre, apellido o DNI"
+            className="w-full sm:w-80"
+            autoFocus
+          />
         )}
-        {ok && (
-          <Aviso tono="info" onCerrar={() => setOk("")}>
-            {ok}
-          </Aviso>
-        )}
+      </Barra>
 
-        {loading ? (
-          <EsqueletoFilas filas={5} />
-        ) : vista === "bloques" ? (
-          /* ── Bloques ── */
-          <div className="space-y-3">
-            <p className="max-w-2xl text-[0.8667rem] text-muted-foreground">
-              Cambiar una tarifa aquí cambia la de todos los clientes del
-              bloque. Los que tienen comisión especial en ese banco no se
-              tocan: figuran en la pestaña Especiales.
-            </p>
-
-            {!creando ? (
-              <BotonAccion onClick={() => setCreando(true)} icono={<span>+</span>}>
+      {loading ? (
+        <EsqueletoFilas filas={5} />
+      ) : vista === "bloques" ? (
+        /* ── Bloques: una fila por bloque, una columna por banco ── */
+        bloques.length === 0 ? (
+          <Vacio
+            icono={<Porcentaje />}
+            titulo="Todavía no hay bloques"
+            detalle="Crea el primero: cada cliente necesita uno para que la app le calcule la comisión."
+            accion={
+              <BotonAccion onClick={() => setNuevoBloque("")} icono={<Mas className="h-4 w-4" />}>
                 Nuevo bloque
               </BotonAccion>
-            ) : (
-              <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-4">
-                <div className="min-w-[220px] flex-1">
-                  <label htmlFor="nombre" className="mb-1 block text-[12px] font-medium">
-                    Nombre del bloque
-                  </label>
-                  <input
-                    id="nombre"
-                    autoFocus
-                    value={nuevoNombre}
-                    onChange={(e) => setNuevoNombre(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && crearBloque()}
-                    placeholder="Ej: Preferentes"
-                    className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-marca-500"
-                  />
-                </div>
-                <BotonAccion onClick={crearBloque} cargando={guardando === "nuevo"}>
-                  Crear
-                </BotonAccion>
-                <BotonAccion tono="neutro" onClick={() => setCreando(false)}>
-                  Cancelar
-                </BotonAccion>
-              </div>
-            )}
-
-            {bloques.map((b) => {
-              const tarifas = Object.fromEntries(
-                (b.bancos || []).map((x) => [x.banco, x.porcentaje]),
-              );
-              const expandido = abierto === b.id;
-              return (
-                <div key={b.id} className="overflow-hidden rounded-xl border border-border bg-card">
-                  <button
-                    onClick={() => setAbierto(expandido ? null : b.id)}
-                    className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left hover:bg-muted/50"
-                    aria-expanded={expandido}
-                  >
-                    <span className="text-[0.9333rem] font-semibold text-foreground">
-                      {b.nombre}
-                    </span>
-                    {b.es_default && (
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        por defecto
-                      </span>
-                    )}
-                    <span className="cifras text-[0.8rem] text-muted-foreground">
-                      {b.clientes} cliente{b.clientes === 1 ? "" : "s"}
-                    </span>
-                    <span className="ml-auto text-muted-foreground">
-                      {expandido ? "▴" : "▾"}
-                    </span>
-                  </button>
-
-                  {expandido && (
-                    <div className="grid gap-2 border-t border-border p-4 sm:grid-cols-2 lg:grid-cols-3">
+            }
+          />
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-panel">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50 text-left">
+                    <th className="sticky left-0 bg-muted/95 px-4 py-2.5 t-etiqueta">Bloque</th>
+                    {BANCOS_TARJETA.map((b) => (
+                      <th key={b} className="px-2 py-2.5 text-center t-etiqueta">
+                        {b}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {bloques.map((b) => (
+                    <tr key={b.id} className="hover:bg-muted/20">
+                      <td className="sticky left-0 bg-card px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{b.nombre}</span>
+                          {b.es_default && (
+                            <Pista texto="Se propone al aprobar a un cliente nuevo.">
+                              <span className="cursor-help rounded-full bg-oro-100 px-2 py-0.5 text-xs font-bold text-oro-700">Por defecto</span>
+                            </Pista>
+                          )}
+                        </div>
+                        <p className="cifras text-chico text-muted-foreground">
+                          {b.clientes} cliente{b.clientes === 1 ? "" : "s"}
+                        </p>
+                      </td>
                       {BANCOS_TARJETA.map((banco) => (
-                        <TarifaBanco
-                          key={banco}
-                          banco={banco}
-                          valor={tarifas[banco]}
-                          guardando={guardando === `${b.id}-${banco}`}
-                          onGuardar={(v) => guardarTarifa(b, banco, v)}
-                        />
+                        <td key={banco} className="px-2 py-3 text-center">
+                          <CeldaTarifa
+                            banco={banco}
+                            bloque={b.nombre}
+                            valor={(b.bancos || []).find((x) => x.banco === banco)?.porcentaje}
+                            guardando={guardando === `${b.id}-${banco}`}
+                            onGuardar={(v) => guardarTarifa(b, banco, v)}
+                          />
+                        </td>
                       ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : vista === "clientes" ? (
-          /* ── Clientes ── */
-          <div className="space-y-3">
-            <div className="relative max-w-md">
-              <Lupa className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="search"
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Nombre, apellido o DNI"
-                className="w-full rounded-lg border border-input bg-card py-2.5 pl-9 pr-3 text-sm outline-none focus:border-marca-500"
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border px-4 py-2.5">
+              <p className="text-chico text-muted-foreground">
+                Escribe el porcentaje y pulsa Enter o sal de la celda para guardar. Cambia la tarifa de todos los clientes del bloque, salvo sus especiales.
+              </p>
+              <Leyenda
+                titulo={null}
+                items={[
+                  { texto: "Sin tarifa", marca: <span className="h-3 w-5 rounded border border-dashed border-oro-500 bg-oro-50" />, pista: "Ese banco no tiene tarifa en el bloque: ponle una." },
+                  { texto: "Guardado", marca: <Check className="h-3.5 w-3.5 text-emerald-600" /> },
+                ]}
               />
             </div>
-
-            {clientes.length === 0 ? (
-              <Vacio
-                icono={<Porcentaje className="h-5 w-5" />}
-                titulo="Sin clientes"
-                detalle="Prueba con otro nombre o DNI."
-              />
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-border bg-card">
-                <ul className="divide-y divide-border">
-                  {clientes.map((c) => (
-                    <li key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                      <div className="min-w-[180px] flex-1">
-                        <p className="text-[0.9333rem] font-medium text-foreground">
-                          {c.nombres} {c.apellidos}
-                        </p>
-                        <p className="cifras text-[12px] text-muted-foreground">
-                          DNI {c.dni}
-                        </p>
-                      </div>
-
-                      {esAdmin ? (
-                        <select
-                          value={c.bloque_id || ""}
-                          onChange={(e) => moverCliente(c, e.target.value)}
-                          disabled={guardando === c.id}
-                          className="shrink-0 rounded-lg border border-input bg-card px-2 py-1.5 text-[13px] outline-none focus:border-marca-500 disabled:opacity-40"
-                        >
-                          <option value="" disabled>
-                            Sin bloque
-                          </option>
-                          {bloques.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.nombre}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="shrink-0 rounded-lg bg-muted px-2.5 py-1.5 text-[13px] text-muted-foreground">
-                          {nombreBloque[c.bloque_id] || "Sin bloque"}
-                        </span>
-                      )}
-
-                      <button
-                        onClick={() =>
-                          setEspecial({
-                            cliente: c,
-                            banco: BANCOS_TARJETA[0],
-                            valor: "",
-                            motivo: "",
-                          })
-                        }
-                        className="pulsable shrink-0 rounded-lg border border-border px-3 py-1.5 text-[0.8rem] font-medium hover:bg-muted"
-                      >
-                        Comisión especial
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </div>
+        )
+      ) : vista === "clientes" ? (
+        /* ── Clientes ── */
+        clientes.length === 0 ? (
+          <Vacio icono={<Porcentaje />} titulo="Sin clientes" detalle="Prueba con otro nombre o DNI." />
         ) : (
-          /* ── Especiales ── */
-          <div className="space-y-3">
-            <p className="max-w-2xl text-[0.8667rem] text-muted-foreground">
-              Acuerdos con un cliente en un banco concreto. Ganan sobre la
-              tarifa del bloque y los cambios masivos no las tocan. Al
-              quitarlas, el cliente vuelve a la tarifa de su bloque.
-            </p>
-
-            {especiales.length === 0 ? (
-              <Vacio
-                icono={<Porcentaje className="h-5 w-5" />}
-                titulo="Ninguna comisión especial"
-                detalle="Todos los clientes están con la tarifa de su bloque."
-              />
-            ) : (
-              <div className="overflow-x-auto rounded-xl border border-border bg-card">
-                <table className="w-full min-w-[640px] text-sm">
-                  <thead>
-                    <tr className="bg-muted/60 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                      <th className="px-4 py-2.5 font-semibold">Cliente</th>
-                      <th className="px-4 py-2.5 font-semibold">Banco</th>
-                      <th className="px-4 py-2.5 font-semibold">Especial</th>
-                      <th className="px-4 py-2.5 font-semibold">Su bloque</th>
-                      <th className="px-4 py-2.5 font-semibold">Motivo</th>
-                      <th className="px-4 py-2.5" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {especiales.map((f) => (
-                      <tr key={`${f.cliente_id}-${f.banco}`} className="border-t border-border">
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-panel">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50 text-left">
+                    <th className="px-4 py-2.5 t-etiqueta">Cliente</th>
+                    <th className="px-4 py-2.5 t-etiqueta">DNI</th>
+                    <th className="px-4 py-2.5 t-etiqueta">Bloque</th>
+                    <th className="px-4 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {clientes.map((c) => {
+                    const nEsp = especiales.filter((f) => f.cliente_id === c.id).length;
+                    return (
+                      <tr key={c.id} className="hover:bg-muted/20">
                         <td className="px-4 py-2.5">
-                          <p className="font-medium text-foreground">
-                            {f.nombres} {f.apellidos}
-                          </p>
-                          <p className="cifras text-[11.5px] text-muted-foreground">
-                            DNI {f.dni}
-                          </p>
+                          <span className="font-semibold">
+                            {c.nombres} {c.apellidos}
+                          </span>
+                          {nEsp > 0 && (
+                            <span className="ml-2 rounded-full bg-marca-100 px-2 py-0.5 text-xs font-bold text-marca-700">
+                              {nEsp} especial{nEsp === 1 ? "" : "es"}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-4 py-2.5">{f.banco}</td>
-                        <td className="cifras px-4 py-2.5 font-semibold text-marca-700">
-                          {pct(f.porcentaje)}
-                        </td>
-                        <td className="cifras px-4 py-2.5 text-muted-foreground">
-                          {f.bloque || "—"}
-                          {f.tarifa_bloque != null && ` · ${pct(f.tarifa_bloque)}`}
-                        </td>
-                        <td className="max-w-[220px] truncate px-4 py-2.5 text-muted-foreground">
-                          {f.motivo || "—"}
+                        <td className="cifras px-4 py-2.5 font-mono text-muted-foreground">{c.dni}</td>
+                        <td className="px-4 py-2.5">
+                          {esAdmin ? (
+                            <select
+                              aria-label={`Bloque de ${c.nombres}`}
+                              value={c.bloque_id || ""}
+                              onChange={(e) => moverCliente(c, e.target.value)}
+                              disabled={guardando === c.id}
+                              className="campo h-9 w-48 py-1 text-sm"
+                            >
+                              <option value="" disabled>
+                                Sin bloque
+                              </option>
+                              {bloques.map((b) => (
+                                <option key={b.id} value={b.id}>
+                                  {b.nombre}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="rounded-full bg-muted px-2.5 py-1 text-chico font-semibold text-muted-foreground">
+                              {bloquePorId[c.bloque_id]?.nombre || "Sin bloque"}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-2.5 text-right">
-                          <button
-                            onClick={() => quitarEspecial(f)}
-                            disabled={guardando === `${f.cliente_id}-${f.banco}`}
-                            className="pulsable rounded-lg px-3 py-1.5 text-[0.8rem] font-medium text-red-600 hover:bg-red-50 disabled:opacity-40"
+                          <BotonAccion
+                            tono="neutro"
+                            tamano="chico"
+                            icono={<Porcentaje className="h-3.5 w-3.5" />}
+                            onClick={() => {
+                              setEspecial({ cliente: c, banco: BANCOS_TARJETA[0], valor: "", motivo: "" });
+                              setTocadoEspecial(false);
+                            }}
                           >
-                            Quitar
-                          </button>
+                            Comisión especial
+                          </BotonAccion>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {clientes.length >= 60 && (
+              <p className="border-t border-border px-4 py-2 text-chico text-muted-foreground">Se muestran los primeros 60. Busca por nombre o DNI para encontrar a otro.</p>
             )}
           </div>
-        )}
-      </div>
+        )
+      ) : /* ── Especiales ── */
+      especiales.length === 0 ? (
+        <Vacio icono={<Porcentaje />} titulo="Ninguna comisión especial" detalle="Todos los clientes están con la tarifa de su bloque." />
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-panel">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/50 text-left">
+                  <th className="px-4 py-2.5 t-etiqueta">Cliente</th>
+                  <th className="px-4 py-2.5 t-etiqueta">Banco</th>
+                  <th className="px-4 py-2.5 t-etiqueta">Especial</th>
+                  <th className="px-4 py-2.5 t-etiqueta">Su bloque</th>
+                  <th className="px-4 py-2.5 t-etiqueta">Motivo</th>
+                  <th className="px-4 py-2.5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {especiales.map((f) => (
+                  <tr key={`${f.cliente_id}-${f.banco}`} className="hover:bg-muted/20">
+                    <td className="px-4 py-2.5">
+                      <p className="font-semibold text-foreground">
+                        {f.nombres} {f.apellidos}
+                      </p>
+                      <p className="cifras text-chico text-muted-foreground">DNI {f.dni}</p>
+                    </td>
+                    <td className="px-4 py-2.5 font-semibold">{f.banco}</td>
+                    <td className="cifras px-4 py-2.5 text-md font-bold text-marca-700">{pct(f.porcentaje)}</td>
+                    <td className="cifras px-4 py-2.5 text-muted-foreground">
+                      {f.bloque || "—"}
+                      {f.tarifa_bloque != null && ` · ${pct(f.tarifa_bloque)}`}
+                    </td>
+                    <td className="max-w-[260px] px-4 py-2.5 text-muted-foreground">
+                      <span className="line-clamp-2">{f.motivo || "—"}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <BotonAccion
+                        tono="peligroSuave"
+                        tamano="chico"
+                        onClick={() => quitarEspecial(f)}
+                        cargando={guardando === `${f.cliente_id}-${f.banco}`}
+                      >
+                        Quitar
+                      </BotonAccion>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Nuevo bloque */}
+      <Dialogo
+        abierto={nuevoBloque !== null}
+        onCerrar={() => setNuevoBloque(null)}
+        bloqueado={guardando === "nuevo"}
+        titulo="Nuevo bloque de comisiones"
+        descripcion="Después de crearlo, pon su tarifa en cada banco desde la tabla."
+        icono={<Mas className="h-5 w-5" />}
+        pie={
+          <>
+            <BotonAccion tono="neutro" onClick={() => setNuevoBloque(null)}>
+              Cancelar
+            </BotonAccion>
+            <BotonAccion onClick={crearBloque} cargando={guardando === "nuevo"} disabled={tocadoBloque && Boolean(fallaNombre)}>
+              Crear bloque
+            </BotonAccion>
+          </>
+        }
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            crearBloque();
+          }}
+        >
+          <Campo etiqueta="Nombre" htmlFor="nombreBloque" requerido error={tocadoBloque ? fallaNombre : null}>
+            <input
+              id="nombreBloque"
+              autoFocus
+              maxLength={40}
+              value={nuevoBloque || ""}
+              onChange={(e) => setNuevoBloque(e.target.value)}
+              onBlur={() => nuevoBloque && setTocadoBloque(true)}
+              aria-invalid={tocadoBloque && Boolean(fallaNombre)}
+              placeholder="Ej: Preferentes"
+              className="campo"
+            />
+          </Campo>
+        </form>
+      </Dialogo>
 
       {/* Comisión especial de un cliente */}
-      {especial && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-marca-950/50 p-4"
-          onClick={() => setEspecial(null)}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="entra w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-panel"
-            onClick={(e) => e.stopPropagation()}
+      <Dialogo
+        abierto={Boolean(especial)}
+        onCerrar={() => setEspecial(null)}
+        bloqueado={guardando === "especial"}
+        titulo="Comisión especial"
+        descripcion={especial ? `${especial.cliente.nombres} ${especial.cliente.apellidos} · DNI ${especial.cliente.dni}` : ""}
+        icono={<Porcentaje className="h-5 w-5" />}
+        pie={
+          <>
+            <BotonAccion tono="neutro" onClick={() => setEspecial(null)}>
+              Cancelar
+            </BotonAccion>
+            <BotonAccion
+              onClick={guardarEspecial}
+              cargando={guardando === "especial"}
+              disabled={tocadoEspecial && Boolean(fallasEspecial.valor || fallasEspecial.motivo)}
+            >
+              Guardar
+            </BotonAccion>
+          </>
+        }
+      >
+        {especial && (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              guardarEspecial();
+            }}
           >
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  Comisión especial
-                </h2>
-                <p className="text-[0.8rem] text-muted-foreground">
-                  {especial.cliente.nombres} {especial.cliente.apellidos}
-                </p>
-              </div>
-              <button
-                onClick={() => setEspecial(null)}
-                className="rounded p-1 text-muted-foreground hover:bg-muted"
-                aria-label="Cerrar"
-              >
-                <Cruz className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label htmlFor="banco" className="mb-1 block text-[12px] font-medium">
-                  Banco
-                </label>
-                <select
-                  id="banco"
-                  value={especial.banco}
-                  onChange={(e) => setEspecial({ ...especial, banco: e.target.value })}
-                  className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-marca-500"
-                >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Campo etiqueta="Banco" htmlFor="banco">
+                <select id="banco" value={especial.banco} onChange={(e) => setEspecial({ ...especial, banco: e.target.value })} className="campo">
                   {BANCOS_TARJETA.map((b) => (
                     <option key={b} value={b}>
                       {b}
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label htmlFor="valor" className="mb-1 block text-[12px] font-medium">
-                  Porcentaje
-                </label>
-                <input
-                  id="valor"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
-                  autoFocus
-                  value={especial.valor}
-                  onChange={(e) => setEspecial({ ...especial, valor: e.target.value })}
-                  className="cifras w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-marca-500"
-                />
-              </div>
+              </Campo>
+              <Campo etiqueta="Porcentaje" htmlFor="valor" requerido error={tocadoEspecial ? fallasEspecial.valor : null}>
+                <div className="relative">
+                  <input
+                    id="valor"
+                    inputMode="decimal"
+                    autoFocus
+                    value={especial.valor}
+                    onChange={(e) => setEspecial({ ...especial, valor: e.target.value })}
+                    aria-invalid={tocadoEspecial && Boolean(fallasEspecial.valor)}
+                    placeholder="Ej: 4.5"
+                    className="campo cifras pr-8"
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                </div>
+              </Campo>
             </div>
-
-            <div className="mt-3">
-              <label htmlFor="motivo" className="mb-1 block text-[12px] font-medium">
-                Motivo
-              </label>
+            <p className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+              Hoy paga{" "}
+              <strong className="cifras text-foreground">
+                {(() => {
+                  const esp = especiales.find((f) => f.cliente_id === especial.cliente.id && f.banco === especial.banco);
+                  return esp ? `${pct(esp.porcentaje)} (especial)` : pct(tarifaDe(especial.cliente.bloque_id, especial.banco));
+                })()}
+              </strong>{" "}
+              en {especial.banco}
+              {bloquePorId[especial.cliente.bloque_id] ? `, según el bloque ${bloquePorId[especial.cliente.bloque_id].nombre}` : ""}.
+            </p>
+            <Campo
+              etiqueta="Motivo"
+              htmlFor="motivo"
+              requerido
+              ayuda="Queda registrado con tu nombre. Esta tarifa deja de seguir a su bloque hasta que alguien la quite."
+              error={tocadoEspecial ? fallasEspecial.motivo : null}
+            >
               <input
                 id="motivo"
+                maxLength={200}
                 value={especial.motivo}
                 onChange={(e) => setEspecial({ ...especial, motivo: e.target.value })}
+                aria-invalid={tocadoEspecial && Boolean(fallasEspecial.motivo)}
                 placeholder="Ej: cliente de alto volumen"
-                className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-marca-500"
+                className="campo"
               />
-              <p className="mt-1 text-[11.5px] text-muted-foreground">
-                Queda registrado con tu nombre. Esta tarifa deja de seguir a
-                su bloque hasta que alguien la quite.
-              </p>
-            </div>
+            </Campo>
+            <button type="submit" className="hidden" />
+          </form>
+        )}
+      </Dialogo>
 
-            <div className="mt-4 flex gap-2">
-              <BotonAccion
-                onClick={guardarEspecial}
-                cargando={guardando === "especial"}
-                className="flex-1"
-              >
-                Guardar
-              </BotonAccion>
-              <BotonAccion tono="neutro" onClick={() => setEspecial(null)}>
-                Cancelar
-              </BotonAccion>
-            </div>
-          </div>
-        </div>
-      )}
+      {ventanaConfirmar}
+      <Tostada mensaje={ok} onCerrar={() => setOk("")} />
     </Shell>
   );
 }
 
-/** Tarifa de un banco dentro de un bloque. Guarda al salir del campo. */
-function TarifaBanco({ banco, valor, guardando, onGuardar }) {
+/**
+ * Tarifa de un banco dentro de un bloque. Guarda al pulsar Enter o salir
+ * de la celda, y avisa en la misma celda si el valor no sirve.
+ */
+function CeldaTarifa({ banco, bloque, valor, guardando, onGuardar }) {
   const [texto, setTexto] = useState(valor ?? "");
+  const [guardado, setGuardado] = useState(false);
 
   useEffect(() => {
     setTexto(valor ?? "");
   }, [valor]);
 
   const cambiada = String(texto) !== String(valor ?? "");
+  const falla = cambiada ? fallaPorcentaje(texto) : null;
+  const vacia = valor === null || valor === undefined;
+
+  async function confirmar() {
+    if (!cambiada) return;
+    if (falla) return;
+    const listo = await onGuardar(texto);
+    if (listo) {
+      setGuardado(true);
+      setTimeout(() => setGuardado(false), 1800);
+    }
+  }
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
-      <span className="flex-1 text-[0.8667rem] font-medium text-foreground">
-        {banco}
+    <Pista texto={falla ? `${banco}: ${falla}` : null}>
+      <span className="relative inline-flex items-center">
+        <input
+          inputMode="decimal"
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          onBlur={confirmar}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") {
+              setTexto(valor ?? "");
+              e.currentTarget.blur();
+            }
+          }}
+          aria-label={`Tarifa de ${banco} en ${bloque}`}
+          aria-invalid={Boolean(falla)}
+          placeholder="—"
+          className={cn(
+            "campo cifras h-9 w-[86px] pr-6 text-center text-md font-semibold",
+            vacia && !cambiada && "border-dashed border-oro-500 bg-oro-50",
+            cambiada && !falla && "border-marca-500 bg-marca-50",
+          )}
+        />
+        <span className="pointer-events-none absolute right-2 text-chico text-muted-foreground">
+          {guardando ? <Rueda className="h-3 w-3" /> : guardado ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : "%"}
+        </span>
       </span>
-      <input
-        type="number"
-        step="0.01"
-        min="0"
-        max="100"
-        value={texto}
-        onChange={(e) => setTexto(e.target.value)}
-        onBlur={() => cambiada && texto !== "" && onGuardar(texto)}
-        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-        aria-label={`Tarifa de ${banco}`}
-        className="cifras w-20 rounded-md border border-input bg-card px-2 py-1 text-right text-sm outline-none focus:border-marca-500"
-      />
-      <span className="text-[13px] text-muted-foreground">%</span>
-      {guardando && <Rueda className="h-3.5 w-3.5" />}
-    </div>
+    </Pista>
   );
 }

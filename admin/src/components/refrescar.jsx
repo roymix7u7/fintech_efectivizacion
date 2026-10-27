@@ -5,7 +5,7 @@ import { Refrescar as IconoRefrescar } from "@/components/shell";
 import Pista from "@/components/pista";
 
 /**
- * Vuelve a pedir la cola.
+ * Vuelve a pedir la lista.
  *
  * Las colas cambian solas mientras se trabaja: otro revisor toma un
  * caso, entra uno nuevo, se vence una reserva. Sin esto había que
@@ -13,17 +13,17 @@ import Pista from "@/components/pista";
  */
 export default function BotonRefrescar({ onClick, girando, texto }) {
   return (
-    <Pista texto={texto || "Volver a pedir la lista"}>
+    <Pista texto={texto || "Actualizar la lista"} lado="bottom">
       <button
         onClick={onClick}
         disabled={girando}
-        aria-label="Actualizar"
+        aria-label={texto || "Actualizar la lista"}
         className={cn(
-          "pulsable flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground",
+          "pulsable flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground",
           "hover:border-marca-300 hover:text-marca-700 disabled:opacity-60",
         )}
       >
-        <IconoRefrescar className={cn("h-4 w-4", girando && "animate-spin")} />
+        <IconoRefrescar className={cn("h-[18px] w-[18px]", girando && "animate-spin")} />
       </button>
     </Pista>
   );

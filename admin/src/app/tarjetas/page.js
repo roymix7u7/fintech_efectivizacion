@@ -9,21 +9,25 @@ import { explicarError } from "@/lib/acciones";
 import { resolverCaso, tomarCaso } from "@/lib/casos";
 import { tomarSiguiente, minutosRestantes } from "@/lib/cola";
 import { colorDe } from "@/lib/colores";
+import { useIrAlDetalle } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
-import Shell, {
-  Lupa,
-  Tarjeta as IconoTarjeta,
-  Check,
-  Cruz,
-  Manos,
-} from "@/components/shell";
+import Shell, { Tarjeta as IconoTarjeta, Check, Cruz, Manos, Imagen } from "@/components/shell";
 import Visor from "@/components/visor";
 import Conflicto from "@/components/conflicto";
 import SinPendientes from "@/components/sinPendientes";
 import Revisor from "@/components/revisor";
 import BotonRefrescar from "@/components/refrescar";
+import Pista from "@/components/pista";
 import { Estado, Dato, Vacio, Aviso } from "@/components/marca";
-import { EsqueletoCola, BarraCarga, Esqueleto } from "@/components/carga";
+import { EsqueletoCola, Esqueleto, BotonAccion, CargaPantalla } from "@/components/carga";
+import { Segmentos, Buscador, Barra, Panel, Leyenda, Motivo, Copiar, Comprobacion } from "@/components/piezas";
+
+const RECHAZOS_FRECUENTES = [
+  "La foto no deja ver el nombre del titular. Vuelve a tomarla completa.",
+  "Los últimos 4 dígitos de la foto no coinciden con los que escribiste.",
+  "Se ve el número completo de la tarjeta. Cúbrelo y deja solo los últimos 4.",
+  "La tarjeta está a nombre de otra persona. Solo puedes registrar tarjetas tuyas.",
+];
 
 const BUCKET = "tarjetas-fotos";
 const FILTROS = [
@@ -66,7 +70,10 @@ export default function TarjetasPage() {
   const [ajeno, setAjeno] = useState(null);
   const [sinPendientes, setSinPendientes] = useState(false);
   const [pidiendo, setPidiendo] = useState(false);
+  // Lo que el revisor confirma haber mirado, por tarjeta.
+  const [revisadoPor, setRevisadoPor] = useState({});
   const router = useRouter();
+  const detalleRef = useIrAlDetalle(seleccionada?.id);
 
   // Verificar es del gestor; el supervisor mira como va el trabajo. El
   // admin conserva el mando.
@@ -312,9 +319,35 @@ export default function TarjetasPage() {
     );
   }, [tarjetas, busqueda]);
 
-  if (!session) return null;
+  if (!session) return <CargaPantalla />;
 
   const cliente = seleccionada?.perfiles_cliente;
+  const titular = cliente ? `${cliente.nombres} ${cliente.apellidos}` : "Cliente sin perfil";
+  const marcas = (seleccionada && revisadoPor[seleccionada.id]) || {};
+  const COMPROBAR = seleccionada
+    ? [
+        {
+          clave: "nombre",
+          texto: (
+            <>
+              El nombre impreso{seleccionada.nombre_impreso ? <> (<strong>{seleccionada.nombre_impreso}</strong>)</> : null} coincide con{" "}
+              <strong>{titular}</strong>.
+            </>
+          ),
+        },
+        {
+          clave: "digitos",
+          texto: (
+            <>
+              Los últimos 4 dígitos coinciden con <span className="cifras font-mono font-bold">{seleccionada.ultimos_4}</span>.
+            </>
+          ),
+        },
+        { clave: "cubierto", texto: "El número completo está cubierto: solo se ven los últimos 4." },
+        ...(seleccionada.foto_reverso ? [{ clave: "dos", texto: "Revisé las dos fotos." }] : []),
+      ]
+    : [];
+  const todoRevisado = COMPROBAR.every((c) => marcas[c.clave]);
 
   return (
     <Shell
@@ -325,144 +358,102 @@ export default function TarjetasPage() {
         loading
           ? "Cargando..."
           : filtro === "pendiente"
-            ? `${tarjetas.length} ${tarjetas.length === 1 ? "tarjeta espera" : "tarjetas esperan"} verificación`
+            ? `${tarjetas.length} ${tarjetas.length === 1 ? "espera" : "esperan"} verificación`
             : `${tarjetas.length} en el historial`
       }
+      ayuda="El cliente registra su tarjeta con una foto. Comprueba que sea suya y que el número completo esté tapado; al verificarla ya puede usarla en sus solicitudes."
       acciones={
-        <>
-        {filtro === "pendiente" && puedeResolver && (
-          <button
+        filtro === "pendiente" &&
+        puedeResolver && (
+          <BotonAccion
             onClick={() => atenderSiguiente()}
-            disabled={pidiendo}
+            cargando={pidiendo}
+            icono={<Manos className="h-4 w-4" />}
             title="Te asigna la tarjeta libre que más tiempo lleva esperando"
-            className="pulsable flex items-center gap-2 rounded-lg bg-marca-700 px-3.5 py-2 text-[0.8667rem] font-semibold text-white hover:bg-marca-600 disabled:opacity-50"
           >
-            <Manos className="h-4 w-4" />
-            {pidiendo ? "Buscando…" : "Atender siguiente"}
-          </button>
-        )}
-        {!puedeResolver && (
-          <span className="rounded-full bg-muted px-2.5 py-1 text-[0.7333rem] font-medium text-muted-foreground">
-            Solo lectura
-          </span>
-        )}
-        <BotonRefrescar
-          girando={loading}
-          onClick={() => recargar()}
-          texto="Volver a pedir la lista de tarjetas"
-        />
-        <div className="hidden items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 sm:flex">
-          {FILTROS.map((f) => (
-            <button
-              key={f.clave}
-              onClick={() => cargar(f.clave, session?.rol === "gestor", session?.user.id)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-[13px] font-medium transition",
-                filtro === f.clave
-                  ? "bg-card text-foreground shadow-panel"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {f.etiqueta}
-            </button>
-          ))}
-        </div>
-        </>
+            <span className="hidden sm:inline">{pidiendo ? "Buscando…" : "Atender siguiente"}</span>
+          </BotonAccion>
+        )
       }
     >
       {error && (
-        <div className="mb-5">
-          <Aviso titulo="No se pudo completar" onCerrar={() => setError("")}>
-            {error}
-          </Aviso>
-        </div>
+        <Aviso className="mb-4" titulo="No se pudo completar" onCerrar={() => setError("")}>
+          {error}
+        </Aviso>
       )}
 
-      <div className="mb-4 flex items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 sm:hidden">
-        {FILTROS.map((f) => (
-          <button
-            key={f.clave}
-            onClick={() => cargar(f.clave, session?.rol === "gestor", session?.user.id)}
-            className={cn(
-              "flex-1 rounded-md px-2 py-1.5 text-[13px] font-medium transition",
-              filtro === f.clave ? "bg-card shadow-panel" : "text-muted-foreground",
-            )}
-          >
-            {f.etiqueta}
-          </button>
-        ))}
-      </div>
+      <Barra>
+        <Segmentos
+          valor={filtro}
+          onCambio={(clave) => cargar(clave, session?.rol === "gestor", session?.user.id)}
+          opciones={FILTROS.map((f) => ({
+            ...f,
+            cuenta: f.clave === "pendiente" ? (contadores.tarjetasPendientes ?? null) : null,
+            urgente: f.clave === "pendiente",
+          }))}
+        />
+        <Buscador valor={busqueda} onCambio={setBusqueda} placeholder="Nombre, DNI, banco o últimos 4" className="w-full sm:w-72" />
+        <div className="ml-auto flex items-center gap-2">
+          {!puedeResolver && (
+            <Pista texto="Como supervisor ves toda la cola y quién atiende cada tarjeta. Verificarla es del gestor que la tiene.">
+              <span className="cursor-help rounded-full bg-muted px-2.5 py-1 text-xs font-bold text-muted-foreground">Solo lectura</span>
+            </Pista>
+          )}
+          <BotonRefrescar girando={loading} onClick={() => recargar()} texto="Actualizar la lista de tarjetas" />
+        </div>
+      </Barra>
 
-      <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
         {/* Cola */}
-        <section className="flex min-w-0 flex-col">
-          <div className="relative mb-3">
-            <Lupa className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Nombre, DNI, banco o últimos 4"
-              className="w-full rounded-lg border border-input bg-card py-2.5 pl-9 pr-3 text-sm outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
-            />
-          </div>
-
+        <section className="flex min-w-0 flex-col xl:sticky xl:top-[76px] xl:max-h-[calc(100dvh-150px)] xl:self-start">
           {loading ? (
             <EsqueletoCola filas={4} />
           ) : visibles.length === 0 ? (
             <Vacio
-              icono={<IconoTarjeta className="h-5 w-5" />}
-              titulo={busqueda ? "Sin coincidencias" : "Cola vacía"}
+              icono={<IconoTarjeta />}
+              titulo={busqueda ? "Sin coincidencias" : filtro === "pendiente" ? "Cola vacía" : "Sin tarjetas"}
               detalle={
                 busqueda
                   ? "Ninguna tarjeta coincide con lo que buscas."
-                  : "No queda ninguna tarjeta por verificar."
+                  : filtro === "pendiente"
+                    ? esGestor
+                      ? "No tienes tarjetas asignadas. Pulsa «Atender siguiente»."
+                      : "No queda ninguna tarjeta por verificar."
+                    : "No hay tarjetas en este estado."
               }
             />
           ) : (
-            <div className="scroll-fino -mx-1 max-h-[calc(100vh-260px)] space-y-2 overflow-y-auto px-1">
+            <div className="scroll-fino -mx-1 max-h-[60vh] min-h-0 flex-1 space-y-2 overflow-y-auto px-1 pb-1 xl:max-h-none">
               {visibles.map((t) => {
                 const activa = seleccionada?.id === t.id;
+                const tomada = t.asignado_a && minutosRestantes(t.asignado_en) > 0;
                 return (
                   <button
                     key={t.id}
                     onClick={() => abrir(t)}
                     className={cn(
-                      "w-full rounded-xl border bg-card p-3.5 text-left transition",
-                      t.asignado_a &&
-                        minutosRestantes(t.asignado_en) > 0 &&
-                        (t.asignado_a === session.user.id
-                          ? "border-l-4 border-l-marca-600"
-                          : `border-l-4 ${colorDe(t.asignado_a).borde}`),
-                      activa
-                        ? "border-marca-600 shadow-alzado ring-1 ring-marca-600"
-                        : "border-border hover:border-marca-200 hover:shadow-panel",
+                      "pulsable w-full rounded-xl border bg-card px-3.5 py-3 text-left",
+                      tomada &&
+                        (t.asignado_a === session.user.id ? "border-l-4 border-l-marca-600" : `border-l-4 ${colorDe(t.asignado_a).borde}`),
+                      activa ? "border-marca-500 shadow-alzado ring-2 ring-marca-500/30" : "border-border hover:border-marca-200 hover:shadow-panel",
                     )}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-semibold text-foreground">
-                        {t.banco}
-                      </span>
-                      <span className="cifras font-mono text-[13px] text-muted-foreground">
-                        ···· {t.ultimos_4}
-                      </span>
+                      <span className="text-md font-bold text-foreground">{t.banco}</span>
+                      <span className="cifras font-mono text-sm text-muted-foreground">···· {t.ultimos_4}</span>
                       {!t.foto_tarjeta ? (
-                        <span className="ml-auto text-[0.7333rem] text-red-600">
-                          sin adjunto
-                        </span>
+                        <span className="ml-auto rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-700">Sin foto</span>
                       ) : t.foto_reverso ? (
-                        <span className="ml-auto text-[0.7333rem] text-muted-foreground">
-                          2 fotos
+                        <span className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                          <Imagen className="h-3.5 w-3.5" />2 fotos
                         </span>
                       ) : null}
                     </div>
-                    <div className="mt-1.5 flex items-center gap-2">
-                      <p className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
-                        {t.perfiles_cliente
-                          ? `${t.perfiles_cliente.nombres} ${t.perfiles_cliente.apellidos}`
-                          : "Cliente sin perfil"}
+                    <div className="mt-1 flex items-center gap-2">
+                      <p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                        {t.perfiles_cliente ? `${t.perfiles_cliente.nombres} ${t.perfiles_cliente.apellidos}` : "Cliente sin perfil"}
                       </p>
-                      {t.asignado_a && minutosRestantes(t.asignado_en) > 0 && (
+                      {tomada && (
                         <Revisor
                           id={t.asignado_a}
                           persona={equipo[t.asignado_a]}
@@ -476,305 +467,226 @@ export default function TarjetasPage() {
               })}
             </div>
           )}
+
+          {filtro === "pendiente" && !loading && visibles.length > 0 && (
+            <Leyenda
+              className="mt-3"
+              items={[
+                {
+                  texto: "Franja de color",
+                  marca: <span className="h-3.5 w-1 rounded bg-marca-600" />,
+                  pista: "Quién la atiende: azul oscuro eres tú; cada compañero tiene su color.",
+                },
+                {
+                  texto: "2 fotos",
+                  marca: <Imagen className="h-3.5 w-3.5" />,
+                  pista: "El cliente subió una segunda foto (por ejemplo, el reverso). Revisa ambas.",
+                },
+              ]}
+            />
+          )}
         </section>
 
         {/* Detalle */}
-        <section className="min-w-0 space-y-4">
+        <section ref={detalleRef} className="min-w-0 scroll-mt-20 space-y-4">
           {ajeno && (
-            <div className="flex items-start gap-3 rounded-xl border border-oro-300/60 bg-oro-50 p-4">
-              <span className="text-lg leading-none">👀</span>
-              <p className="text-[0.8667rem] leading-relaxed text-oro-700">
-                <strong>{ajeno.quien}</strong> está revisando esta tarjeta.
-                Puedes mirarla, pero verificarla es suyo hasta que pasen{" "}
-                {ajeno.libre_en} min.
-              </p>
-            </div>
+            <Aviso tono="espera" titulo={`${ajeno.quien} está revisando esta tarjeta`}>
+              Puedes mirarla, pero verificarla es suyo hasta que pasen {ajeno.libre_en} min.
+            </Aviso>
           )}
 
           {!seleccionada ? (
             <Vacio
-              icono={<IconoTarjeta className="h-5 w-5" />}
+              className="min-h-[360px]"
+              icono={<IconoTarjeta />}
               titulo="Elige una tarjeta de la lista"
-              detalle="Al pulsar una se carga su foto y los datos del titular."
+              detalle="Al pulsarla se carga su foto y los datos del titular."
             />
           ) : (
-            <div className="space-y-4 animate-aparecer">
-              <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-card p-4 shadow-panel">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-[15px] font-bold text-foreground">
-                      {seleccionada.banco}
-                    </h2>
-                    <span className="cifras font-mono text-[15px] text-muted-foreground">
-                      ···· {seleccionada.ultimos_4}
-                    </span>
-                    <Estado valor={seleccionada.estado} />
-                  </div>
-                  <p className="mt-1 text-[13px] text-muted-foreground">
-                    Registrada el {fechaLarga(seleccionada.created_at)}
-                  </p>
-                </div>
+            <div key={seleccionada.id} className="animate-aparecer space-y-4">
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-panel">
+                <h2 className="text-lg font-bold">{seleccionada.banco}</h2>
+                <span className="cifras font-mono text-lg text-muted-foreground">···· {seleccionada.ultimos_4}</span>
+                <Estado valor={seleccionada.estado} />
+                <span className="text-sm text-muted-foreground">Registrada el {fechaLarga(seleccionada.created_at)}</span>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-                <div className="min-w-0">
-                  {/* Selector de cara. Solo aparece si el cliente subió
-                      una segunda foto: la mayoría de tarjetas muestra todo en
-                      una sola foto y un selector de una opción confunde. */}
+              <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,1fr)]">
+                <div className="min-w-0 space-y-3">
+                  {/* Solo aparece si subió una segunda foto: un selector de
+                      una sola opción confunde. */}
                   {seleccionada.foto_reverso && (
-                    <div className="mb-3 flex items-center gap-1 rounded-lg border border-border bg-muted/60 p-1">
-                      {[
-                        { clave: "frente", texto: "Foto principal" },
-                        { clave: "reverso", texto: "Otra foto" },
-                      ].map((c) => (
-                        <button
-                          key={c.clave}
-                          onClick={() => setCara(c.clave)}
-                          className={cn(
-                            "pulsable flex-1 rounded-md px-3 py-1.5 text-[0.8667rem] font-medium",
-                            cara === c.clave
-                              ? "bg-card text-foreground shadow-panel"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {c.texto}
-                        </button>
-                      ))}
-                    </div>
+                    <Segmentos
+                      valor={cara}
+                      onCambio={setCara}
+                      opciones={[
+                        { clave: "frente", etiqueta: "Foto principal" },
+                        { clave: "reverso", etiqueta: "Otra foto" },
+                      ]}
+                    />
                   )}
 
                   {cargandoDetalle ? (
-                    <Esqueleto className="h-[440px] w-full rounded-lg" />
+                    <Esqueleto className="h-[460px] w-full rounded-xl" />
                   ) : (
                     <Visor
-                      url={
-                        cara === "reverso"
-                          ? seleccionada.reverso
-                          : seleccionada.foto
-                      }
-                      error={
-                        cara === "reverso"
-                          ? seleccionada.reverso_error
-                          : seleccionada.foto_error
-                      }
-                      path={
-                        cara === "reverso"
-                          ? seleccionada.reverso_path
-                          : seleccionada.foto_path
-                      }
-                      titulo={
-                        cara === "reverso"
-                          ? "Otra foto de la tarjeta"
-                          : "Foto principal de la tarjeta"
-                      }
-                      alto="h-[440px]"
+                      url={cara === "reverso" ? seleccionada.reverso : seleccionada.foto}
+                      error={cara === "reverso" ? seleccionada.reverso_error : seleccionada.foto_error}
+                      path={cara === "reverso" ? seleccionada.reverso_path : seleccionada.foto_path}
+                      titulo={cara === "reverso" ? "Otra foto de la tarjeta" : "Foto principal de la tarjeta"}
+                      alto="h-[460px]"
                     />
                   )}
-                  <div className="mt-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Qué comprobar
-                    </p>
-                    <ul className="mt-1.5 space-y-1 text-[13px] text-foreground">
-                      <li>
-                        El nombre impreso
-                        {seleccionada.nombre_impreso ? (
-                          <>
-                            {" "}
-                            (<span className="font-semibold">{seleccionada.nombre_impreso}</span>)
-                          </>
-                        ) : null}{" "}
-                        coincide con el titular.
-                      </li>
-                      <li>
-                        Los últimos 4 dígitos coinciden con{" "}
-                        <span className="cifras font-mono font-semibold">
-                          {seleccionada.ultimos_4}
-                        </span>
-                        .
-                      </li>
-                      <li>El número completo está cubierto.</li>
-                      {seleccionada.foto_reverso && (
-                        <li>Revisa las dos fotos antes de resolver.</li>
-                      )}
-                    </ul>
-                  </div>
+
+                  {seleccionada.estado === "pendiente" && puedeResolver && (
+                    <Comprobacion
+                      items={COMPROBAR}
+                      marcados={marcas}
+                      onCambio={(v) => setRevisadoPor((m) => ({ ...m, [seleccionada.id]: v }))}
+                      ayuda="Marcar cada punto confirma que lo miraste. El botón de verificar se activa con todo marcado."
+                    />
+                  )}
                 </div>
 
                 <div className="min-w-0 space-y-4">
-                  <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-                    <h3 className="mb-3 text-[13px] font-semibold">Titular</h3>
-                    <p className="text-base font-semibold text-foreground">
-                      {cliente
-                        ? `${cliente.nombres} ${cliente.apellidos}`
-                        : "Cliente sin perfil"}
-                    </p>
+                  <Panel titulo="Titular">
+                    <p className="text-base font-semibold">{titular}</p>
                     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
-                      <Dato etiqueta={cliente?.tipo_documento === "ce" ? "Carnet de extranjería" : "DNI"} mono>
+                      <Dato
+                        etiqueta={cliente?.tipo_documento === "ce" ? "Carnet de extranjería" : "DNI"}
+                        mono
+                        accion={<Copiar texto={cliente?.dni} soloIcono etiqueta="Copiar el número" />}
+                      >
                         {cliente?.dni}
                       </Dato>
-                      <Dato etiqueta="Teléfono" mono>
+                      <Dato etiqueta="Teléfono" mono accion={<Copiar texto={cliente?.telefono} soloIcono etiqueta="Copiar teléfono" />}>
                         {cliente?.telefono}
                       </Dato>
                       <Dato etiqueta="Nombre impreso" className="col-span-2">
                         {seleccionada.nombre_impreso || "No lo indicó (registro anterior)"}
                       </Dato>
                     </dl>
-                  </div>
+                  </Panel>
 
                   {seleccionada.estado === "pendiente" && !puedeResolver ? (
-                    <div className="rounded-xl border border-border bg-muted/40 p-4 text-[0.8667rem] text-muted-foreground">
-                      Estás viendo la cola como supervisor: puedes revisar el
-                      trabajo y saber quién atiende cada tarjeta, pero
-                      verificarla es del gestor que la tiene.
-                    </div>
+                    <Aviso tono="info">Estás viendo la cola como supervisor: verificar la tarjeta es del gestor que la tiene.</Aviso>
                   ) : seleccionada.estado === "pendiente" ? (
-                    <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
+                    <Panel titulo={modoRechazo ? "Rechazar la tarjeta" : "Resolver"} tono={modoRechazo ? "peligro" : undefined}>
                       {!modoRechazo ? (
-                        <div className="space-y-2">
-                          <button
-                            onClick={() => aprobar(seleccionada)}
-                            disabled={accion !== null || Boolean(ajeno)}
-                            className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                          <Pista
+                            className="block w-full"
+                            texto={ajeno ? "Otra persona tiene esta tarjeta." : !todoRevisado ? "Marca todo lo de la lista de comprobación." : null}
                           >
-                            <Check className="h-4 w-4" />
-                            {accion === "aprobando"
-                              ? "Verificando..."
-                              : "Verificar tarjeta"}
-                          </button>
-                          <button
+                            <BotonAccion
+                              onClick={() => aprobar(seleccionada)}
+                              cargando={accion === "aprobando"}
+                              disabled={accion !== null || Boolean(ajeno) || !todoRevisado}
+                              tono="exito"
+                              tamano="grande"
+                              className="w-full"
+                              icono={<Check className="h-5 w-5" />}
+                            >
+                              {accion === "aprobando" ? "Verificando..." : "Verificar tarjeta"}
+                            </BotonAccion>
+                          </Pista>
+                          <BotonAccion
                             onClick={() => setModoRechazo(true)}
                             disabled={accion !== null || Boolean(ajeno)}
-                            className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                            tono="peligroSuave"
+                            tamano="grande"
+                            icono={<Cruz className="h-4 w-4" />}
                           >
-                            <Cruz className="h-4 w-4" />
                             Rechazar
-                          </button>
+                          </BotonAccion>
                         </div>
                       ) : (
-                        <div className="space-y-3">
-                          <div>
-                            <label className="text-[13px] font-semibold">
-                              Motivo del rechazo
-                            </label>
-                            <p className="mt-0.5 text-[12px] text-muted-foreground">
-                              El cliente lo lee en su app y puede volver a
-                              registrar la tarjeta corrigiendo esto.
-                            </p>
-                          </div>
-                          <textarea
-                            autoFocus
-                            value={motivo}
-                            onChange={(e) => setMotivo(e.target.value)}
-                            rows={4}
+                        <div className="animate-aparecer space-y-3">
+                          <Motivo
+                            id="motivo"
+                            etiqueta="Motivo"
+                            ayuda="El cliente lo lee en su app y puede volver a registrar la tarjeta corrigiendo esto."
+                            valor={motivo}
+                            onCambio={setMotivo}
+                            minimo={MIN_MOTIVO}
+                            sugerencias={RECHAZOS_FRECUENTES}
                             placeholder="Ej: La foto no deja ver el nombre del titular."
-                            className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2.5 text-sm outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
                           />
-                          <span
-                            className={cn(
-                              "block text-[12px]",
-                              motivo.trim().length >= MIN_MOTIVO
-                                ? "text-emerald-600"
-                                : "text-muted-foreground",
-                            )}
-                          >
-                            {motivo.trim().length} / {MIN_MOTIVO} mínimo
-                          </span>
-                          <div className="flex gap-2">
-                            <button
+                          <div className="flex justify-end gap-2">
+                            <BotonAccion
+                              tono="neutro"
                               onClick={() => {
                                 setModoRechazo(false);
                                 setMotivo("");
                               }}
-                              className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:bg-muted"
                             >
                               Cancelar
-                            </button>
-                            <button
+                            </BotonAccion>
+                            <BotonAccion
+                              tono="peligro"
                               onClick={() => rechazar(seleccionada)}
-                              disabled={
-                                accion !== null ||
-                                motivo.trim().length < MIN_MOTIVO
-                              }
-                              className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-40"
+                              cargando={accion === "rechazando"}
+                              disabled={accion !== null || motivo.trim().length < MIN_MOTIVO}
                             >
-                              {accion === "rechazando"
-                                ? "Rechazando..."
-                                : "Confirmar rechazo"}
-                            </button>
+                              Confirmar rechazo
+                            </BotonAccion>
                           </div>
                         </div>
                       )}
-                    </div>
+                    </Panel>
                   ) : (
-                    <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-                      <h3 className="mb-3 text-[13px] font-semibold">
-                        Resolución
-                      </h3>
-                      <Dato etiqueta="Resuelta el">
-                        {seleccionada.fecha_revision
-                          ? fechaLarga(seleccionada.fecha_revision)
-                          : null}
-                      </Dato>
+                    <Panel titulo="Resolución" tono={modoBaja ? "peligro" : undefined}>
+                      <Dato etiqueta="Resuelta el">{seleccionada.fecha_revision ? fechaLarga(seleccionada.fecha_revision) : null}</Dato>
                       {seleccionada.motivo_rechazo && (
-                        <div className="mt-3 rounded-lg border-l-[3px] border-red-500 bg-red-50 px-3 py-2.5">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-red-600">
-                            Motivo comunicado
-                          </p>
-                          <p className="mt-1 text-sm text-red-900">
-                            {seleccionada.motivo_rechazo}
-                          </p>
+                        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                          <p className="t-etiqueta text-red-700">Motivo comunicado</p>
+                          <p className="mt-1 text-md text-red-900">{seleccionada.motivo_rechazo}</p>
                         </div>
                       )}
-                      {seleccionada.estado === "aprobado" &&
-                        ["gestor", "supervisor", "admin"].includes(session?.rol) && (
-                          <div className="mt-4 border-t border-border pt-4">
-                            {!modoBaja ? (
-                              <button
-                                onClick={() => setModoBaja(true)}
-                                className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
-                              >
-                                <Cruz className="h-4 w-4" />
+                      {seleccionada.estado === "aprobado" && ["gestor", "supervisor", "admin"].includes(session?.rol) && (
+                        <div className="mt-4 border-t border-border pt-4">
+                          {!modoBaja ? (
+                            <div className="flex items-center gap-2">
+                              <BotonAccion tono="peligroSuave" onClick={() => setModoBaja(true)} icono={<Cruz className="h-4 w-4" />}>
                                 Dar de baja
-                              </button>
-                            ) : (
-                              <div className="space-y-3">
-                                <div>
-                                  <label className="text-[13px] font-semibold">Motivo de la baja</label>
-                                  <p className="mt-0.5 text-[12px] text-muted-foreground">
-                                    El cliente lo recibe en Mis avisos. La tarjeta deja de aparecer en su app.
-                                  </p>
-                                </div>
-                                <textarea
-                                  autoFocus
-                                  value={motivoBaja}
-                                  onChange={(e) => setMotivoBaja(e.target.value)}
-                                  rows={3}
-                                  placeholder="Ej: El cliente pidió retirarla por teléfono."
-                                  className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2.5 text-sm outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
-                                />
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => {
-                                      setModoBaja(false);
-                                      setMotivoBaja("");
-                                    }}
-                                    className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:bg-muted"
-                                  >
-                                    Cancelar
-                                  </button>
-                                  <button
-                                    onClick={() => darDeBaja(seleccionada)}
-                                    disabled={accion !== null || motivoBaja.trim().length < MIN_MOTIVO}
-                                    className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-40"
-                                  >
-                                    {accion === "baja" ? "Dando de baja..." : "Confirmar baja"}
-                                  </button>
-                                </div>
+                              </BotonAccion>
+                              <Pista texto="El cliente no puede darla de baja desde la app: lo pide a un asesor. La tarjeta deja de aparecer en su app y recibe el motivo como aviso." />
+                            </div>
+                          ) : (
+                            <div className="animate-aparecer space-y-3">
+                              <Motivo
+                                id="motivoBaja"
+                                etiqueta="Motivo de la baja"
+                                ayuda="El cliente lo recibe en Mis avisos. La tarjeta deja de aparecer en su app."
+                                valor={motivoBaja}
+                                onCambio={setMotivoBaja}
+                                minimo={MIN_MOTIVO}
+                                placeholder="Ej: El cliente pidió retirarla por teléfono."
+                              />
+                              <div className="flex justify-end gap-2">
+                                <BotonAccion
+                                  tono="neutro"
+                                  onClick={() => {
+                                    setModoBaja(false);
+                                    setMotivoBaja("");
+                                  }}
+                                >
+                                  Cancelar
+                                </BotonAccion>
+                                <BotonAccion
+                                  tono="peligro"
+                                  onClick={() => darDeBaja(seleccionada)}
+                                  cargando={accion === "baja"}
+                                  disabled={accion !== null || motivoBaja.trim().length < MIN_MOTIVO}
+                                >
+                                  Confirmar baja
+                                </BotonAccion>
                               </div>
-                            )}
-                          </div>
-                        )}
-                    </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </Panel>
                   )}
                 </div>
               </div>
@@ -785,14 +697,10 @@ export default function TarjetasPage() {
       <SinPendientes
         visible={sinPendientes}
         onCerrar={() => setSinPendientes(false)}
-        texto="No hay tarjetas esperando verificación. Cuando entre una nueva, el sistema te la asigna solo."
+        texto="No hay tarjetas esperando verificación. Cuando entre una nueva, el sistema te la asigna sola."
       />
 
-      <Conflicto
-        mensaje={conflicto?.mensaje}
-        titulo={conflicto?.titulo}
-        onCerrar={() => setConflicto(null)}
-      />
+      <Conflicto mensaje={conflicto?.mensaje} titulo={conflicto?.titulo} onCerrar={() => setConflicto(null)} />
     </Shell>
   );
 }

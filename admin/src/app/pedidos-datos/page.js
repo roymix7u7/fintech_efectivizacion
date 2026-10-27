@@ -6,51 +6,54 @@ import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
 import { cn } from "@/lib/utils";
-import Shell from "@/components/shell";
-import { Aviso } from "@/components/marca";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
+import Shell, { Escudo, Reloj, Basura } from "@/components/shell";
+import { Aviso, Vacio } from "@/components/marca";
+import { EsqueletoFilas, BotonAccion, CargaPantalla } from "@/components/carga";
+import { Segmentos, Barra, Leyenda, Motivo, Dialogo, Avatar, Campo, IconoAlerta, IconoCheck } from "@/components/piezas";
+import Pista from "@/components/pista";
 
 /**
  * Pedidos de los clientes sobre sus datos (migración 54). Hoy: eliminar
  * la cuenta.
  *
- * Tienen plazo legal de respuesta (10 días hábiles, a confirmar con la
- * asesoría): por eso cada pedido muestra cuánto falta y se pinta en rojo
- * al vencer. Eliminar borra las fotos, anonimiza los datos personales y
- * quita el acceso; conserva el registro de operaciones.
+ * Tienen plazo legal de respuesta (10 días hábiles): por eso cada pedido
+ * muestra cuánto falta y se pinta en rojo al vencer. Qué se borra y qué
+ * se conserva depende de si el cliente operó (política de privacidad
+ * 1.0); lo decide la función eliminar-cuenta.
  */
 const ESTADOS = {
-  pendiente: { texto: "Pendiente", clase: "bg-oro-50 text-oro-700" },
-  en_proceso: { texto: "En proceso", clase: "bg-marca-50 text-marca-700" },
-  completada: { texto: "Eliminada", clase: "bg-green-50 text-green-700" },
+  pendiente: { texto: "Pendiente", clase: "bg-oro-100 text-oro-700" },
+  en_proceso: { texto: "En proceso", clase: "bg-marca-100 text-marca-700" },
+  completada: { texto: "Eliminada", clase: "bg-emerald-50 text-emerald-700" },
   rechazada: { texto: "Rechazada", clase: "bg-red-50 text-red-700" },
   cancelada: { texto: "Cancelada por el cliente", clase: "bg-muted text-muted-foreground" },
 };
 
-const fecha = (iso) =>
-  iso ? new Date(iso).toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" }) : "";
+const fecha = (iso) => (iso ? new Date(iso).toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" }) : "");
 
 function plazo(vence) {
   const dias = Math.ceil((new Date(vence).getTime() - Date.now()) / 86400000);
-  if (dias < 0) return { texto: `Vencido hace ${-dias} día${dias === -1 ? "" : "s"}`, clase: "text-red-600 font-semibold" };
-  if (dias === 0) return { texto: "Vence hoy", clase: "text-red-600 font-semibold" };
-  if (dias <= 2) return { texto: `Vence en ${dias} día${dias === 1 ? "" : "s"}`, clase: "text-oro-700 font-semibold" };
-  return { texto: `Vence el ${fecha(vence)}`, clase: "text-muted-foreground" };
+  if (dias < 0) return { texto: `Vencido hace ${-dias} día${dias === -1 ? "" : "s"}`, clase: "bg-red-50 text-red-700", urgente: true };
+  if (dias === 0) return { texto: "Vence hoy", clase: "bg-red-50 text-red-700", urgente: true };
+  if (dias <= 2) return { texto: `Vence en ${dias} día${dias === 1 ? "" : "s"}`, clase: "bg-oro-100 text-oro-700", urgente: true };
+  return { texto: `Vence el ${fecha(vence)}`, clase: "bg-muted text-muted-foreground" };
 }
 
-export default function PrivacidadPage() {
+const perfilDe = (p) => (Array.isArray(p.cliente?.perfiles_cliente) ? p.cliente.perfiles_cliente[0] : p.cliente?.perfiles_cliente);
+
+export default function PedidosDatosPage() {
   const [session, setSession] = useState(sesionEnCache);
   const [pedidos, setPedidos] = useState([]);
   const [enCurso, setEnCurso] = useState({});
   const [filtro, setFiltro] = useState("abiertas");
+  const [abiertas, setAbiertas] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [rechazando, setRechazando] = useState(null);
   const [respuesta, setRespuesta] = useState("");
   const [eliminando, setEliminando] = useState(null);
   const [confirmacion, setConfirmacion] = useState("");
+  const [resultado, setResultado] = useState(null);
   const [accion, setAccion] = useState(null);
   const router = useRouter();
 
@@ -66,6 +69,7 @@ export default function PrivacidadPage() {
 
   useEffect(() => {
     if (session) cargar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, filtro]);
 
   async function cargar() {
@@ -89,17 +93,18 @@ export default function PrivacidadPage() {
       return;
     }
     setPedidos(data || []);
+    if (filtro === "abiertas") setAbiertas((data || []).length);
 
     // Solicitudes de dinero en curso: no se elimina a nadie con un pago pendiente.
-    const ids = (data || []).map((p) => p.cliente?.perfiles_cliente?.[0]?.id ?? p.cliente?.perfiles_cliente?.id).filter(Boolean);
+    const ids = (data || []).map((p) => perfilDe(p)?.id).filter(Boolean);
     if (ids.length && filtro === "abiertas") {
-      const { data: abiertas } = await supabase
+      const { data: abiertasDinero } = await supabase
         .from("solicitudes")
         .select("cliente_id")
         .in("cliente_id", ids)
         .in("estado", ["pendiente", "aprobado"]);
       const cuenta = {};
-      for (const s of abiertas || []) cuenta[s.cliente_id] = (cuenta[s.cliente_id] || 0) + 1;
+      for (const s of abiertasDinero || []) cuenta[s.cliente_id] = (cuenta[s.cliente_id] || 0) + 1;
       setEnCurso(cuenta);
     } else setEnCurso({});
     setLoading(false);
@@ -132,194 +137,261 @@ export default function PrivacidadPage() {
       try {
         detalle = (await e.context?.json())?.error || detalle;
       } catch {}
+      setEliminando(null);
       return setError(detalle);
     }
     setEliminando(null);
     setConfirmacion("");
-    setError("");
-    window.alert(
-      data?.opero
-        ? `Cuenta eliminada. Como había operado, se conservaron ${data?.fotos_conservadas ?? 0} foto(s) y su identidad, bloqueadas, hasta que venza cada plazo.`
-        : `Cuenta eliminada. Nunca había operado: se borraron ${data?.fotos_borradas ?? 0} foto(s) y sus datos.`,
-    );
+    setResultado(data || {});
     cargar();
   }
 
-  if (!session) return null;
+  if (!session) return <CargaPantalla />;
+
+  const perfilEliminando = eliminando ? perfilDe(eliminando) : null;
 
   return (
     <Shell
       session={session}
       titulo="Pedidos de datos"
       descripcion="Clientes que pidieron eliminar su cuenta"
+      ayuda="Hay 10 días hábiles para atender cada pedido. Si el cliente ya operó, sus fotos se conservan bloqueadas 5 años y su identidad 10, y se borran solas al vencer. Si nunca operó, se borra todo."
+      contadores={abiertas != null ? { pedidosDatos: abiertas } : {}}
     >
-      <div className="max-w-4xl space-y-4">
-        {error && <Aviso onCerrar={() => setError("")}>{error}</Aviso>}
+      {error && (
+        <Aviso className="mb-4" titulo="No se pudo completar" onCerrar={() => setError("")}>
+          {error}
+        </Aviso>
+      )}
 
-        <div className="flex gap-1.5">
-          {[
-            { clave: "abiertas", texto: "Por atender" },
-            { clave: "cerradas", texto: "Cerradas" },
-          ].map((f) => (
-            <button
-              key={f.clave}
-              onClick={() => setFiltro(f.clave)}
-              className={cn(
-                "pulsable rounded-full px-3.5 py-1.5 text-[0.8rem] font-medium ring-1 ring-inset",
-                filtro === f.clave ? "bg-marca-700 text-white ring-marca-700" : "bg-card text-muted-foreground ring-border",
-              )}
-            >
-              {f.texto}
-            </button>
-          ))}
-        </div>
+      {!esAdmin && (
+        <Aviso className="mb-4" tono="info">
+          Como supervisor puedes ver los pedidos. Atenderlos y eliminar cuentas es del administrador.
+        </Aviso>
+      )}
 
-        {loading ? (
-          <p className="text-muted-foreground">Cargando...</p>
-        ) : pedidos.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border bg-card/60 py-12 text-center text-[0.85rem] text-muted-foreground">
-            {filtro === "abiertas" ? "No hay pedidos por atender." : "Todavía no hay pedidos cerrados."}
-          </p>
-        ) : (
-          pedidos.map((p) => {
-            const perfil = Array.isArray(p.cliente?.perfiles_cliente) ? p.cliente.perfiles_cliente[0] : p.cliente?.perfiles_cliente;
-            const abiertas = perfil ? enCurso[perfil.id] || 0 : 0;
-            const e = ESTADOS[p.estado];
-            const abierta = ["pendiente", "en_proceso"].includes(p.estado);
-            const pl = plazo(p.vence_en);
-            return (
-              <Card key={p.id}>
-                <CardContent className="space-y-3 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold">
-                        {perfil ? `${perfil.nombres} ${perfil.apellidos}` : "Sin perfil"}
+      <Barra>
+        <Segmentos
+          valor={filtro}
+          onCambio={setFiltro}
+          opciones={[
+            { clave: "abiertas", etiqueta: "Por atender", cuenta: abiertas, urgente: true },
+            { clave: "cerradas", etiqueta: "Cerrados" },
+          ]}
+        />
+      </Barra>
+
+      {loading ? (
+        <EsqueletoFilas filas={3} alto="h-[88px]" />
+      ) : pedidos.length === 0 ? (
+        <Vacio icono={<Escudo />} titulo={filtro === "abiertas" ? "No hay pedidos por atender" : "Todavía no hay pedidos cerrados"} />
+      ) : (
+        <>
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-panel">
+            <ul className="divide-y divide-border">
+              {pedidos.map((p) => {
+                const perfil = perfilDe(p);
+                const dinero = perfil ? enCurso[perfil.id] || 0 : 0;
+                const e = ESTADOS[p.estado];
+                const abierta = ["pendiente", "en_proceso"].includes(p.estado);
+                const pl = plazo(p.vence_en);
+                const nombre = perfil ? `${perfil.nombres} ${perfil.apellidos}` : "Sin perfil";
+                return (
+                  <li key={p.id} className={cn("flex flex-wrap items-start gap-4 px-4 py-3.5", abierta && pl.urgente && "border-l-4 border-l-red-500")}>
+                    <Avatar texto={nombre} />
+                    <div className="min-w-[220px] flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-md font-bold">{nombre}</p>
+                        <span className={cn("rounded-full px-2 py-0.5 text-xs font-bold", e?.clase)}>{e?.texto}</span>
+                        {abierta && (
+                          <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold", pl.clase)}>
+                            {pl.urgente && <Reloj className="h-3 w-3" />}
+                            {pl.texto}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-chico text-muted-foreground">
+                        {p.cliente?.email} · pedido el {fecha(p.creada_en)}
+                        {!abierta && p.atendida_en && ` · cerrado el ${fecha(p.atendida_en)}`}
                       </p>
-                      <p className="text-sm text-muted-foreground">{p.cliente?.email}</p>
-                    </div>
-                    <span className={cn("rounded-full px-2.5 py-1 text-[0.72rem] font-semibold", e?.clase)}>{e?.texto}</span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-[0.8rem]">
-                    <span className="text-muted-foreground">Pedido el {fecha(p.creada_en)}</span>
-                    {abierta ? (
-                      <span className={pl.clase}>{pl.texto}</span>
-                    ) : (
-                      <span className="text-muted-foreground">Cerrado el {fecha(p.atendida_en)}</span>
-                    )}
-                  </div>
-
-                  {p.motivo && (
-                    <p className="rounded-md bg-muted/50 px-3 py-2 text-[0.85rem]">
-                      <span className="text-muted-foreground">Motivo del cliente: </span>
-                      {p.motivo}
-                    </p>
-                  )}
-                  {p.respuesta && (
-                    <p className="text-[0.8rem] text-muted-foreground">Respuesta: {p.respuesta}</p>
-                  )}
-                  {abierta && abiertas > 0 && (
-                    <p className="rounded-md bg-oro-50 px-3 py-2 text-[0.8rem] text-oro-700">
-                      Tiene {abiertas} solicitud(es) de dinero en curso. Hay que terminarlas (y pagarle) antes de
-                      eliminar la cuenta.
-                    </p>
-                  )}
-
-                  {abierta && esAdmin && rechazando !== p.id && eliminando !== p.id && (
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {p.estado === "pendiente" && (
-                        <Button variant="outline" size="sm" disabled={accion === p.id} onClick={() => atender(p, "en_proceso")}>
-                          Tomar
-                        </Button>
+                      {p.motivo && (
+                        <p className="mt-1.5 text-sm">
+                          <span className="font-semibold text-muted-foreground">Motivo del cliente: </span>
+                          {p.motivo}
+                        </p>
                       )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setRechazando(p.id);
-                          setRespuesta("");
-                        }}
-                      >
-                        Rechazar
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={abiertas > 0}
-                        className="bg-red-600 text-white hover:bg-red-700"
-                        onClick={() => {
-                          setEliminando(p.id);
-                          setConfirmacion("");
-                        }}
-                      >
-                        Eliminar cuenta
-                      </Button>
+                      {p.respuesta && (
+                        <p className="mt-1 text-sm">
+                          <span className="font-semibold text-muted-foreground">Respuesta: </span>
+                          {p.respuesta}
+                        </p>
+                      )}
+                      {abierta && dinero > 0 && (
+                        <p className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-oro-50 px-2.5 py-1 text-chico font-semibold text-oro-700">
+                          <IconoAlerta className="h-3.5 w-3.5" />
+                          Tiene {dinero} solicitud{dinero === 1 ? "" : "es"} de dinero en curso: hay que terminarla{dinero === 1 ? "" : "s"} y pagarle antes.
+                        </p>
+                      )}
                     </div>
-                  )}
 
-                  {rechazando === p.id && (
-                    <div className="space-y-2 rounded-lg border border-border p-3">
-                      <p className="text-[0.8rem] font-medium">Respuesta para el cliente (la verá en sus avisos)</p>
-                      <Textarea
-                        value={respuesta}
-                        onChange={(ev) => setRespuesta(ev.target.value)}
-                        rows={3}
-                        placeholder="Ej: Tienes una solicitud pendiente de pago. Te pagaremos y luego eliminaremos tu cuenta."
-                      />
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setRechazando(null)}>
-                          Cancelar
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={respuesta.trim().length < 10 || accion === p.id}
-                          onClick={() => atender(p, "rechazada", respuesta.trim())}
+                    {abierta && esAdmin && (
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        {p.estado === "pendiente" && (
+                          <Pista texto="Márcalo como en proceso para que el equipo sepa que lo estás atendiendo.">
+                            <BotonAccion tono="neutro" tamano="chico" cargando={accion === p.id && !eliminando} onClick={() => atender(p, "en_proceso")}>
+                              Tomar
+                            </BotonAccion>
+                          </Pista>
+                        )}
+                        <BotonAccion
+                          tono="neutro"
+                          tamano="chico"
+                          onClick={() => {
+                            setRechazando(p);
+                            setRespuesta("");
+                          }}
                         >
-                          Enviar respuesta y rechazar
-                        </Button>
+                          Rechazar
+                        </BotonAccion>
+                        <Pista texto={dinero > 0 ? "Primero hay que terminar sus solicitudes en curso." : null}>
+                          <BotonAccion
+                            tono="peligro"
+                            tamano="chico"
+                            disabled={dinero > 0}
+                            icono={<Basura className="h-3.5 w-3.5" />}
+                            onClick={() => {
+                              setEliminando(p);
+                              setConfirmacion("");
+                            }}
+                          >
+                            Eliminar cuenta
+                          </BotonAccion>
+                        </Pista>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+          {filtro === "abiertas" && (
+            <Leyenda
+              className="mt-3"
+              titulo="Plazo"
+              items={[
+                { texto: "Vence en 2 días o menos", color: "bg-red-500", pista: "El plazo legal es de 10 días hábiles desde el pedido." },
+                { texto: "Pendiente", marca: <span className="rounded-full bg-oro-100 px-1.5 text-xs font-bold text-oro-700">P</span>, pista: "Nadie lo ha tomado todavía." },
+                { texto: "En proceso", marca: <span className="rounded-full bg-marca-100 px-1.5 text-xs font-bold text-marca-700">E</span>, pista: "Alguien del equipo lo está atendiendo." },
+              ]}
+            />
+          )}
+        </>
+      )}
 
-                  {eliminando === p.id && (
-                    <div className="space-y-2 rounded-lg border border-red-200 bg-red-50/60 p-3">
-                      <p className="text-[0.85rem] font-medium text-red-800">Esto no se puede deshacer.</p>
-                      <ul className="list-disc pl-5 text-[0.8rem] text-red-900">
-                        <li>Pierde el acceso a la app y se borran su celular, dirección y correo.</li>
-                        <li>
-                          Si ya operó: sus fotos se conservan bloqueadas 5 años y su nombre, documento y operaciones
-                          10 años desde su última operación (solo los ve la administración). Se borran solos al vencer.
-                        </li>
-                        <li>Si nunca operó: se borran sus fotos y sus datos.</li>
-                      </ul>
-                      <p className="text-[0.8rem]">
-                        Escribe <span className="font-mono font-semibold">ELIMINAR</span> para confirmar:
-                      </p>
-                      <input
-                        value={confirmacion}
-                        onChange={(ev) => setConfirmacion(ev.target.value)}
-                        className="w-48 rounded-md border border-input bg-card px-2.5 py-1.5 font-mono text-sm outline-none focus:border-red-400"
-                      />
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setEliminando(null)}>
-                          Cancelar
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={confirmacion !== "ELIMINAR" || accion === p.id}
-                          className="bg-red-600 text-white hover:bg-red-700"
-                          onClick={() => eliminar(p)}
-                        >
-                          {accion === p.id ? "Eliminando..." : "Eliminar definitivamente"}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })
-        )}
-      </div>
+      {/* Rechazar */}
+      <Dialogo
+        abierto={Boolean(rechazando)}
+        onCerrar={() => setRechazando(null)}
+        bloqueado={accion === rechazando?.id}
+        titulo="Rechazar el pedido"
+        descripcion="El cliente ve la respuesta en sus avisos de la app. Explica por qué y qué puede hacer."
+        tono="atencion"
+        icono={<IconoAlerta />}
+        pie={
+          <>
+            <BotonAccion tono="neutro" onClick={() => setRechazando(null)}>
+              Cancelar
+            </BotonAccion>
+            <BotonAccion
+              cargando={accion === rechazando?.id}
+              disabled={respuesta.trim().length < 10}
+              onClick={() => atender(rechazando, "rechazada", respuesta.trim())}
+            >
+              Enviar respuesta y rechazar
+            </BotonAccion>
+          </>
+        }
+      >
+        <Motivo
+          id="respuestaRechazo"
+          etiqueta="Respuesta para el cliente"
+          valor={respuesta}
+          onCambio={setRespuesta}
+          minimo={10}
+          sugerencias={["Tienes una solicitud pendiente de pago. Te pagaremos y luego eliminaremos tu cuenta."]}
+          placeholder="Ej: Tienes una solicitud pendiente de pago. Te pagaremos y luego eliminaremos tu cuenta."
+        />
+      </Dialogo>
+
+      {/* Eliminar */}
+      <Dialogo
+        abierto={Boolean(eliminando)}
+        onCerrar={() => setEliminando(null)}
+        bloqueado={accion === eliminando?.id}
+        titulo={`¿Eliminar la cuenta de ${perfilEliminando ? perfilEliminando.nombres : "este cliente"}?`}
+        descripcion="Esto no se puede deshacer."
+        tono="peligro"
+        icono={<Basura className="h-5 w-5" />}
+        ancho="max-w-lg"
+        pie={
+          <>
+            <BotonAccion tono="neutro" onClick={() => setEliminando(null)} disabled={accion === eliminando?.id}>
+              Cancelar
+            </BotonAccion>
+            <BotonAccion tono="peligro" cargando={accion === eliminando?.id} disabled={confirmacion !== "ELIMINAR"} onClick={() => eliminar(eliminando)}>
+              Eliminar definitivamente
+            </BotonAccion>
+          </>
+        }
+      >
+        <ul className="space-y-2 text-sm">
+          <li className="flex gap-2">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+            Pierde el acceso a la app y se borran su celular, dirección y correo.
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-oro-500" />
+            Si ya operó: sus fotos se conservan bloqueadas 5 años y su nombre, documento y operaciones 10 años desde su última operación. Solo los ve la
+            administración y se borran solos al vencer.
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-marca-300" />
+            Si nunca operó: se borran sus fotos y sus datos.
+          </li>
+        </ul>
+        <Campo
+          className="mt-4"
+          etiqueta={
+            <>
+              Escribe <span className="font-mono font-bold text-red-700">ELIMINAR</span> para confirmar
+            </>
+          }
+          htmlFor="confirmacion"
+        >
+          <input
+            id="confirmacion"
+            autoComplete="off"
+            value={confirmacion}
+            onChange={(ev) => setConfirmacion(ev.target.value.toUpperCase())}
+            className="campo font-mono"
+          />
+        </Campo>
+      </Dialogo>
+
+      {/* Resultado */}
+      <Dialogo
+        abierto={Boolean(resultado)}
+        onCerrar={() => setResultado(null)}
+        titulo="Cuenta eliminada"
+        descripcion={
+          resultado?.opero
+            ? `Como había operado, se conservaron ${resultado?.fotos_conservadas ?? 0} foto(s) y su identidad, bloqueadas, hasta que venza cada plazo. Se borran solas.`
+            : `Nunca había operado: se borraron ${resultado?.fotos_borradas ?? 0} foto(s) y sus datos.`
+        }
+        tono="exito"
+        icono={<IconoCheck />}
+        pie={<BotonAccion onClick={() => setResultado(null)}>Entendido</BotonAccion>}
+      />
     </Shell>
   );
 }

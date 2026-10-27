@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Retrasa un valor hasta que deja de cambiar.
@@ -45,4 +45,20 @@ export async function idsDeClientes(supabase, termino, tope = 150) {
     .limit(tope);
 
   return (data || []).map((p) => p.id);
+}
+
+/**
+ * En pantallas angostas la lista y el detalle van uno debajo del otro:
+ * al elegir un caso, la vista baja sola al detalle. Sin esto parecía que
+ * tocar la fila no hacía nada, porque lo abierto quedaba fuera de vista.
+ */
+export function useIrAlDetalle(clave) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!clave || !ref.current) return;
+    if (window.matchMedia("(max-width: 1279px)").matches) {
+      ref.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [clave]);
+  return ref;
 }

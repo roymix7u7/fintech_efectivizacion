@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { firmarCampo } from "@/lib/storage";
-import { registrarAuditoria, explicarError } from "@/lib/acciones";
+import { explicarError } from "@/lib/acciones";
 import {
   tomarSiguiente,
   soltarCaso,
@@ -15,9 +15,9 @@ import {
   RESERVA_MINUTOS,
 } from "@/lib/cola";
 import { resolverCaso, tomarCaso } from "@/lib/casos";
-import { useRetraso, idsDeClientes } from "@/lib/hooks";
+import { useRetraso, idsDeClientes, useIrAlDetalle } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
-import Shell, { Lupa, Documento, Check, Cruz, Manos } from "@/components/shell";
+import Shell, { Documento, Check, Cruz, Manos, Reloj } from "@/components/shell";
 import Visor from "@/components/visor";
 import Conflicto from "@/components/conflicto";
 import SinPendientes from "@/components/sinPendientes";
@@ -26,19 +26,19 @@ import Revisor from "@/components/revisor";
 import { colorDe } from "@/lib/colores";
 import BotonRefrescar from "@/components/refrescar";
 import Paginador from "@/components/paginador";
-import {
-  EsqueletoCola,
-  BarraCarga,
-  BotonAccion,
-  Esqueleto,
-} from "@/components/carga";
+import { EsqueletoCola, BarraCarga, BotonAccion, Esqueleto, CargaPantalla } from "@/components/carga";
 import { Estado, Dato, Vacio, Aviso } from "@/components/marca";
+import { Segmentos, Buscador, Barra, Panel, Leyenda, Motivo, Copiar } from "@/components/piezas";
 
+
+// Motivos que se repiten. Un clic los escribe y se pueden ajustar.
+const MOTIVOS_FRECUENTES = [
+  "El comprobante está borroso y no se lee el número de operación.",
+  "El comprobante no corresponde a la tarjeta registrada.",
+  "La foto está cortada: no se ve el monto o la fecha de la operación.",
+  "El comprobante ya fue usado en otra solicitud.",
+];
 const BUCKET = "comprobantes";
-/** Iniciales del correo de quien atiende, para la marca de la fila. */
-function inicial(email) {
-  return (email || "?").trim().charAt(0).toUpperCase();
-}
 
 const POR_PAGINA = 25;
 const MIN_MOTIVO = 10;
@@ -114,6 +114,7 @@ export default function SolicitudesPage() {
   const [pidiendo, setPidiendo] = useState(false);
   const [soloMias, setSoloMias] = useState(true);
   const router = useRouter();
+  const detalleRef = useIrAlDetalle(seleccionada?.id);
 
   const termino = useRetraso(busqueda, 350);
   const esCola = filtro === "pendiente";
@@ -423,7 +424,7 @@ export default function SolicitudesPage() {
     await resolver(sol, false, texto);
   }
 
-  if (!session) return null;
+  if (!session) return <CargaPantalla />;
 
   // En la cola, cada quien ve por defecto solo lo que tiene tomado.
   // Ese es el punto de la asignacion: que quince personas no revisen
@@ -442,6 +443,12 @@ export default function SolicitudesPage() {
     ? `${cliente.nombres} ${cliente.apellidos}`
     : "Cliente sin perfil";
 
+  const libres = Number(cola?.libres || 0);
+  const esMia =
+    seleccionada?.estado === "pendiente" &&
+    seleccionada?.asignado_a === session.user.id &&
+    minutosRestantes(seleccionada?.asignado_en) > 0;
+
   return (
     <Shell
       session={session}
@@ -451,232 +458,174 @@ export default function SolicitudesPage() {
         primeraCarga
           ? "Cargando..."
           : esCola
-            ? `${solicitudes.length} ${solicitudes.length === 1 ? "comprobante espera" : "comprobantes esperan"} revisión`
+            ? `${cola?.pendientes ?? solicitudes.length} por revisar en la cola`
             : `${total} en el historial`
       }
+      ayuda="El cliente sube el comprobante de su operación. Revisa que corresponda a su tarjeta y apruébalo; luego Pagos le transfiere a su cuenta."
       acciones={
-        <>
-          <div className="hidden items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 sm:flex">
-            {FILTROS.map((f) => (
-              <button
-                key={f.clave}
-                onClick={() => cambiarFiltro(f.clave)}
-                className={cn(
-                  "pulsable rounded-md px-3 py-1.5 text-[0.8667rem] font-medium",
-                  filtro === f.clave
-                    ? "bg-card text-foreground shadow-panel"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {f.etiqueta}
-              </button>
-            ))}
-          </div>
-          {esCola && puedeResolver && (
-            <BotonAccion
-              onClick={() => atenderSiguiente()}
-              cargando={pidiendo}
-              disabled={Boolean(cola && cola.libres === 0)}
-              icono={<Manos className="h-4 w-4" />}
-            >
-              {pidiendo ? "Tomando..." : "Atender siguiente"}
-              {!pidiendo && cola && cola.libres > 0 && (
-                <span className="cifras rounded-full bg-white/20 px-1.5 text-[0.7333rem]">
-                  {cola.libres}
-                </span>
-              )}
-            </BotonAccion>
-          )}
-        </>
+        esCola &&
+        puedeResolver && (
+          <BotonAccion
+            onClick={() => atenderSiguiente()}
+            cargando={pidiendo}
+            disabled={Boolean(cola && libres === 0)}
+            icono={<Manos className="h-4 w-4" />}
+            title={libres === 0 ? "No hay casos libres ahora" : "Te asigna el caso libre que más tiempo lleva esperando"}
+          >
+            <span className="hidden sm:inline">{pidiendo ? "Tomando..." : "Atender siguiente"}</span>
+            {!pidiendo && libres > 0 && <span className="cifras rounded-full bg-white/20 px-1.5 text-xs">{libres}</span>}
+          </BotonAccion>
+        )
       }
     >
       <BarraCarga activa={refrescando} />
 
       {error && (
-        <div className="mb-5 animate-aparecer">
-          <Aviso titulo="No se pudo completar" onCerrar={() => setError("")}>
-            {error}
-          </Aviso>
-        </div>
+        <Aviso className="mb-4 animate-aparecer" titulo="No se pudo completar" onCerrar={() => setError("")}>
+          {error}
+        </Aviso>
       )}
 
-      {/* Filtros en movil */}
-      <div className="mb-4 flex items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 sm:hidden">
-        {FILTROS.map((f) => (
-          <button
-            key={f.clave}
-            onClick={() => cambiarFiltro(f.clave)}
-            className={cn(
-              "pulsable flex-1 rounded-md px-2 py-1.5 text-[0.8667rem] font-medium",
-              filtro === f.clave
-                ? "bg-card text-foreground shadow-panel"
-                : "text-muted-foreground",
-            )}
-          >
-            {f.etiqueta}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-        {/* ══════════ Cola o historial ══════════ */}
-        <section className="flex min-w-0 flex-col">
-          {esCola && (
-            <div className="mb-3 flex items-center gap-2">
-              {/* El gestor solo ve lo suyo: la cola se la reparte el
-                  sistema y elegir de una lista comun seria volver a que
-                  varios abran el mismo caso. El supervisor ve todo, pero
-                  para mirar. */}
-              <span className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[0.8667rem] font-medium">
-                {esGestor ? "Tus casos" : "Toda la cola"}
-                <span className="cifras rounded-full bg-muted px-1.5 text-[0.7333rem] font-semibold">
-                  {esGestor ? cola?.mios || 0 : cola?.pendientes || 0}
-                </span>
-              </span>
-
-              {!puedeResolver && (
-                <span className="rounded-full bg-muted px-2.5 py-1 text-[0.7333rem] font-medium text-muted-foreground">
-                  Solo lectura
-                </span>
-              )}
-
-              <span className="ml-auto">
-                <BotonRefrescar
-                  girando={refrescando}
-                  onClick={() => {
-                    cargar(filtro, { silencioso: true });
-                    contarPendientes();
-                  }}
-                  texto="Volver a pedir la cola: casos nuevos, tomados por otros o con la reserva vencida"
-                />
-              </span>
-
-              {cola?.libres > 0 && (
-                <Pista
-                  texto={`${cola.libres} sin dueño ahora mismo: nadie las tomó o se les venció la reserva de ${RESERVA_MINUTOS} minutos.`}
-                >
-                  <span className="cifras rounded-full bg-oro-50 px-2 py-1 text-[0.7333rem] font-semibold text-oro-700">
-                    {cola.libres} libres
-                  </span>
-                </Pista>
-              )}
-            </div>
+      <Barra>
+        <Segmentos
+          valor={filtro}
+          onCambio={cambiarFiltro}
+          opciones={FILTROS.map((f) => ({
+            ...f,
+            cuenta: f.clave === "pendiente" ? (cola?.pendientes ?? null) : null,
+            urgente: f.clave === "pendiente",
+          }))}
+        />
+        <Buscador
+          valor={busqueda}
+          onCambio={setBusqueda}
+          pendiente={busqueda !== termino}
+          placeholder="Código, nombre, DNI o banco"
+          className="w-full sm:w-72"
+        />
+        <div className="ml-auto flex items-center gap-2">
+          {esCola && libres > 0 && (
+            <Pista texto={`Sin dueño ahora mismo: nadie las tomó o se les venció la reserva de ${RESERVA_MINUTOS} minutos.`}>
+              <span className="cifras cursor-help rounded-full bg-oro-100 px-2.5 py-1 text-xs font-bold text-oro-700">{libres} libres</span>
+            </Pista>
           )}
-
-          <div className="relative mb-3">
-            <Lupa className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Código, nombre, DNI o banco"
-              className="w-full rounded-lg border border-input bg-card py-2.5 pl-9 pr-9 text-[0.9333rem] outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
+          {!puedeResolver && (
+            <Pista texto="Como supervisor ves toda la cola y quién atiende cada caso. Aprobar y rechazar es del gestor que lo tiene.">
+              <span className="cursor-help rounded-full bg-muted px-2.5 py-1 text-xs font-bold text-muted-foreground">Solo lectura</span>
+            </Pista>
+          )}
+          {esCola && (
+            <BotonRefrescar
+              girando={refrescando}
+              onClick={() => {
+                cargar(filtro, { silencioso: true });
+                contarPendientes();
+              }}
+              texto="Actualizar la cola: casos nuevos, tomados por otros o con la reserva vencida"
             />
-            {busqueda !== termino && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Esqueleto className="h-3 w-3 rounded-full" />
-              </span>
-            )}
-          </div>
+          )}
+        </div>
+      </Barra>
+
+      <div className="grid gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
+        {/* ══════════ Cola o historial ══════════ */}
+        <section className="flex min-w-0 flex-col xl:sticky xl:top-[76px] xl:max-h-[calc(100dvh-150px)] xl:self-start">
+          {esCola && esGestor && (
+            <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+              Tus casos
+              <span className="cifras rounded-full bg-muted px-1.5 text-xs font-bold">{cola?.mios || 0}</span>
+              <Pista texto="El sistema reparte la cola: ves solo lo que tienes tomado. Pulsa «Atender siguiente» para recibir otro." />
+            </p>
+          )}
 
           {primeraCarga ? (
             <EsqueletoCola filas={5} />
           ) : visibles.length === 0 ? (
             <Vacio
-              icono={<Documento className="h-5 w-5" />}
-              titulo={termino ? "Sin coincidencias" : "Cola vacía"}
+              icono={<Documento />}
+              titulo={termino ? "Sin coincidencias" : esCola && soloMias ? "Nada asignado a ti" : "Sin solicitudes"}
               detalle={
                 termino
                   ? "Ninguna solicitud coincide con lo que buscas."
                   : esCola && soloMias
-                    ? cola && cola.libres > 0
-                      ? `${cola.libres} libre${cola.libres === 1 ? "" : "s"} en la cola: pulsa Atender siguiente.`
-                      : "Nada asignado a ti."
+                    ? libres > 0
+                      ? `${libres} libre${libres === 1 ? "" : "s"} en la cola: pulsa «Atender siguiente».`
+                      : "La cola está al día."
                     : esCola
                       ? "Sin comprobantes por revisar."
                       : "Sin solicitudes en este estado."
+              }
+              accion={
+                esCola && puedeResolver && libres > 0 && !termino ? (
+                  <BotonAccion onClick={() => atenderSiguiente()} cargando={pidiendo} icono={<Manos className="h-4 w-4" />}>
+                    Atender siguiente
+                  </BotonAccion>
+                ) : null
               }
             />
           ) : (
             <>
               <div
                 className={cn(
-                  "scroll-fino -mx-1 space-y-2 overflow-y-auto px-1 transition-opacity",
-                  esCola
-                    ? "max-h-[calc(100vh-320px)]"
-                    : "max-h-[calc(100vh-300px)]",
+                  "scroll-fino -mx-1 min-h-0 flex-1 space-y-2 overflow-y-auto px-1 pb-1 transition-opacity",
+                  "max-h-[60vh] xl:max-h-none",
                   refrescando && "opacity-60",
                 )}
               >
                 {visibles.map((sol, i) => {
                   const activa = seleccionada?.id === sol.id;
                   const e = espera(sol.created_at);
+                  const tomada = esCola && sol.asignado_a && minutosRestantes(sol.asignado_en) > 0;
                   return (
                     <button
                       key={sol.id}
                       onClick={() => abrir(sol)}
                       style={{ "--retraso": `${Math.min(i, 12) * 28}ms` }}
                       className={cn(
-                        "entra pulsable w-full rounded-xl border bg-card p-3.5 text-left",
-                        // Franja del color de quien lo atiende: se
-                        // reconoce de un vistazo sin leer cada fila.
-                        esCola &&
-                          sol.asignado_a &&
-                          minutosRestantes(sol.asignado_en) > 0 &&
+                        "entra pulsable w-full rounded-xl border bg-card px-3.5 py-3 text-left",
+                        tomada &&
                           (sol.asignado_a === session.user.id
                             ? "border-l-4 border-l-marca-600"
                             : `border-l-4 ${colorDe(sol.asignado_a).borde}`),
                         activa
-                          ? "border-marca-600 shadow-alzado ring-1 ring-marca-600"
+                          ? "border-marca-500 shadow-alzado ring-2 ring-marca-500/30"
                           : "border-border hover:border-marca-200 hover:shadow-panel",
                       )}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="cifras font-mono text-[0.8rem] font-semibold text-marca-700">
-                          {sol.codigo}
-                        </span>
+                        <span className="cifras font-mono text-chico font-bold text-marca-700">{sol.codigo}</span>
+                        {!sol.comprobante_url && (
+                          <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-700">Sin foto</span>
+                        )}
                         <span
                           className={cn(
-                            "ml-auto shrink-0 text-[0.7333rem]",
-                            esCola && e.urgente
-                              ? "font-semibold text-oro-700"
-                              : "text-muted-foreground",
+                            "ml-auto inline-flex shrink-0 items-center gap-1 text-xs",
+                            esCola && e.urgente ? "font-bold text-oro-700" : "font-medium text-muted-foreground",
                           )}
                         >
-                          {esCola
-                            ? e.texto
-                            : fechaCorta(sol.fecha_revision || sol.created_at)}
+                          {esCola && e.urgente && <Reloj className="h-3.5 w-3.5" />}
+                          {esCola ? e.texto : fechaCorta(sol.fecha_revision || sol.created_at)}
                         </span>
                       </div>
-                      <p className="mt-1.5 truncate text-[0.9333rem] font-semibold">
+                      <p className="mt-1 truncate text-md font-semibold">
                         {sol.perfiles_cliente
                           ? `${sol.perfiles_cliente.nombres} ${sol.perfiles_cliente.apellidos}`
                           : "Cliente sin perfil"}
                       </p>
-                      <div className="t-micro mt-1 flex items-center gap-2">
-                        <span className="font-medium text-foreground/70">
-                          {sol.tarjetas?.banco || sol.banco}
-                        </span>
-                        <span className="cifras font-mono">
-                          ···· {sol.tarjetas?.ultimos_4 || "····"}
-                        </span>
-                        {!sol.comprobante_url && (
-                          <Pista texto="El cliente envió esta solicitud sin comprobante." fin className="ml-auto">
-                            <span className="h-2 w-2 rounded-full bg-red-500" />
-                          </Pista>
+                      <div className="mt-0.5 flex items-center gap-2 text-chico text-muted-foreground">
+                        <span className="font-semibold text-foreground/75">{sol.tarjetas?.banco || sol.banco}</span>
+                        <span className="cifras font-mono">···· {sol.tarjetas?.ultimos_4 || "····"}</span>
+                        {!esCola && <Estado valor={sol.estado} className="ml-auto" />}
+                        {tomada && (
+                          <span className="ml-auto">
+                            <Revisor
+                              id={sol.asignado_a}
+                              persona={equipo[sol.asignado_a]}
+                              minutos={minutosRestantes(sol.asignado_en)}
+                              propio={sol.asignado_a === session.user.id}
+                            />
+                          </span>
                         )}
-                        {esCola &&
-                          sol.asignado_a &&
-                          minutosRestantes(sol.asignado_en) > 0 && (
-                            <span className="ml-auto">
-                              <Revisor
-                                id={sol.asignado_a}
-                                persona={equipo[sol.asignado_a]}
-                                minutos={minutosRestantes(sol.asignado_en)}
-                                propio={sol.asignado_a === session.user.id}
-                              />
-                            </span>
-                          )}
                       </div>
                     </button>
                   );
@@ -684,25 +633,42 @@ export default function SolicitudesPage() {
               </div>
 
               {!esCola && (
-                <Paginador
-                  pagina={pagina}
-                  porPagina={POR_PAGINA}
-                  total={total}
-                  cargando={refrescando}
-                  onCambio={setPagina}
-                />
+                <Paginador pagina={pagina} porPagina={POR_PAGINA} total={total} cargando={refrescando} onCambio={setPagina} />
               )}
             </>
+          )}
+
+          {esCola && !primeraCarga && visibles.length > 0 && (
+            <Leyenda
+              className="mt-3"
+              items={[
+                {
+                  texto: "Franja de color",
+                  marca: <span className="h-3.5 w-1 rounded bg-marca-600" />,
+                  pista: "Quién la atiende: azul oscuro eres tú; cada compañero tiene su color.",
+                },
+                {
+                  texto: "Espera larga",
+                  marca: <Reloj className="h-3.5 w-3.5 text-oro-700" />,
+                  pista: "Lleva 12 horas o más esperando: conviene atenderla primero.",
+                },
+                {
+                  texto: "Sin foto",
+                  marca: <span className="h-2.5 w-2.5 rounded-sm bg-red-500" />,
+                  pista: "El cliente no adjuntó comprobante.",
+                },
+              ]}
+            />
           )}
         </section>
 
         {/* ══════════ Detalle ══════════ */}
-        <section className="min-w-0">
+        <section ref={detalleRef} className="min-w-0 scroll-mt-20">
           {primeraCarga ? (
             <div className="space-y-4">
-              <Esqueleto className="h-20 w-full rounded-xl" />
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Esqueleto className="h-[460px] rounded-xl" />
+              <Esqueleto className="h-16 w-full rounded-xl" />
+              <div className="grid gap-4 2xl:grid-cols-2">
+                <Esqueleto className="h-[480px] rounded-xl" />
                 <div className="space-y-4">
                   <Esqueleto className="h-40 rounded-xl" />
                   <Esqueleto className="h-32 rounded-xl" />
@@ -711,230 +677,167 @@ export default function SolicitudesPage() {
             </div>
           ) : !seleccionada ? (
             <Vacio
-              icono={<Documento className="h-5 w-5" />}
+              className="min-h-[360px]"
+              icono={<Documento />}
               titulo="Elige una solicitud de la lista"
-              detalle="Al pulsar una se carga su comprobante y los datos del cliente."
+              detalle="Al pulsarla se cargan el comprobante, los datos del titular y su cuenta de destino."
             />
           ) : (
             <div key={seleccionada.id} className="animate-aparecer space-y-4">
               {/* Encabezado */}
-              <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-card p-4 shadow-panel">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="cifras font-mono text-[0.9333rem] font-bold text-marca-700">
-                      {seleccionada.codigo}
-                    </h2>
-                    <Estado valor={seleccionada.estado} />
-                  </div>
-                  <Pista
-                    texto={`Enviada el ${fechaLarga(seleccionada.created_at)}`}
-                  >
-                    <span className="t-micro mt-1">
-                      {espera(seleccionada.created_at).texto}
-                    </span>
-                  </Pista>
-                </div>
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-panel">
+                <h2 className="cifras font-mono text-lg font-bold text-marca-700">{seleccionada.codigo}</h2>
+                <Copiar texto={seleccionada.codigo} soloIcono etiqueta="Copiar el código" />
+                <Estado valor={seleccionada.estado} />
+                <Pista texto={`Enviada el ${fechaLarga(seleccionada.created_at)}`}>
+                  <span className="cursor-help text-sm text-muted-foreground">{espera(seleccionada.created_at).texto}</span>
+                </Pista>
 
-                {seleccionada.estado === "pendiente" &&
-                  seleccionada.asignado_a === session.user.id &&
-                  minutosRestantes(seleccionada.asignado_en) > 0 && (
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Pista
-                        fin
-                        texto="Es tuya mientras dure la reserva. Al agotarse vuelve a la cola y cualquiera puede tomarla."
-                      >
-                        <span className="cifras rounded-md bg-oro-50 px-2 py-1 text-[0.7333rem] font-semibold text-oro-700">
-                          {minutosRestantes(seleccionada.asignado_en)} min
-                        </span>
-                      </Pista>
-                      <Pista fin texto="Devolverla a la cola para que la tome otra persona.">
-                        <button
-                          onClick={() => soltar(seleccionada)}
-                          className="pulsable rounded-lg border border-border px-2.5 py-1.5 text-[0.8rem] font-medium text-muted-foreground hover:bg-muted"
-                        >
-                          Soltar
-                        </button>
-                      </Pista>
-                    </div>
-                  )}
+                {esMia && (
+                  <div className="ml-auto flex items-center gap-2">
+                    <Pista fin texto="Es tuya mientras dure la reserva. Al agotarse vuelve a la cola y cualquiera puede tomarla.">
+                      <span className="cifras inline-flex cursor-help items-center gap-1 rounded-full bg-oro-100 px-2.5 py-1 text-xs font-bold text-oro-700">
+                        <Reloj className="h-3.5 w-3.5" />
+                        {minutosRestantes(seleccionada.asignado_en)} min
+                      </span>
+                    </Pista>
+                    <Pista fin texto="Devolverla a la cola para que la tome otra persona.">
+                      <BotonAccion tono="neutro" tamano="chico" onClick={() => soltar(seleccionada)}>
+                        Soltar
+                      </BotonAccion>
+                    </Pista>
+                  </div>
+                )}
               </div>
 
               {ajeno && (
-                <div className="flex items-center gap-3 rounded-xl border border-oro-300/60 bg-oro-50 px-4 py-3">
-                  <span className="text-lg">👀</span>
-                  <p className="text-[0.8667rem] text-oro-700">
-                    <strong>{ajeno.quien}</strong> está revisando este caso.
-                    Puedes mirarlo, pero resolverlo es suyo hasta que pasen{" "}
-                    {ajeno.libre_en} min.
-                  </p>
-                </div>
+                <Aviso tono="espera" titulo={`${ajeno.quien} está revisando este caso`}>
+                  Puedes mirarlo, pero resolverlo es suyo hasta que pasen {ajeno.libre_en} min.
+                </Aviso>
               )}
 
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+              <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,1fr)]">
                 {/* Comprobante */}
-                <div className="min-w-0">
+                <div className="min-w-0 space-y-3">
                   {cargandoDetalle ? (
-                    <Esqueleto className="h-[460px] w-full rounded-lg" />
+                    <Esqueleto className="h-[520px] w-full rounded-xl" />
                   ) : (
                     <Visor
                       url={seleccionada.comprobante}
                       error={seleccionada.comprobante_error}
                       path={seleccionada.comprobante_path}
                       titulo="Comprobante de la operación"
-                      alto="h-[460px]"
+                      alto="h-[520px]"
                     />
                   )}
                   {seleccionada.nota_cliente && (
-                    <div className="mt-3 rounded-lg border-l-[3px] border-marca-600 bg-marca-50 px-4 py-3">
-                      <p className="t-etiqueta text-marca-600">
-                        Nota del cliente
-                      </p>
-                      <p className="mt-1 text-[0.9333rem]">
-                        {seleccionada.nota_cliente}
-                      </p>
+                    <div className="rounded-xl border border-marca-200 bg-marca-50 px-4 py-3">
+                      <p className="t-etiqueta text-marca-600">Nota del cliente</p>
+                      <p className="mt-1 text-md">{seleccionada.nota_cliente}</p>
                     </div>
                   )}
                 </div>
 
                 {/* Datos y acciones */}
                 <div className="min-w-0 space-y-4">
-                  <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-                    <h3 className="t-seccion mb-3">Titular</h3>
-                    <p className="text-[1rem] font-semibold">{nombre}</p>
+                  <Panel titulo="Titular">
+                    <p className="text-base font-semibold">{nombre}</p>
                     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
-                      <Dato etiqueta="DNI" mono>
+                      <Dato etiqueta="DNI" mono accion={<Copiar texto={cliente?.dni} soloIcono etiqueta="Copiar DNI" />}>
                         {cliente?.dni}
                       </Dato>
-                      <Dato etiqueta="Teléfono" mono>
+                      <Dato etiqueta="Teléfono" mono accion={<Copiar texto={cliente?.telefono} soloIcono etiqueta="Copiar teléfono" />}>
                         {cliente?.telefono}
                       </Dato>
-                      <Dato etiqueta="Tarjeta usada">
-                        {seleccionada.tarjetas?.banco || seleccionada.banco}
-                      </Dato>
+                      <Dato etiqueta="Tarjeta usada">{seleccionada.tarjetas?.banco || seleccionada.banco}</Dato>
                       <Dato etiqueta="Terminación" mono>
                         ···· {seleccionada.tarjetas?.ultimos_4}
                       </Dato>
                     </dl>
-                  </div>
+                  </Panel>
 
-                  {/* Cuentas para depositar */}
-                  <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-                    <div className="mb-3 flex items-center gap-1.5">
-                      <h3 className="t-seccion">Cuenta de destino</h3>
-                      <Pista texto="El pago se deposita en una cuenta del mismo banco de la tarjeta. Las de otros bancos salen atenuadas." />
-                    </div>
+                  <Panel
+                    titulo="Cuenta de destino"
+                    ayuda="El pago se deposita en una cuenta del mismo banco de la tarjeta. Las de otros bancos salen atenuadas."
+                  >
                     {cargandoCuentas ? (
                       <div className="space-y-2">
                         <Esqueleto className="h-12 w-full" />
                         <Esqueleto className="h-12 w-full" />
                       </div>
                     ) : cuentas.length === 0 ? (
-                      <p className="t-cuerpo rounded-lg bg-red-50 px-3 py-2.5 text-red-700">
-                        Sin cuenta registrada: no hay dónde depositarle.
-                      </p>
+                      <Aviso>Sin cuenta registrada: no hay dónde depositarle.</Aviso>
                     ) : (
                       <ul className="space-y-2">
-                        {cuentas.map((c, i) => {
-                          const mismoBanco =
-                            c.banco ===
-                            (seleccionada.tarjetas?.banco || seleccionada.banco);
+                        {cuentas.map((c) => {
+                          const mismoBanco = c.banco === (seleccionada.tarjetas?.banco || seleccionada.banco);
                           return (
                             <li
                               key={c.id}
-                              style={{ "--retraso": `${i * 50}ms` }}
                               className={cn(
-                                "entra flex items-center justify-between gap-3 rounded-lg border px-3 py-2",
-                                mismoBanco
-                                  ? "border-emerald-200 bg-emerald-50/60"
-                                  : "border-border bg-muted/30 opacity-60",
+                                "flex items-center justify-between gap-3 rounded-lg border px-3 py-2",
+                                mismoBanco ? "border-emerald-200 bg-emerald-50/70" : "border-border bg-muted/30 opacity-60",
                               )}
                             >
                               <div className="min-w-0">
-                                <p className="truncate text-[0.8667rem] font-semibold">
-                                  {c.banco}
-                                </p>
-                                <p className="t-etiqueta mt-0.5">
+                                <p className="truncate text-sm font-bold">{c.banco}</p>
+                                <p className="text-xs font-semibold text-muted-foreground">
                                   {c.tipo === "interbancaria" ? "CCI" : "Ahorros"}
                                 </p>
                               </div>
-                              <Pista fin texto="Copiar el número">
-                                <button
-                                  onClick={() =>
-                                    navigator.clipboard?.writeText(c.numero_cuenta)
-                                  }
-                                  className="pulsable cifras shrink-0 rounded-md px-2 py-1 font-mono text-[0.8667rem] font-semibold text-marca-700 hover:bg-marca-50"
-                                >
-                                  {c.numero_cuenta}
-                                </button>
-                              </Pista>
+                              <span className="flex items-center gap-1">
+                                <span className="cifras font-mono text-sm font-semibold text-marca-700">{c.numero_cuenta}</span>
+                                <Copiar texto={c.numero_cuenta} soloIcono etiqueta="Copiar el número" />
+                              </span>
                             </li>
                           );
                         })}
                       </ul>
                     )}
-                  </div>
+                  </Panel>
 
                   {/* Resolución */}
                   {seleccionada.estado === "pendiente" && !puedeResolver ? (
-                    <div className="rounded-xl border border-border bg-muted/40 p-4 text-[0.8667rem] text-muted-foreground">
-                      Estás viendo la cola como supervisor: puedes revisar el
-                      trabajo y saber quién atiende cada caso, pero aprobar y
-                      rechazar es del gestor que lo tiene.
-                    </div>
+                    <Aviso tono="info">
+                      Estás viendo la cola como supervisor: aprobar y rechazar es del gestor que tiene el caso.
+                    </Aviso>
                   ) : seleccionada.estado === "pendiente" ? (
-                    <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
+                    <Panel titulo={modoRechazo ? "Rechazar la solicitud" : "Resolver"} tono={modoRechazo ? "peligro" : undefined}>
                       {!modoRechazo ? (
-                        <div className="space-y-2">
+                        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                           <BotonAccion
                             onClick={() => aprobar(seleccionada)}
                             cargando={accion === "aprobando"}
                             disabled={accion !== null || Boolean(ajeno)}
                             tono="exito"
-                            icono={<Check className="h-4 w-4" />}
-                            className="w-full py-3"
+                            tamano="grande"
+                            icono={<Check className="h-5 w-5" />}
                           >
-                            {accion === "aprobando"
-                              ? "Aprobando..."
-                              : "Aprobar solicitud"}
+                            {accion === "aprobando" ? "Aprobando..." : "Aprobar solicitud"}
                           </BotonAccion>
                           <BotonAccion
                             onClick={() => setModoRechazo(true)}
                             disabled={accion !== null || Boolean(ajeno)}
-                            tono="neutro"
+                            tono="peligroSuave"
+                            tamano="grande"
                             icono={<Cruz className="h-4 w-4" />}
-                            className="w-full hover:border-red-300 hover:bg-red-50 hover:text-red-700"
                           >
                             Rechazar
                           </BotonAccion>
                         </div>
                       ) : (
                         <div className="animate-aparecer space-y-3">
-                          <div className="flex items-center gap-1.5">
-                            <label htmlFor="motivo" className="t-seccion">
-                              Motivo del rechazo
-                            </label>
-                            <Pista texto="El cliente lee este texto en su app. Dile exactamente qué corregir para que pueda volver a enviarlo." />
-                          </div>
-                          <textarea
+                          <Motivo
                             id="motivo"
-                            autoFocus
-                            value={motivo}
-                            onChange={(e) => setMotivo(e.target.value)}
-                            rows={4}
+                            etiqueta="Motivo"
+                            ayuda="El cliente lee este texto en su app. Dile exactamente qué corregir para que pueda volver a enviarlo."
+                            valor={motivo}
+                            onCambio={setMotivo}
+                            minimo={MIN_MOTIVO}
+                            sugerencias={MOTIVOS_FRECUENTES}
                             placeholder="Ej: El voucher está borroso y no se distingue el número de operación."
-                            className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2.5 text-[0.9333rem] outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
                           />
-                          <span
-                            className={cn(
-                              "cifras block text-right text-[0.8rem]",
-                              motivo.trim().length >= MIN_MOTIVO
-                                ? "text-emerald-600"
-                                : "text-muted-foreground",
-                            )}
-                          >
-                            {motivo.trim().length}/{MIN_MOTIVO}
-                          </span>
-                          <div className="flex gap-2">
+                          <div className="flex justify-end gap-2">
                             <BotonAccion
                               onClick={() => {
                                 setModoRechazo(false);
@@ -942,47 +845,33 @@ export default function SolicitudesPage() {
                               }}
                               disabled={accion !== null}
                               tono="neutro"
-                              className="flex-1"
                             >
                               Cancelar
                             </BotonAccion>
                             <BotonAccion
                               onClick={() => rechazar(seleccionada)}
                               cargando={accion === "rechazando"}
-                              disabled={
-                                accion !== null ||
-                                motivo.trim().length < MIN_MOTIVO
-                              }
+                              disabled={accion !== null || motivo.trim().length < MIN_MOTIVO}
                               tono="peligro"
-                              className="flex-1"
                             >
-                              {accion === "rechazando"
-                                ? "Rechazando..."
-                                : "Confirmar rechazo"}
+                              {accion === "rechazando" ? "Rechazando..." : "Confirmar rechazo"}
                             </BotonAccion>
                           </div>
                         </div>
                       )}
-                    </div>
+                    </Panel>
                   ) : (
-                    <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-                      <h3 className="t-seccion mb-3">Resolución</h3>
+                    <Panel titulo="Resolución">
                       <Dato etiqueta="Resuelta el">
-                        {seleccionada.fecha_revision
-                          ? fechaLarga(seleccionada.fecha_revision)
-                          : null}
+                        {seleccionada.fecha_revision ? fechaLarga(seleccionada.fecha_revision) : null}
                       </Dato>
                       {seleccionada.motivo_rechazo && (
-                        <div className="mt-3 rounded-lg border-l-[3px] border-red-500 bg-red-50 px-3 py-2.5">
-                          <p className="t-etiqueta text-red-600">
-                            Motivo comunicado al cliente
-                          </p>
-                          <p className="mt-1 text-[0.9333rem] text-red-900">
-                            {seleccionada.motivo_rechazo}
-                          </p>
+                        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                          <p className="t-etiqueta text-red-700">Motivo comunicado al cliente</p>
+                          <p className="mt-1 text-md text-red-900">{seleccionada.motivo_rechazo}</p>
                         </div>
                       )}
-                    </div>
+                    </Panel>
                   )}
                 </div>
               </div>
@@ -990,19 +879,21 @@ export default function SolicitudesPage() {
           )}
         </section>
       </div>
-      <SinPendientes
-        visible={sinPendientes}
-        onCerrar={() => setSinPendientes(false)}
-      />
+
+      <SinPendientes visible={sinPendientes} onCerrar={() => setSinPendientes(false)} />
 
       <Conflicto
         mensaje={conflicto?.mensaje}
         titulo={conflicto?.titulo}
         onCerrar={() => setConflicto(null)}
-        onSiguiente={() => {
-          setConflicto(null);
-          atenderSiguiente();
-        }}
+        onSiguiente={
+          puedeResolver
+            ? () => {
+                setConflicto(null);
+                atenderSiguiente();
+              }
+            : undefined
+        }
       />
     </Shell>
   );

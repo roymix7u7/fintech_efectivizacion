@@ -6,23 +6,20 @@ import Link from "next/link";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
-import {
-  estadoCola,
-  contadoresDe,
-  tomarSiguiente,
-  RESERVA_MINUTOS,
-} from "@/lib/cola";
+import { estadoCola, contadoresDe, tomarSiguiente, RESERVA_MINUTOS } from "@/lib/cola";
 import { useRetraso } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
-import Shell, { Lupa, Persona, Flecha, Manos } from "@/components/shell";
+import Shell, { Persona, Flecha, Manos, Reloj } from "@/components/shell";
 import Paginador from "@/components/paginador";
-import { EsqueletoFilas, BarraCarga, Esqueleto } from "@/components/carga";
+import { EsqueletoFilas, BarraCarga, BotonAccion, CargaPantalla } from "@/components/carga";
 import SinPendientes from "@/components/sinPendientes";
 import { Estado, Vacio, Aviso } from "@/components/marca";
+import { Segmentos, Buscador, Barra, Leyenda, Avatar } from "@/components/piezas";
 import Pista from "@/components/pista";
 import Revisor from "@/components/revisor";
 import { colorDe } from "@/lib/colores";
 import BotonRefrescar from "@/components/refrescar";
+
 
 /** Minutos que le quedan a una reserva, o 0 si ya vencio. */
 function restan(asignadoEn) {
@@ -248,7 +245,9 @@ export default function KYCPage() {
   const puedeResolver = ["gestor", "admin"].includes(session?.rol);
   const esGestor = session?.rol === "gestor";
 
-  if (!session) return null;
+  if (!session) return <CargaPantalla />;
+
+  const enCola = filtro === "pendiente";
 
   return (
     <Shell
@@ -258,127 +257,87 @@ export default function KYCPage() {
       descripcion={
         primeraCarga
           ? "Cargando..."
-          : filtro === "pendiente"
+          : enCola
             ? soloMias
               ? `${total} ${total === 1 ? "identidad asignada" : "identidades asignadas"} a ti`
-              : `${total} en la cola de todo el equipo`
+              : `${total} en la cola del equipo`
             : `${total} en esta lista`
       }
+      ayuda="Cada cliente nuevo sube su documento y una selfie. Revisa que sean de la misma persona y que los datos coincidan; al aprobar se activa su cuenta."
       acciones={
-        <div className="hidden items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 lg:flex">
-          {FILTROS.map((f) => (
-            <button
-              key={f.clave}
-              onClick={() => setFiltro(f.clave)}
-              className={cn(
-                "pulsable rounded-md px-3 py-1.5 text-[0.8667rem] font-medium",
-                filtro === f.clave
-                  ? "bg-card text-foreground shadow-panel"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {f.etiqueta}
-            </button>
-          ))}
-        </div>
+        enCola &&
+        puedeResolver && (
+          <BotonAccion onClick={atenderSiguiente} cargando={pidiendo} icono={<Manos className="h-4 w-4" />} title="Te asigna la identidad libre que más tiempo lleva esperando">
+            <span className="hidden sm:inline">{pidiendo ? "Buscando…" : "Tomar siguiente"}</span>
+          </BotonAccion>
+        )
       }
     >
       <BarraCarga activa={refrescando} />
 
       {error && (
-        <div className="mb-5 animate-aparecer">
-          <Aviso onCerrar={() => setError("")}>{error}</Aviso>
-        </div>
+        <Aviso className="mb-4 animate-aparecer" onCerrar={() => setError("")}>
+          {error}
+        </Aviso>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-2 lg:hidden">
-        {FILTROS.map((f) => (
-          <button
-            key={f.clave}
-            onClick={() => setFiltro(f.clave)}
-            className={cn(
-              "pulsable rounded-lg border px-3 py-1.5 text-[0.8667rem] font-medium",
-              filtro === f.clave
-                ? "border-marca-600 bg-marca-50 text-marca-700"
-                : "border-border text-muted-foreground",
-            )}
-          >
-            {f.etiqueta}
-          </button>
-        ))}
-      </div>
-
-      {filtro === "pendiente" && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {/* El gestor solo ve lo suyo: el sistema le reparte la cola, y
-              elegir de una lista común llevaría a que varios abran el
-              mismo cliente. El supervisor ve todo, pero para mirar. */}
-          <span className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[0.8667rem] font-medium">
-            {esGestor ? "Tus casos" : "Toda la cola"}
-            <span className="cifras rounded-full bg-muted px-1.5 text-[0.7333rem] font-semibold">
-              {total}
-            </span>
-          </span>
-
-          {!puedeResolver && (
-            <span className="rounded-full bg-muted px-2.5 py-1 text-[0.7333rem] font-medium text-muted-foreground">
-              Solo lectura
-            </span>
-          )}
-
-          <BotonRefrescar
-            girando={refrescando}
-            onClick={() => {
-              cargar(filtro, pagina, termino, true, soloMias, session.user.id);
-              estadoCola().then(({ colas }) => setContadores(contadoresDe(colas)));
-            }}
-            texto="Volver a pedir la cola: identidades nuevas o ya tomadas por otros"
-          />
-
-          {puedeResolver && (
-          <button
-            onClick={atenderSiguiente}
-            disabled={pidiendo}
-            title="Te asigna la identidad libre que más tiempo lleva esperando"
-            className="pulsable flex items-center gap-2 rounded-lg bg-marca-700 px-3.5 py-2 text-[0.8667rem] font-semibold text-white hover:bg-marca-600 disabled:opacity-50"
-          >
-            <Manos className="h-4 w-4" />
-            {pidiendo ? "Buscando…" : "Tomar siguiente"}
-          </button>
-          )}
-        </div>
-      )}
-
-      <div className="relative mb-4 max-w-md">
-        <Lupa className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="search"
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Nombre, DNI, correo o teléfono"
-          className="w-full rounded-lg border border-input bg-card py-2.5 pl-9 pr-9 text-[0.9333rem] outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
+      <Barra>
+        <Segmentos
+          valor={filtro}
+          onCambio={setFiltro}
+          opciones={FILTROS.map((f) => ({
+            ...f,
+            cuenta: f.clave === "pendiente" ? (contadores.kycPendientes ?? null) : null,
+            urgente: f.clave === "pendiente",
+          }))}
         />
-        {busqueda !== termino && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2">
-            <Esqueleto className="h-3 w-3 rounded-full" />
-          </span>
-        )}
-      </div>
+        <Buscador
+          valor={busqueda}
+          onCambio={setBusqueda}
+          pendiente={busqueda !== termino}
+          placeholder="Nombre, DNI, correo o teléfono"
+          className="w-full sm:w-80"
+        />
+        <div className="ml-auto flex items-center gap-2">
+          {!puedeResolver && (
+            <Pista texto="Como supervisor ves toda la cola. Aprobar u observar es del gestor; tú puedes bloquear cuentas desde la ficha.">
+              <span className="cursor-help rounded-full bg-muted px-2.5 py-1 text-xs font-bold text-muted-foreground">Solo lectura</span>
+            </Pista>
+          )}
+          {enCola && (
+            <BotonRefrescar
+              girando={refrescando}
+              onClick={() => {
+                cargar(filtro, pagina, termino, true, soloMias, session.user.id);
+                estadoCola().then(({ colas }) => setContadores(contadoresDe(colas)));
+              }}
+              texto="Actualizar la cola: identidades nuevas o ya tomadas por otros"
+            />
+          )}
+        </div>
+      </Barra>
 
       {primeraCarga ? (
-        <EsqueletoFilas filas={8} alto="h-[68px]" />
+        <EsqueletoFilas filas={8} alto="h-[64px]" />
       ) : clientes.length === 0 ? (
         <Vacio
-          icono={<Persona className="h-5 w-5" />}
-          titulo={termino ? "Sin coincidencias" : "Nada por aquí"}
+          icono={<Persona />}
+          titulo={termino ? "Sin coincidencias" : enCola && soloMias ? "No tienes identidades asignadas" : "Nada por aquí"}
           detalle={
             termino
               ? "Ningún cliente de esta lista coincide con lo que buscas."
-              : filtro === "pendiente"
+              : enCola
                 ? soloMias
-                  ? "No tienes identidades asignadas. Pulsa «Tomar siguiente» o mira toda la cola."
+                  ? "Pulsa «Tomar siguiente» y el sistema te asigna la que más tiempo lleva esperando."
                   : "No queda ningún cliente por verificar."
                 : "No hay clientes con este estado."
+          }
+          accion={
+            enCola && soloMias && puedeResolver && !termino ? (
+              <BotonAccion onClick={atenderSiguiente} cargando={pidiendo} icono={<Manos className="h-4 w-4" />}>
+                Tomar siguiente
+              </BotonAccion>
+            ) : null
           }
         />
       ) : (
@@ -389,78 +348,74 @@ export default function KYCPage() {
               refrescando && "opacity-60",
             )}
           >
+            {/* Encabezado de columnas, solo en pantallas anchas */}
+            <div className="hidden grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_120px_24px] gap-4 border-b border-border bg-muted/50 px-4 py-2 md:grid">
+              <span className="t-etiqueta">Cliente</span>
+              <span className="t-etiqueta">Documento</span>
+              <span className="t-etiqueta">{enCola ? "Esperando" : "Registro"}</span>
+              <span className="t-etiqueta">Atiende</span>
+              <span className="t-etiqueta">Estado</span>
+              <span />
+            </div>
             <ul className="divide-y divide-border">
               {clientes.map((c, i) => {
                 const sinPerfil = !c.perfil;
+                const tomada = c.asignado_a && restan(c.asignado_en) > 0;
+                const largo = enCola && Date.now() - new Date(c.created_at).getTime() > 12 * 3600000;
                 return (
-                  <li
-                    key={c.id}
-                    className="entra"
-                    style={{ "--retraso": `${Math.min(i, 14) * 25}ms` }}
-                  >
+                  <li key={c.id} className="entra" style={{ "--retraso": `${Math.min(i, 14) * 22}ms` }}>
                     <Link
                       href={`/kyc/${c.id}`}
                       className={cn(
-                        "flex items-center gap-4 px-4 py-3.5 transition hover:bg-muted/40",
-                        // Franja del color de quien la atiende: se
-                        // reconoce sin leer fila por fila.
-                        c.asignado_a &&
-                          restan(c.asignado_en) > 0 &&
+                        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 py-3 transition hover:bg-muted/40 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_120px_24px]",
+                        tomada &&
                           (c.asignado_a === session.user.id
                             ? "border-l-4 border-l-marca-600"
                             : `border-l-4 ${colorDe(c.asignado_a).borde}`),
                       )}
                     >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Avatar
+                          texto={sinPerfil ? "?" : `${c.perfil.nombres} ${c.perfil.apellidos}`}
+                          tono={sinPerfil ? "gris" : "marca"}
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-md font-semibold">
+                            {sinPerfil ? "Registro sin completar" : `${c.perfil.nombres} ${c.perfil.apellidos}`}
+                          </p>
+                          <p className="truncate text-chico text-muted-foreground">{c.email}</p>
+                        </div>
+                      </div>
+
+                      <span className="cifras hidden truncate font-mono text-sm md:block">{c.perfil?.dni || "—"}</span>
+
                       <span
                         className={cn(
-                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[0.8667rem] font-bold",
-                          sinPerfil
-                            ? "bg-muted text-muted-foreground"
-                            : "bg-marca-50 text-marca-700",
+                          "hidden items-center gap-1 text-sm md:inline-flex",
+                          largo ? "font-bold text-oro-700" : "text-muted-foreground",
                         )}
                       >
-                        {sinPerfil
-                          ? "?"
-                          : (c.perfil.nombres?.[0] || "") +
-                            (c.perfil.apellidos?.[0] || "")}
+                        {largo && <Reloj className="h-3.5 w-3.5" />}
+                        {enCola ? espera(c.created_at) : new Date(c.created_at).toLocaleDateString("es-PE")}
                       </span>
 
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[0.9333rem] font-semibold">
-                          {sinPerfil
-                            ? "Registro sin completar"
-                            : `${c.perfil.nombres} ${c.perfil.apellidos}`}
-                        </p>
-                        <p className="t-micro truncate">{c.email}</p>
-                      </div>
-
-                      <div className="hidden min-w-0 shrink-0 text-right sm:block">
-                        {c.perfil?.dni && (
-                          <p className="cifras font-mono text-[0.8667rem]">
-                            {c.perfil.dni}
-                          </p>
+                      <span className="hidden min-w-0 md:block">
+                        {tomada ? (
+                          <Revisor
+                            id={c.asignado_a}
+                            persona={equipo[c.asignado_a]}
+                            minutos={restan(c.asignado_en)}
+                            propio={c.asignado_a === session.user.id}
+                          />
+                        ) : (
+                          <span className="text-sm text-muted-foreground">{enCola ? "Libre" : "—"}</span>
                         )}
-                        {filtro === "pendiente" && (
-                          <p className="t-micro">{espera(c.created_at)}</p>
-                        )}
-                      </div>
+                      </span>
 
-                      {/* Quien la tiene. Sin esto, en "Toda la cola" no
-                          se sabia si un caso estaba repartido ni a quien. */}
-                      {c.asignado_a && restan(c.asignado_en) > 0 && (
-                        <Revisor
-                          id={c.asignado_a}
-                          persona={equipo[c.asignado_a]}
-                          minutos={restan(c.asignado_en)}
-                          propio={c.asignado_a === session.user.id}
-                        />
-                      )}
-
-                      <Estado
-                        valor={c.estado}
-                        className="hidden shrink-0 md:inline-flex"
-                      />
-                      <Flecha className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="flex items-center gap-2 md:block">
+                        <Estado valor={c.estado} />
+                      </span>
+                      <Flecha className="hidden h-4 w-4 text-muted-foreground md:block" />
                     </Link>
                   </li>
                 );
@@ -468,19 +423,36 @@ export default function KYCPage() {
             </ul>
           </div>
 
-          <Paginador
-            pagina={pagina}
-            porPagina={POR_PAGINA}
-            total={total}
-            cargando={refrescando}
-            onCambio={setPagina}
-          />
+          <Paginador pagina={pagina} porPagina={POR_PAGINA} total={total} cargando={refrescando} onCambio={setPagina} />
+
+          {enCola && (
+            <Leyenda
+              className="mt-4"
+              items={[
+                {
+                  texto: "Franja de color",
+                  marca: <span className="h-3.5 w-1 rounded bg-marca-600" />,
+                  pista: "Quién la atiende: azul oscuro eres tú; cada compañero tiene su color.",
+                },
+                {
+                  texto: "Espera larga",
+                  marca: <Reloj className="h-3.5 w-3.5 text-oro-700" />,
+                  pista: "Lleva 12 horas o más sin verificar: el cliente no puede operar mientras tanto.",
+                },
+                {
+                  texto: `Reserva de ${RESERVA_MINUTOS} min`,
+                  marca: <span className="h-2.5 w-2.5 rounded-full bg-marca-300" />,
+                  pista: `Al abrir una ficha queda a tu nombre por ${RESERVA_MINUTOS} minutos. Si no la resuelves, vuelve a la cola.`,
+                },
+              ]}
+            />
+          )}
         </>
       )}
       <SinPendientes
         visible={sinPendientes}
         onCerrar={() => setSinPendientes(false)}
-        texto="No hay identidades esperando revisión. Cuando entre una nueva, el sistema te la asigna solo."
+        texto="No hay identidades esperando revisión. Cuando entre una nueva, el sistema te la asigna sola."
       />
     </Shell>
   );

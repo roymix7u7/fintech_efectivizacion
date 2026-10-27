@@ -4,37 +4,42 @@
 
 @layer base {
   :root {
-    /* Lienzo gris muy claro, tarjetas blancas. El contraste justo
-       para que la informacion respire sin parecer un formulario. */
-    --background: 220 26% 97%;
-    --foreground: 219 47% 17%;
+    /* Los colores de la app móvil ("Cristal medido"): fondo azul hielo,
+       tarjetas blancas, texto azul noche. El dorado se reserva para lo
+       que mueve dinero o pide atención. */
+    --background: 216 45% 96%; /* #EFF3F9 */
+    --foreground: 221 47% 20%; /* #1B2A4A */
 
     --card: 0 0% 100%;
-    --card-foreground: 219 47% 17%;
+    --card-foreground: 221 47% 20%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 219 47% 17%;
+    --popover-foreground: 221 47% 20%;
 
-    --primary: 219 47% 20%;
+    --primary: 221 47% 20%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 33% 96%;
-    --secondary-foreground: 219 47% 20%;
+    --secondary: 217 39% 94%;
+    --secondary-foreground: 221 47% 20%;
 
-    --muted: 220 26% 95%;
-    --muted-foreground: 218 17% 47%;
+    --muted: 217 39% 94%; /* #E8EDF5 */
+    --muted-foreground: 219 14% 45%; /* #626D82, pasa AA en texto chico */
 
-    --accent: 220 33% 94%;
-    --accent-foreground: 219 47% 20%;
+    --accent: 217 39% 94%;
+    --accent-foreground: 221 47% 20%;
 
-    --destructive: 4 70% 50%;
+    --destructive: 4 73% 45%; /* #C4291F */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 218 27% 90%;
-    --input: 218 25% 85%;
-    --ring: 219 47% 35%;
+    --border: 216 37% 92%; /* #E3E9F2 */
+    --input: 217 35% 86%;
+    --ring: 221 44% 31%; /* #2C4270 */
 
     --radius: 0.625rem;
+
+    /* Alto de la cabecera fija: las columnas que se desplazan solas lo
+       restan para ocupar justo el resto de la pantalla. */
+    --alto-cabecera: 60px;
   }
 
   * {
@@ -42,106 +47,158 @@
   }
 
   html {
-    /* Un punto menos que el estandar del navegador: el panel es denso
-       y 15px deja ver mas filas sin que el texto se sienta apretado. */
-    font-size: 15px;
+    font-size: 16px;
     text-size-adjust: 100%;
   }
 
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-size: 0.9333rem; /* 14px */
-    line-height: 1.55;
+    font-size: 0.9375rem; /* 15 px: el panel se lee horas seguidas */
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Ligaduras y espaciado optico de Geist. Sin esto el texto se ve
-       mas suelto y menos definido de lo que la fuente permite. */
     font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
-    font-optical-sizing: auto;
   }
 
-  /* Los titulos piden un poco menos de espacio entre letras: a tamano
-     grande, el tracking normal de la fuente se ve suelto. */
   h1,
   h2,
   h3 {
+    font-family: var(--font-titulo), var(--font-texto), system-ui, sans-serif;
     letter-spacing: -0.015em;
     text-wrap: balance;
   }
 
-  /* Los parrafos no deben terminar con una palabra sola en su linea. */
   p {
     text-wrap: pretty;
   }
 
   ::selection {
-    background: hsl(219 47% 20% / 0.12);
+    background: hsl(221 47% 20% / 0.14);
   }
 
-  /* Foco visible y consistente, que el navegador por defecto dibuja
-     distinto en cada control. */
   :focus-visible {
     outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
   }
+
+  /* Los números de los campos numéricos no necesitan flechas: se
+     escriben, y las flechas cambian el valor sin querer con la rueda. */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
 }
 
-/* ─────────────────────── Tipografia ───────────────────────
-   Escala nombrada por funcion, no por tamano. Asi una pantalla
-   nueva usa el mismo lenguaje sin tener que recordar pixeles. */
+/* ─────────────────────── Tipografía ───────────────────────
+   Escala nombrada por función, no por tamaño. */
 @layer components {
   .t-pagina {
-    font-size: 1.133rem; /* 17px */
+    font-family: var(--font-titulo), var(--font-texto), sans-serif;
+    font-size: 1.25rem; /* 20 */
     font-weight: 600;
     letter-spacing: -0.02em;
     line-height: 1.25;
   }
 
   .t-seccion {
-    font-size: 0.9333rem; /* 14px */
+    font-family: var(--font-titulo), var(--font-texto), sans-serif;
+    font-size: 0.9375rem; /* 15 */
     font-weight: 600;
     letter-spacing: -0.01em;
     line-height: 1.35;
   }
 
   .t-etiqueta {
-    font-size: 0.7333rem; /* 11px */
-    font-weight: 600;
+    font-size: 0.75rem; /* 12 */
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.07em;
+    letter-spacing: 0.06em;
     color: hsl(var(--muted-foreground));
   }
 
   .t-cuerpo {
-    font-size: 0.8667rem; /* 13px */
+    font-size: 0.875rem; /* 14 */
     line-height: 1.55;
   }
 
   .t-micro {
-    font-size: 0.8rem; /* 12px */
+    font-size: 0.8125rem; /* 13 */
     line-height: 1.45;
     color: hsl(var(--muted-foreground));
   }
 
-  /* Codigos, DNI, numeros de cuenta e importes. Cifras de ancho fijo
-     para que las columnas queden alineadas de una fila a otra, y cero
-     con barra para no confundirlo con la letra O. */
+  /* Códigos, DNI, números de cuenta e importes: cifras de ancho fijo
+     para que las columnas queden alineadas. */
   .cifras {
-    font-feature-settings: "tnum" 1, "zero" 1, "ss01" 1;
+    font-feature-settings: "tnum" 1, "zero" 1;
     font-variant-numeric: tabular-nums slashed-zero;
-    letter-spacing: 0.005em;
   }
 
-  /* Tablero de fondo para ver documentos escaneados. El damero deja
-     claro donde termina el papel cuando la foto tiene bordes claros. */
+  /* Campo de texto estándar. Una sola definición para que todos los
+     formularios del panel se vean y respondan igual. */
+  .campo {
+    width: 100%;
+    min-width: 0;
+    border-radius: 0.5rem;
+    border: 1px solid hsl(var(--input));
+    background-color: #fff;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9375rem;
+    line-height: 1.4rem;
+    color: hsl(var(--foreground));
+    outline: none;
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+  .campo::placeholder {
+    color: hsl(219 14% 60%);
+  }
+  .campo:hover:not(:disabled) {
+    border-color: hsl(217 30% 76%);
+  }
+  .campo:focus {
+    border-color: #3d588f;
+    box-shadow: 0 0 0 4px rgb(61 88 143 / 0.12);
+  }
+  .campo:disabled {
+    cursor: not-allowed;
+    background-color: hsl(var(--muted));
+    opacity: 0.7;
+  }
+  .campo[aria-invalid="true"] {
+    border-color: #c4291f;
+  }
+  .campo[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 4px rgb(196 41 31 / 0.12);
+  }
+  select.campo {
+    appearance: none;
+    padding-right: 2.25rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23626D82' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 1rem;
+  }
+  textarea.campo {
+    resize: vertical;
+    line-height: 1.5;
+  }
+
+  /* Tablero de fondo para ver documentos escaneados: deja claro dónde
+     termina el papel cuando la foto tiene bordes claros. */
   .lienzo-documento {
-    background-color: hsl(220 20% 93%);
+    background-color: hsl(217 30% 93%);
     background-image:
-      linear-gradient(45deg, hsl(220 16% 88%) 25%, transparent 25%),
-      linear-gradient(-45deg, hsl(220 16% 88%) 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, hsl(220 16% 88%) 75%),
-      linear-gradient(-45deg, transparent 75%, hsl(220 16% 88%) 75%);
+      linear-gradient(45deg, hsl(217 24% 89%) 25%, transparent 25%),
+      linear-gradient(-45deg, hsl(217 24% 89%) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, hsl(217 24% 89%) 75%),
+      linear-gradient(-45deg, transparent 75%, hsl(217 24% 89%) 75%);
     background-size: 16px 16px;
     background-position:
       0 0,
@@ -150,21 +207,11 @@
       -8px 0px;
   }
 
-  .barra-lateral-activa {
-    background: linear-gradient(
-      90deg,
-      rgba(232, 184, 0, 0.16) 0%,
-      rgba(232, 184, 0, 0) 100%
-    );
-  }
-
-  /* ── Esqueletos de carga ──
-     Un bloque gris quieto parece un error. El brillo que lo recorre
-     dice que algo esta pasando y que vale la pena esperar. */
+  /* ── Esqueletos de carga ── */
   .esqueleto {
     position: relative;
     overflow: hidden;
-    background-color: hsl(220 20% 93%);
+    background-color: hsl(217 30% 92%);
     border-radius: 0.5rem;
   }
   .esqueleto::after {
@@ -172,23 +219,18 @@
     position: absolute;
     inset: 0;
     transform: translateX(-100%);
-    background: linear-gradient(
-      90deg,
-      transparent,
-      hsl(0 0% 100% / 0.65),
-      transparent
-    );
+    background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.65), transparent);
     animation: brillo 1.4s ease-in-out infinite;
   }
 
-  /* Botones: hundirse un pelo al pulsar da la sensacion de que el
-     clic se registro, incluso antes de que lleguen los datos. */
+  /* Hundirse un pelo al pulsar: el clic se siente registrado. */
   .pulsable {
     transition:
       transform 120ms ease,
       background-color 140ms ease,
       border-color 140ms ease,
-      box-shadow 140ms ease;
+      box-shadow 140ms ease,
+      color 140ms ease;
   }
   .pulsable:active:not(:disabled) {
     transform: scale(0.985);
@@ -198,25 +240,29 @@
 @layer utilities {
   .scroll-fino {
     scrollbar-width: thin;
-    scrollbar-color: hsl(218 20% 75%) transparent;
+    scrollbar-color: hsl(217 20% 78%) transparent;
   }
   .scroll-fino::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   .scroll-fino::-webkit-scrollbar-thumb {
-    background-color: hsl(218 20% 78%);
+    background-color: hsl(217 20% 80%);
     border-radius: 999px;
   }
   .scroll-fino::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  /* Entrada escalonada de listas. El retraso se pone por fila con una
-     variable, para que aparezcan una tras otra y el ojo siga el orden
-     en vez de recibir el bloque entero de golpe. */
+  /* Columna que ocupa el alto que queda debajo de la cabecera y se
+     desplaza por dentro: la lista y el detalle se mueven cada uno por
+     su cuenta y la página entera no salta. */
+  .alto-pantalla {
+    height: calc(100dvh - var(--alto-cabecera) - 2.5rem);
+  }
+
   .entra {
-    animation: entra 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: entra 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
     animation-delay: var(--retraso, 0ms);
   }
 }
@@ -261,9 +307,17 @@
   }
 }
 
-/* Quien pidió menos movimiento en su sistema no debería recibir
-   ninguno. Los esqueletos se quedan quietos y las entradas son
-   instantáneas, pero todo sigue funcionando igual. */
+@keyframes tostada {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -271,68 +325,5 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-  }
-}
-
-@layer components {
-  /**
-   * Pista: explicación que aparece al pasar el cursor o al enfocar con
-   * el teclado.
-   *
-   * Sustituye a los párrafos de ayuda que ocupaban sitio permanente
-   * para decir algo que se necesita una vez. El texto viaja en
-   * aria-label, así que un lector de pantalla lo anuncia igual.
-   */
-  .pista {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-  }
-
-  .pista::after {
-    content: attr(data-pista);
-    position: absolute;
-    bottom: calc(100% + 7px);
-    left: 50%;
-    transform: translateX(-50%) translateY(3px);
-    z-index: 40;
-    width: max-content;
-    max-width: 230px;
-    padding: 7px 9px;
-    border-radius: 7px;
-    background: hsl(219 47% 17%);
-    color: hsl(0 0% 100%);
-    font-size: 0.75rem;
-    font-weight: 500;
-    line-height: 1.45;
-    text-align: left;
-    white-space: normal;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.14s ease, transform 0.14s ease;
-  }
-
-  .pista:hover::after,
-  .pista:focus-visible::after {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-
-  /* Cerca del borde derecho la burbuja se alinea a la derecha para no
-     salirse de la pantalla. */
-  .pista-fin::after {
-    left: auto;
-    right: 0;
-    transform: translateY(3px);
-  }
-  .pista-fin:hover::after,
-  .pista-fin:focus-visible::after {
-    transform: translateY(0);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .pista::after {
-      transition: none;
-    }
   }
 }

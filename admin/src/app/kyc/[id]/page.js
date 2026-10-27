@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import Link from "next/link";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { urlsFirmadas, extraerPath } from "@/lib/storage";
@@ -10,19 +9,35 @@ import { actualizar, registrarAuditoria } from "@/lib/acciones";
 import { resolverCaso, tomarCaso } from "@/lib/casos";
 import { tomarSiguiente } from "@/lib/cola";
 import { cn } from "@/lib/utils";
-import Shell, { Check, Cruz } from "@/components/shell";
+import Shell, { Check, Cruz, Candado } from "@/components/shell";
 import Visor from "@/components/visor";
 import Conflicto from "@/components/conflicto";
 import { Estado, Dato, Aviso } from "@/components/marca";
+import { CargaPantalla, BotonAccion } from "@/components/carga";
+import { Panel, Segmentos, Motivo, Copiar, Comprobacion } from "@/components/piezas";
+import Pista from "@/components/pista";
 
 const BUCKET = "kyc-documentos";
 const MIN_MOTIVO = 10;
 
 const DOCUMENTOS = [
-  { campo: "foto_dni_frontal", titulo: "DNI · Frente", pista: "Foto y datos" },
-  { campo: "foto_dni_posterior", titulo: "DNI · Reverso", pista: "Código de barras" },
-  { campo: "foto_selfie", titulo: "Selfie con DNI", pista: "Rostro y documento" },
+  { campo: "foto_dni_frontal", titulo: "Frente", pista: "Foto y datos del documento" },
+  { campo: "foto_dni_posterior", titulo: "Reverso", pista: "Código de barras y dirección" },
+  { campo: "foto_selfie", titulo: "Selfie", pista: "El cliente sosteniendo su documento" },
 ];
+
+const OBSERVACIONES_FRECUENTES = [
+  "La foto del documento está borrosa. Vuelve a tomarla con buena luz y sin reflejos.",
+  "La selfie no deja ver el documento completo. Tómala sosteniéndolo junto a tu rostro.",
+  "El documento está vencido. Sube uno vigente.",
+  "Los datos que escribiste no coinciden con tu documento. Corrígelos y vuelve a enviarlos.",
+];
+
+const NOMBRES_CONSENTIMIENTO = {
+  terminos: "Términos y condiciones",
+  privacidad: "Política de privacidad",
+  biometria: "Autorización de fotos de identidad",
+};
 
 function fechaLarga(iso) {
   if (!iso) return null;
@@ -58,6 +73,8 @@ export default function KYCDetallePage() {
   const [loading, setLoading] = useState(true);
   const [accion, setAccion] = useState(null);
   const [error, setError] = useState("");
+  // Lo que el revisor confirma haber mirado. Aprobar espera a que esté todo.
+  const [revisado, setRevisado] = useState({});
   const router = useRouter();
   const params = useParams();
 
@@ -289,436 +306,365 @@ export default function KYCDetallePage() {
     router.push("/kyc?vacia=1");
   }
 
-  if (loading || !session)
-    return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-        Cargando...
-      </div>
-    );
+  if (loading || !session) return <CargaPantalla texto="Cargando la ficha..." />;
 
-  const nombre = perfil
-    ? `${perfil.nombres} ${perfil.apellidos}`
-    : "Registro sin completar";
+  const nombre = perfil ? `${perfil.nombres} ${perfil.apellidos}` : "Registro sin completar";
   const docActual = DOCUMENTOS.find((d) => d.campo === documento);
+  const tipoDoc = perfil?.tipo_documento === "ce" ? "Carnet de extranjería" : "DNI";
   const puedeResolver = ["gestor", "admin"].includes(session?.rol);
   // Cerrar una cuenta es del supervisor y del administrador.
   const puedeBloquear = ["supervisor", "admin"].includes(session?.rol);
-  const resoluble =
-    puedeResolver &&
-    (cliente?.estado === "pendiente" || cliente?.estado === "observado");
+  const resoluble = puedeResolver && (cliente?.estado === "pendiente" || cliente?.estado === "observado");
+
+  const COMPROBAR = [
+    {
+      clave: "numero",
+      texto: (
+        <>
+          El número del documento coincide con <span className="cifras font-mono font-bold">{perfil?.dni || "—"}</span>.
+        </>
+      ),
+    },
+    { clave: "nombre", texto: <>El nombre del documento coincide con <strong>{nombre}</strong>.</> },
+    { clave: "rostro", texto: "El rostro de la selfie es el mismo que el de la foto del documento." },
+    { clave: "vigente", texto: "El documento está vigente y se lee con claridad." },
+  ];
+  const todoRevisado = COMPROBAR.every((c) => revisado[c.clave]);
+  const faltaAprobar = !perfil
+    ? "El cliente aún no subió sus documentos."
+    : !bloqueId
+      ? "Elige el bloque de comisiones."
+      : !todoRevisado
+        ? "Marca todo lo de la lista de comprobación."
+        : ajeno
+          ? "Otra persona tiene este caso."
+          : null;
+
+  const faltaConsentimiento = Object.keys(NOMBRES_CONSENTIMIENTO).filter(
+    (t) => !aceptaciones.some((a) => a.tipo === t),
+  );
 
   return (
     <Shell
       session={session}
       titulo={nombre}
       descripcion={cliente?.email}
-      acciones={
-        <Link
-          href="/kyc"
-          className="rounded-lg border border-border px-3 py-2 text-[13px] font-medium text-muted-foreground transition hover:bg-muted"
-        >
-          Volver a la lista
-        </Link>
-      }
+      volver={{ href: "/kyc", texto: "Volver a la lista" }}
+      acciones={<Estado valor={cliente?.estado} />}
     >
       {error && (
-        <div className="mb-5">
-          <Aviso titulo="No se pudo completar" onCerrar={() => setError("")}>
-            {error}
-          </Aviso>
-        </div>
+        <Aviso className="mb-4" titulo="No se pudo completar" onCerrar={() => setError("")}>
+          {error}
+        </Aviso>
       )}
 
       {!perfil && (
-        <div className="mb-5">
-          <Aviso tono="espera" titulo="Este cliente no subió sus documentos">
-            Creó la cuenta pero no completó el paso de verificación. Desde la
-            app puede terminarlo en la pantalla de cuenta en revisión.
-          </Aviso>
-        </div>
+        <Aviso className="mb-4" tono="espera" titulo="Este cliente no subió sus documentos">
+          Creó la cuenta pero no completó la verificación. Puede terminarla desde la app, en la pantalla de cuenta en revisión.
+        </Aviso>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_400px]">
+      {ajeno && (
+        <Aviso className="mb-4" tono="espera" titulo={`${ajeno.quien} está revisando a este cliente`}>
+          Puedes mirar sus documentos, pero resolverlo es suyo hasta que pasen {ajeno.libre_en} min sin que lo haga.
+        </Aviso>
+      )}
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         {/* ── Documentos ── */}
-        <section className="min-w-0">
-          <div className="mb-3 flex items-center gap-1 rounded-lg border border-border bg-muted/60 p-1">
-            {DOCUMENTOS.map((d) => {
-              const activo = documento === d.campo;
-              const falta = perfil && !perfil[`${d.campo}_url`];
-              return (
-                <button
-                  key={d.campo}
-                  onClick={() => setDocumento(d.campo)}
-                  className={cn(
-                    "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-[13px] font-medium transition",
-                    activo
-                      ? "bg-card text-foreground shadow-panel"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <span className="truncate">{d.titulo}</span>
-                  {falta && (
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+        <section className="min-w-0 space-y-3">
+          <Segmentos
+            valor={documento}
+            onCambio={setDocumento}
+            opciones={DOCUMENTOS.map((d) => ({
+              clave: d.campo,
+              etiqueta: d.titulo,
+              pista: perfil && !perfil[`${d.campo}_url`] ? `${d.pista}. No se pudo cargar o falta.` : d.pista,
+              icono: perfil && !perfil[`${d.campo}_url`] ? <span className="h-2 w-2 rounded-full bg-red-500" /> : null,
+            }))}
+          />
 
           <Visor
             url={perfil?.[`${documento}_url`]}
             error={perfil?.[`${documento}_error`]}
             path={perfil?.[`${documento}_path`]}
-            titulo={docActual?.titulo}
-            alto="h-[520px]"
+            titulo={`${tipoDoc} · ${docActual?.titulo}`}
+            alto="h-[min(600px,62vh)]"
           />
 
-          <div className="mt-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Qué comprobar
-            </p>
-            <ul className="mt-1.5 space-y-1 text-[13px] text-foreground">
-              <li>
-                El {perfil?.tipo_documento === "ce" ? "carnet de extranjería" : "DNI"} del documento coincide con{" "}
-                <span className="cifras font-mono font-semibold">
-                  {perfil?.dni || "—"}
-                </span>
-                .
-              </li>
-              <li>El nombre del documento coincide con {nombre}.</li>
-              <li>El rostro de la selfie es el mismo que el del DNI.</li>
-              <li>El documento está vigente y se lee con claridad.</li>
-            </ul>
-          </div>
+          {resoluble && (
+            <Comprobacion
+              items={COMPROBAR}
+              marcados={revisado}
+              onCambio={setRevisado}
+              ayuda="Marcar cada punto confirma que lo miraste. El botón de aprobar se activa con todo marcado."
+            />
+          )}
         </section>
 
         {/* ── Datos y resolución ── */}
         <section className="min-w-0 space-y-4">
-          <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h3 className="text-[13px] font-semibold">Datos declarados</h3>
-              <Estado valor={cliente?.estado} />
-            </div>
+          {resoluble && (
+            <Panel
+              titulo={modoObservar ? "Observar los documentos" : "Resolver"}
+              tono={modoObservar ? "peligro" : undefined}
+            >
+              {!modoObservar ? (
+                <div className="space-y-4">
+                  <div>
+                    <div className="mb-2 flex items-center gap-1.5">
+                      <p className="text-sm font-semibold">Bloque de comisiones</p>
+                      <Pista texto="Define su tarifa en cada banco. Los bloques los crea el administrador en Comisiones; aquí eliges cuál le toca." />
+                    </div>
+                    {bloques.length === 0 ? (
+                      <Aviso tono="espera">Todavía no hay bloques. Pídele al administrador que cree al menos uno.</Aviso>
+                    ) : (
+                      <div className="space-y-1.5" role="radiogroup" aria-label="Bloque de comisiones">
+                        {bloques.map((b) => (
+                          <button
+                            key={b.id}
+                            role="radio"
+                            aria-checked={bloqueId === b.id}
+                            onClick={() => setBloqueId(b.id)}
+                            className={cn(
+                              "pulsable flex w-full items-start gap-3 rounded-lg border p-2.5 text-left",
+                              bloqueId === b.id ? "border-marca-500 bg-marca-50 ring-1 ring-marca-500" : "border-border hover:bg-muted/60",
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2",
+                                bloqueId === b.id ? "border-marca-600" : "border-marca-200",
+                              )}
+                            >
+                              {bloqueId === b.id && <span className="h-2 w-2 rounded-full bg-marca-600" />}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-foreground">{b.nombre}</span>
+                                {b.es_default && (
+                                  <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">por defecto</span>
+                                )}
+                              </span>
+                              <span className="mt-0.5 block truncate text-chico text-muted-foreground">
+                                {(b.bancos || []).map((x) => `${x.banco} ${x.porcentaje}%`).join(" · ") || "Sin tarifas cargadas"}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid gap-2 border-t border-border pt-4 sm:grid-cols-[1fr_auto] xl:grid-cols-1 2xl:grid-cols-[1fr_auto]">
+                    <Pista texto={faltaAprobar} className="block w-full">
+                      <BotonAccion
+                        onClick={aprobar}
+                        cargando={accion === "aprobando"}
+                        disabled={accion !== null || Boolean(faltaAprobar)}
+                        tono="exito"
+                        tamano="grande"
+                        className="w-full"
+                        icono={<Check className="h-5 w-5" />}
+                      >
+                        {accion === "aprobando" ? "Aprobando..." : "Aprobar y activar cuenta"}
+                      </BotonAccion>
+                    </Pista>
+                    <BotonAccion
+                      onClick={() => setModoObservar(true)}
+                      disabled={accion !== null || !perfil || Boolean(ajeno)}
+                      tono="peligroSuave"
+                      tamano="grande"
+                      icono={<Cruz className="h-4 w-4" />}
+                    >
+                      Observar
+                    </BotonAccion>
+                  </div>
+                </div>
+              ) : (
+                <div className="animate-aparecer space-y-3">
+                  <Motivo
+                    id="motivo"
+                    etiqueta="Qué debe corregir"
+                    ayuda="El cliente lo lee en su app y puede volver a subir las fotos desde ahí."
+                    valor={motivo}
+                    onCambio={setMotivo}
+                    minimo={MIN_MOTIVO}
+                    filas={4}
+                    sugerencias={OBSERVACIONES_FRECUENTES}
+                    placeholder="Ej: La selfie no deja ver el DNI completo. Tómala sosteniendo el documento junto a tu rostro."
+                  />
+                  <div className="flex justify-end gap-2">
+                    <BotonAccion
+                      tono="neutro"
+                      onClick={() => {
+                        setModoObservar(false);
+                        setMotivo("");
+                      }}
+                    >
+                      Cancelar
+                    </BotonAccion>
+                    <BotonAccion
+                      tono="peligro"
+                      onClick={observar}
+                      cargando={accion === "observando"}
+                      disabled={accion !== null || motivo.trim().length < MIN_MOTIVO}
+                    >
+                      Enviar observación
+                    </BotonAccion>
+                  </div>
+                </div>
+              )}
+            </Panel>
+          )}
+
+          <Panel titulo="Datos declarados">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
               <Dato etiqueta="Nombres">{perfil?.nombres}</Dato>
               <Dato etiqueta="Apellidos">{perfil?.apellidos}</Dato>
-              <Dato etiqueta={perfil?.tipo_documento === "ce" ? "Carnet de extranjería" : "DNI"} mono>
+              <Dato etiqueta={tipoDoc} mono accion={<Copiar texto={perfil?.dni} soloIcono etiqueta="Copiar el número" />}>
                 {perfil?.dni}
               </Dato>
-              <Dato etiqueta="Teléfono" mono>
+              <Dato etiqueta="Teléfono" mono accion={<Copiar texto={perfil?.telefono} soloIcono etiqueta="Copiar teléfono" />}>
                 {perfil?.telefono}
               </Dato>
               <Dato etiqueta="Dirección" className="col-span-2">
                 {perfil?.direccion}
               </Dato>
               <Dato etiqueta="Código promocional">{perfil?.codigo_promo}</Dato>
-              <Dato etiqueta="Registrado">
-                {fechaLarga(cliente?.created_at)}
-              </Dato>
+              <Dato etiqueta="Registrado">{fechaLarga(cliente?.created_at)}</Dato>
             </dl>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-            <h3 className="mb-1 text-[13px] font-semibold">Consentimientos</h3>
-            {(() => {
-              const NOMBRES = {
-                terminos: "Términos y condiciones",
-                privacidad: "Política de privacidad",
-                biometria: "Autorización de fotos de identidad",
-              };
-              const falta = Object.keys(NOMBRES).filter((t) => !aceptaciones.some((a) => a.tipo === t));
-              return (
-                <>
-                  {falta.includes("biometria") && (
-                    <p className="mb-2 rounded-md bg-oro-50 px-2.5 py-1.5 text-[0.75rem] text-oro-700">
-                      No consta la autorización para usar sus fotos de identidad.
-                    </p>
-                  )}
-                  <ul className="divide-y divide-border">
-                    {Object.entries(NOMBRES).map(([tipo, nombre]) => {
-                      const a = aceptaciones.find((x) => x.tipo === tipo);
-                      const d = a?.dispositivo || {};
-                      return (
-                        <li key={tipo} className="flex items-start justify-between gap-3 py-2">
-                          <span className="text-[0.8rem]">{nombre}</span>
-                          <span className="text-right text-[0.75rem] text-muted-foreground">
-                            {a ? (
-                              <>
-                                v{a.version} · {fechaLarga(a.aceptado_en)}
-                                {d.plataforma && (
-                                  <span className="block">
-                                    {[d.modelo, d.plataforma, d.app && `app ${d.app}`].filter(Boolean).join(" · ")}
-                                  </span>
-                                )}
-                              </>
-                            ) : (
-                              "Sin aceptar"
-                            )}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
-              );
-            })()}
-          </div>
+          </Panel>
 
           {perfil?.motivo_observacion && cliente?.estado === "observado" && (
-            <div className="rounded-xl border-l-[3px] border-red-500 bg-red-50 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-red-600">
-                Observación vigente
-              </p>
-              <p className="mt-1 text-sm text-red-900">
-                {perfil.motivo_observacion}
-              </p>
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+              <p className="t-etiqueta text-red-700">Observación vigente</p>
+              <p className="mt-1 text-md text-red-900">{perfil.motivo_observacion}</p>
             </div>
           )}
 
           {cliente?.estado === "activo" && (
-            <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-              <h3 className="mb-3 text-[13px] font-semibold">Verificación</h3>
-              <dl className="space-y-3">
-                <Dato etiqueta="Validado el">
-                  {fechaLarga(perfil?.fecha_validacion)}
-                </Dato>
-                <Dato etiqueta="Bloque de comisiones">
-                  {bloques.find((b) => b.id === perfil?.bloque_id)?.nombre}
-                </Dato>
+            <Panel titulo="Verificación">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                <Dato etiqueta="Validado el">{fechaLarga(perfil?.fecha_validacion)}</Dato>
+                <Dato etiqueta="Bloque de comisiones">{bloques.find((b) => b.id === perfil?.bloque_id)?.nombre}</Dato>
               </dl>
-            </div>
+            </Panel>
           )}
 
-          {/* Cerrar la cuenta. Fuera del bloque de revisión a
-              propósito: no es parte de verificar la identidad, y sirve
-              también cuando ya está aprobada. */}
+          <Panel
+            titulo="Consentimientos"
+            ayuda="La constancia de lo que aceptó el cliente: versión, fecha y teléfono. Es lo que se presenta ante un reclamo."
+            cuerpo="p-0"
+          >
+            {faltaConsentimiento.includes("biometria") && (
+              <p className="border-b border-border bg-oro-50 px-4 py-2 text-chico font-medium text-oro-700">
+                No consta la autorización para usar sus fotos de identidad.
+              </p>
+            )}
+            <ul className="divide-y divide-border">
+              {Object.entries(NOMBRES_CONSENTIMIENTO).map(([tipo, texto]) => {
+                const a = aceptaciones.find((x) => x.tipo === tipo);
+                const d = a?.dispositivo || {};
+                return (
+                  <li key={tipo} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="flex min-w-0 items-center gap-2 text-sm">
+                      <span
+                        className={cn(
+                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
+                          a ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        {a ? <Check className="h-3 w-3" /> : <Cruz className="h-3 w-3" />}
+                      </span>
+                      <span className="truncate">{texto}</span>
+                    </span>
+                    {a ? (
+                      <Pista
+                        fin
+                        texto={`Aceptada el ${fechaLarga(a.aceptado_en)}${d.plataforma ? ` · ${[d.modelo, d.plataforma, d.app && `app ${d.app}`].filter(Boolean).join(" · ")}` : ""}`}
+                      >
+                        <span className="cifras shrink-0 cursor-help text-chico font-semibold text-muted-foreground">v{a.version}</span>
+                      </Pista>
+                    ) : (
+                      <span className="shrink-0 text-chico text-muted-foreground">Sin aceptar</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </Panel>
+
+          {/* Cerrar la cuenta: fuera del bloque de revisión a propósito,
+              porque sirve también cuando ya está aprobada. */}
           {puedeBloquear && cliente && (
-            <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
+            <Panel
+              titulo={cliente.estado === "bloqueado" ? "Cuenta bloqueada" : "Acceso a la app"}
+              icono={<Candado className="h-4 w-4" />}
+              tono={cliente.estado === "bloqueado" || modoBloqueo ? "peligro" : undefined}
+              ayuda="Bloquear cierra su entrada a la app y le impide enviar solicitudes. Se puede revertir y queda registrado con tu nombre."
+            >
               {cliente.estado === "bloqueado" ? (
-                <>
-                  <h3 className="text-[13px] font-semibold text-red-700">
-                    Cuenta bloqueada
-                  </h3>
+                <div className="space-y-3">
                   {perfil?.motivo_bloqueo && (
-                    <p className="mt-1.5 rounded-lg border-l-[3px] border-red-500 bg-red-50 px-3 py-2 text-[0.8667rem] text-red-900">
-                      {perfil.motivo_bloqueo}
-                    </p>
+                    <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">{perfil.motivo_bloqueo}</p>
                   )}
-                  <p className="mt-2 text-[12px] text-muted-foreground">
-                    No puede entrar al app ni enviar solicitudes.
-                    {perfil?.bloqueado_en &&
-                      ` Desde el ${fechaLarga(perfil.bloqueado_en)}.`}
+                  <p className="text-chico text-muted-foreground">
+                    No puede entrar a la app ni enviar solicitudes.
+                    {perfil?.bloqueado_en && ` Desde el ${fechaLarga(perfil.bloqueado_en)}.`}
                   </p>
-                  <button
+                  <BotonAccion
+                    tono="neutro"
+                    className="w-full"
                     onClick={() => cambiarBloqueo(false)}
+                    cargando={accion === "desbloqueando"}
                     disabled={accion !== null}
-                    className="pulsable mt-3 w-full rounded-lg border border-emerald-300 px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
                   >
-                    {accion === "desbloqueando"
-                      ? "Desbloqueando..."
-                      : "Desbloquear cuenta"}
-                  </button>
-                </>
+                    Desbloquear cuenta
+                  </BotonAccion>
+                </div>
               ) : !modoBloqueo ? (
-                <>
-                  <h3 className="text-[13px] font-semibold">Acceso al app</h3>
-                  <p className="mt-0.5 text-[12px] text-muted-foreground">
-                    Bloquear cierra su entrada al app y le impide enviar
-                    solicitudes. Se puede revertir.
-                  </p>
-                  <button
-                    onClick={() => setModoBloqueo(true)}
-                    disabled={accion !== null}
-                    className="pulsable mt-3 w-full rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"
-                  >
-                    Bloquear cuenta
-                  </button>
-                </>
+                <BotonAccion tono="peligroSuave" className="w-full" onClick={() => setModoBloqueo(true)} disabled={accion !== null}>
+                  Bloquear cuenta
+                </BotonAccion>
               ) : (
                 <div className="animate-aparecer space-y-3">
-                  <div>
-                    <label htmlFor="motivoBloqueo" className="text-[13px] font-semibold">
-                      Motivo del bloqueo
-                    </label>
-                    <p className="mt-0.5 text-[12px] text-muted-foreground">
-                      El cliente lo lee al intentar entrar. Queda registrado
-                      con tu nombre.
-                    </p>
-                  </div>
-                  <textarea
+                  <Motivo
                     id="motivoBloqueo"
-                    autoFocus
-                    rows={3}
-                    value={motivoBloqueo}
-                    onChange={(e) => setMotivoBloqueo(e.target.value)}
+                    etiqueta="Motivo del bloqueo"
+                    ayuda="El cliente lo lee al intentar entrar. Queda registrado con tu nombre."
+                    valor={motivoBloqueo}
+                    onCambio={setMotivoBloqueo}
+                    minimo={MIN_MOTIVO}
                     placeholder="Ej: envió comprobantes que no corresponden a sus operaciones."
-                    className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2.5 text-[0.9333rem] outline-none focus:border-marca-500"
                   />
-                  <div className="flex gap-2">
-                    <button
+                  <div className="flex justify-end gap-2">
+                    <BotonAccion
+                      tono="neutro"
+                      disabled={accion !== null}
                       onClick={() => {
                         setModoBloqueo(false);
                         setMotivoBloqueo("");
                       }}
-                      disabled={accion !== null}
-                      className="pulsable flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted"
                     >
                       Cancelar
-                    </button>
-                    <button
+                    </BotonAccion>
+                    <BotonAccion
+                      tono="peligro"
                       onClick={() => cambiarBloqueo(true)}
+                      cargando={accion === "bloqueando"}
                       disabled={accion !== null || motivoBloqueo.trim().length < MIN_MOTIVO}
-                      className="pulsable flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-40"
                     >
-                      {accion === "bloqueando" ? "Bloqueando..." : "Bloquear"}
-                    </button>
+                      Bloquear
+                    </BotonAccion>
                   </div>
                 </div>
               )}
-            </div>
-          )}
-
-          {ajeno && (
-            <div className="flex items-start gap-3 rounded-xl border border-oro-300/60 bg-oro-50 p-4">
-              <span className="text-lg leading-none">👀</span>
-              <p className="text-[0.8667rem] leading-relaxed text-oro-700">
-                <strong>{ajeno.quien}</strong> está revisando a este cliente.
-                Puedes mirar sus documentos, pero resolverlo es suyo hasta que
-                pasen {ajeno.libre_en} min sin que lo haga.
-              </p>
-            </div>
-          )}
-
-          {resoluble && (
-            <div className="rounded-xl border border-border bg-card p-4 shadow-panel">
-              {!modoObservar ? (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-[13px] font-semibold">
-                      Bloque de comisiones
-                    </p>
-                    <p className="mt-0.5 text-[12px] text-muted-foreground">
-                      Define su tarifa en cada banco. Las crea el
-                      administrador; aquí solo eliges cuál le toca.
-                    </p>
-
-                    <div className="mt-2 space-y-1.5">
-                      {bloques.length === 0 ? (
-                        <p className="rounded-lg bg-muted px-3 py-2 text-[12.5px] text-muted-foreground">
-                          Todavía no hay bloques creados. Pídele al
-                          administrador que cree al menos uno.
-                        </p>
-                      ) : (
-                        bloques.map((b) => (
-                          <button
-                            key={b.id}
-                            onClick={() => setBloqueId(b.id)}
-                            className={cn(
-                              "pulsable w-full rounded-lg border p-2.5 text-left",
-                              bloqueId === b.id
-                                ? "border-marca-400 bg-marca-50"
-                                : "border-border hover:bg-muted",
-                            )}
-                          >
-                            <span className="flex items-center gap-2">
-                              <span className="text-[0.8667rem] font-semibold text-foreground">
-                                {b.nombre}
-                              </span>
-                              {b.es_default && (
-                                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                                  por defecto
-                                </span>
-                              )}
-                            </span>
-                            <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
-                              {(b.bancos || [])
-                                .map((x) => `${x.banco} ${x.porcentaje}%`)
-                                .join(" · ") || "Sin tarifas cargadas"}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 border-t border-border pt-4">
-                    <button
-                      onClick={aprobar}
-                      disabled={accion !== null || !perfil || !bloqueId || Boolean(ajeno)}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40"
-                    >
-                      <Check className="h-4 w-4" />
-                      {accion === "aprobando"
-                        ? "Aprobando..."
-                        : "Aprobar y activar cuenta"}
-                    </button>
-                    <button
-                      onClick={() => setModoObservar(true)}
-                      disabled={accion !== null || !perfil || Boolean(ajeno)}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"
-                    >
-                      <Cruz className="h-4 w-4" />
-                      Observar documentos
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-[13px] font-semibold">
-                      Qué debe corregir
-                    </label>
-                    <p className="mt-0.5 text-[12px] text-muted-foreground">
-                      El cliente lo lee en su app y puede volver a subir las
-                      fotos desde ahí.
-                    </p>
-                  </div>
-                  <textarea
-                    autoFocus
-                    value={motivo}
-                    onChange={(e) => setMotivo(e.target.value)}
-                    rows={4}
-                    placeholder="Ej: La selfie no deja ver el DNI completo. Tómala sosteniendo el documento junto a tu rostro."
-                    className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2.5 text-sm outline-none transition placeholder:text-muted-foreground focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
-                  />
-                  <span
-                    className={cn(
-                      "block text-[12px]",
-                      motivo.trim().length >= MIN_MOTIVO
-                        ? "text-emerald-600"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    {motivo.trim().length} / {MIN_MOTIVO} mínimo
-                  </span>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setModoObservar(false);
-                        setMotivo("");
-                      }}
-                      className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition hover:bg-muted"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={observar}
-                      disabled={
-                        accion !== null || motivo.trim().length < MIN_MOTIVO
-                      }
-                      className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-40"
-                    >
-                      {accion === "observando"
-                        ? "Enviando..."
-                        : "Enviar observación"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            </Panel>
           )}
         </section>
       </div>
+
       {/* Al cerrar se vuelve a la cola: esta ficha ya no es suya. */}
       <Conflicto
         mensaje={conflicto?.mensaje}

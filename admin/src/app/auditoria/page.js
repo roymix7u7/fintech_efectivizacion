@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -8,10 +8,11 @@ import { explicarError } from "@/lib/acciones";
 import { estadoCola, contadoresDe } from "@/lib/cola";
 import { useRetraso } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
-import Shell, { Lupa, Reloj } from "@/components/shell";
+import Shell, { Reloj } from "@/components/shell";
 import Paginador from "@/components/paginador";
-import { EsqueletoFilas, BarraCarga, Esqueleto } from "@/components/carga";
+import { EsqueletoFilas, BarraCarga, BotonAccion, CargaPantalla } from "@/components/carga";
 import { Vacio, Aviso } from "@/components/marca";
+import { Segmentos, Buscador, Barra, Leyenda } from "@/components/piezas";
 
 const POR_PAGINA = 30;
 
@@ -21,14 +22,23 @@ const POR_PAGINA = 30;
  * sin tener que tocar esta tabla.
  */
 function tonoDe(accion = "") {
-  if (/^APROBAR|^ACTIVAR|^DESBLOQUEAR|^CREAR_STAFF/.test(accion))
-    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-  if (/^RECHAZAR|^OBSERVAR|^BLOQUEAR|^DESACTIVAR|^QUITAR/.test(accion))
-    return "bg-red-50 text-red-700 ring-red-200";
-  if (/^CREAR|^EDITAR|^CAMBIAR|^COMISION/.test(accion))
-    return "bg-marca-50 text-marca-700 ring-marca-200";
-  return "bg-muted text-muted-foreground ring-border";
+  if (/^APROBAR|^ACTIVAR|^DESBLOQUEAR|^CREAR_STAFF|^ACEPTA/.test(accion)) return "bg-emerald-50 text-emerald-700";
+  if (/^RECHAZAR|^OBSERVAR|^BLOQUEAR|^DESACTIVAR|^QUITAR|^ELIMINAR|^RETIRA|^ANONIMIZAR/.test(accion)) return "bg-red-50 text-red-700";
+  if (/^CREAR|^EDITAR|^CAMBIAR|^COMISION|^ASIGNAR|^PUBLICAR|^GUARDAR|^FIJAR/.test(accion)) return "bg-marca-100 text-marca-700";
+  if (/PAGO|LOTE/.test(accion)) return "bg-oro-100 text-oro-700";
+  return "bg-muted text-muted-foreground";
 }
+
+// Atajos para lo que más se busca. Filtran por una parte del nombre.
+const FAMILIAS = [
+  { clave: "", etiqueta: "Todo" },
+  { clave: "APROBAR", etiqueta: "Aprobaciones" },
+  { clave: "RECHAZAR", etiqueta: "Rechazos" },
+  { clave: "BLOQUEAR", etiqueta: "Bloqueos" },
+  { clave: "ROL", etiqueta: "Roles" },
+  { clave: "COMISION", etiqueta: "Comisiones" },
+  { clave: "PAGO", etiqueta: "Pagos" },
+];
 
 function fechaLarga(iso) {
   return new Date(iso).toLocaleString("es-PE", {
@@ -40,10 +50,25 @@ function fechaLarga(iso) {
   });
 }
 
+const hoyISO = (dias = 0) => {
+  const d = new Date(Date.now() - dias * 86400000);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
+/** Un valor del detalle, legible: listas separadas por comas, objetos en una línea. */
+function valorLegible(v) {
+  if (v === null || v === undefined || v === "") return "—";
+  if (typeof v === "boolean") return v ? "Sí" : "No";
+  if (Array.isArray(v)) return v.map(valorLegible).join(", ");
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
 export default function AuditoriaPage() {
   const [session, setSession] = useState(sesionEnCache);
   const [logs, setLogs] = useState([]);
   const [accion, setAccion] = useState("");
+  const [familia, setFamilia] = useState("");
   const [fecha, setFecha] = useState("");
   const [pagina, setPagina] = useState(0);
   const [total, setTotal] = useState(0);
@@ -71,8 +96,14 @@ export default function AuditoriaPage() {
       .order("created_at", { ascending: false })
       .range(pag * POR_PAGINA, pag * POR_PAGINA + POR_PAGINA - 1);
 
-    if (buscar) q = q.ilike("accion", `%${buscar}%`);
-    if (dia) q = q.gte("created_at", dia).lte("created_at", dia + "T23:59:59");
+    // Lo escrito se busca con o sin guiones bajos: "cambiar rol" encuentra CAMBIAR_ROL.
+    if (buscar) q = q.ilike("accion", `%${buscar.trim().replace(/\s+/g, "_")}%`);
+    if (dia) {
+      // El día en hora de Lima, no en UTC: si no, lo de la noche caía en el día siguiente.
+      const desde = new Date(`${dia}T00:00:00`).toISOString();
+      const hasta = new Date(`${dia}T23:59:59.999`).toISOString();
+      q = q.gte("created_at", desde).lte("created_at", hasta);
+    }
 
     const { data, count, error: consultaError } = await q;
     if (mia !== peticion.current) return;
@@ -99,180 +130,200 @@ export default function AuditoriaPage() {
     });
   }, [router, cargar]);
 
+  const filtroAccion = termino || familia;
+
   useEffect(() => {
     if (!session) return;
-    cargar(termino, fecha, pagina, true);
+    cargar(filtroAccion, fecha, pagina, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [termino, fecha, pagina]);
+  }, [filtroAccion, fecha, pagina]);
 
   useEffect(() => {
     setPagina(0);
-  }, [termino, fecha]);
+  }, [filtroAccion, fecha]);
 
-  if (!session) return null;
+  if (!session) return <CargaPantalla />;
+
+  const hayFiltro = accion || fecha || familia;
 
   return (
     <Shell
       session={session}
       contadores={contadores}
       titulo="Auditoría"
-      descripcion={
-        primeraCarga
-          ? "Cargando..."
-          : `${total} ${total === 1 ? "acción registrada" : "acciones registradas"}`
-      }
+      descripcion={primeraCarga ? "Cargando..." : `${total} ${total === 1 ? "acción registrada" : "acciones registradas"}${hayFiltro ? " con el filtro" : ""}`}
+      ayuda="Todo lo que hace el equipo queda registrado aquí con su nombre y la hora. No se puede borrar ni editar. Pulsa una fila para ver qué cambió."
     >
       <BarraCarga activa={refrescando} />
 
       {error && (
-        <div className="mb-5 animate-aparecer">
-          <Aviso onCerrar={() => setError("")}>{error}</Aviso>
-        </div>
+        <Aviso className="mb-4 animate-aparecer" onCerrar={() => setError("")}>
+          {error}
+        </Aviso>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[220px] max-w-sm flex-1">
-          <Lupa className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            value={accion}
-            onChange={(e) => setAccion(e.target.value)}
-            placeholder="Tipo de acción: aprobar, comision, rol..."
-            className="w-full rounded-lg border border-input bg-card py-2.5 pl-9 pr-9 text-[0.9333rem] outline-none transition focus:border-marca-500 focus:ring-4 focus:ring-marca-500/10"
-          />
-          {accion !== termino && (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2">
-              <Esqueleto className="h-3 w-3 rounded-full" />
-            </span>
-          )}
-        </div>
-        <input
-          type="date"
-          value={fecha}
-          onChange={(e) => setFecha(e.target.value)}
-          className="cifras rounded-lg border border-input bg-card px-3 py-2.5 text-[0.9333rem] outline-none focus:border-marca-500"
+      <Barra>
+        <Segmentos
+          valor={familia}
+          onCambio={(v) => {
+            setFamilia(v);
+            setAccion("");
+          }}
+          tamano="chico"
+          opciones={FAMILIAS}
         />
-        {(accion || fecha) && (
-          <button
+      </Barra>
+      <Barra>
+        <Buscador
+          valor={accion}
+          onCambio={(v) => {
+            setAccion(v);
+            if (v) setFamilia("");
+          }}
+          pendiente={accion !== termino}
+          placeholder="Buscar una acción: cambiar rol, bloque, guía..."
+          className="w-full sm:w-80"
+        />
+        <input
+          id="fecha"
+          type="date"
+          aria-label="Filtrar por día"
+          value={fecha}
+          max={hoyISO()}
+          onChange={(e) => setFecha(e.target.value)}
+          className="campo cifras h-10 w-auto"
+        />
+        <BotonAccion tono={fecha === hoyISO() ? "primario" : "neutro"} tamano="chico" onClick={() => setFecha(hoyISO())}>
+          Hoy
+        </BotonAccion>
+        <BotonAccion tono={fecha === hoyISO(1) ? "primario" : "neutro"} tamano="chico" onClick={() => setFecha(hoyISO(1))}>
+          Ayer
+        </BotonAccion>
+        {hayFiltro && (
+          <BotonAccion
+            tono="suave"
+            tamano="chico"
             onClick={() => {
               setAccion("");
               setFecha("");
+              setFamilia("");
             }}
-            className="pulsable rounded-lg border border-border px-3 py-2.5 text-[0.8667rem] font-medium text-muted-foreground hover:bg-muted"
           >
-            Limpiar
-          </button>
+            Limpiar filtros
+          </BotonAccion>
         )}
-      </div>
+      </Barra>
 
       {primeraCarga ? (
-        <EsqueletoFilas filas={10} alto="h-[56px]" />
+        <EsqueletoFilas filas={10} alto="h-[52px]" />
       ) : logs.length === 0 ? (
         <Vacio
-          icono={<Reloj className="h-5 w-5" />}
-          titulo={accion || fecha ? "Sin coincidencias" : "Sin registros"}
-          detalle={
-            accion || fecha
-              ? "Ninguna acción coincide con el filtro."
-              : "Todavía no se ha registrado ninguna acción."
-          }
+          icono={<Reloj />}
+          titulo={hayFiltro ? "Sin coincidencias" : "Sin registros"}
+          detalle={hayFiltro ? "Ninguna acción coincide con el filtro." : "Todavía no se ha registrado ninguna acción."}
         />
       ) : (
         <>
-          <div
-            className={cn(
-              "overflow-hidden rounded-xl border border-border bg-card shadow-panel transition-opacity",
-              refrescando && "opacity-60",
-            )}
-          >
-            <ul className="divide-y divide-border">
-              {logs.map((l, i) => {
-                const expandido = abierto === l.id;
-                const tieneDetalle = l.datos_antes || l.datos_despues;
-                return (
-                  <li
-                    key={l.id}
-                    className="entra"
-                    style={{ "--retraso": `${Math.min(i, 16) * 22}ms` }}
-                  >
-                    <button
-                      onClick={() =>
-                        setAbierto(expandido ? null : tieneDetalle ? l.id : null)
-                      }
-                      className={cn(
-                        "flex w-full items-center gap-3 px-4 py-3 text-left transition",
-                        tieneDetalle ? "hover:bg-muted/40" : "cursor-default",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "shrink-0 rounded-md px-2 py-1 text-[0.7333rem] font-semibold uppercase tracking-wide ring-1 ring-inset",
-                          tonoDe(l.accion),
-                        )}
-                      >
-                        {l.accion.replace(/_/g, " ")}
-                      </span>
-
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[0.8667rem] font-medium">
-                          {l.users?.email || "Sistema"}
-                        </p>
-                        <p className="t-micro truncate">{l.entidad}</p>
-                      </div>
-
-                      <span className="cifras hidden shrink-0 text-[0.8rem] text-muted-foreground sm:block">
-                        {fechaLarga(l.created_at)}
-                      </span>
-
-                      {tieneDetalle && (
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          className={cn(
-                            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                            expandido && "rotate-180",
-                          )}
+          <div className={cn("overflow-hidden rounded-xl border border-border bg-card shadow-panel transition-opacity", refrescando && "opacity-60")}>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50 text-left">
+                    <th className="px-4 py-2.5 t-etiqueta">Acción</th>
+                    <th className="px-4 py-2.5 t-etiqueta">Quién</th>
+                    <th className="px-4 py-2.5 t-etiqueta">Sobre</th>
+                    <th className="px-4 py-2.5 t-etiqueta">Cuándo</th>
+                    <th className="w-10 px-2 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {logs.map((l) => {
+                    const expandido = abierto === l.id;
+                    const tieneDetalle = l.datos_antes || l.datos_despues;
+                    const claves = [...new Set([...Object.keys(l.datos_antes || {}), ...Object.keys(l.datos_despues || {})])];
+                    return (
+                      <Fragment key={l.id}>
+                        <tr
+                          onClick={() => tieneDetalle && setAbierto(expandido ? null : l.id)}
+                          className={cn("transition", tieneDetalle ? "cursor-pointer hover:bg-muted/40" : "", expandido && "bg-muted/40")}
                         >
-                          <path d="m6 9 6 6 6-6" />
-                        </svg>
-                      )}
-                    </button>
-
-                    {expandido && (
-                      <div className="animate-aparecer border-t border-border bg-muted/30 px-4 py-3">
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          {[
-                            { t: "Antes", d: l.datos_antes },
-                            { t: "Después", d: l.datos_despues },
-                          ]
-                            .filter((x) => x.d)
-                            .map((x) => (
-                              <div key={x.t}>
-                                <p className="t-etiqueta mb-1">{x.t}</p>
-                                <pre className="cifras scroll-fino overflow-x-auto rounded-md border border-border bg-card p-2.5 font-mono text-[0.7333rem] leading-relaxed">
-                                  {JSON.stringify(x.d, null, 2)}
-                                </pre>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+                          <td className="px-4 py-2.5">
+                            <span className={cn("inline-block rounded-md px-2 py-1 text-xs font-bold uppercase tracking-wide", tonoDe(l.accion))}>
+                              {l.accion.replace(/_/g, " ")}
+                            </span>
+                          </td>
+                          <td className="max-w-[240px] truncate px-4 py-2.5 font-semibold">{l.users?.email || "Sistema"}</td>
+                          <td className="px-4 py-2.5 text-muted-foreground">{(l.entidad || "").replace(/_/g, " ")}</td>
+                          <td className="cifras whitespace-nowrap px-4 py-2.5 text-muted-foreground">{fechaLarga(l.created_at)}</td>
+                          <td className="px-2 py-2.5">
+                            {tieneDetalle && (
+                              <button
+                                aria-label={expandido ? "Ocultar el detalle" : "Ver el detalle"}
+                                aria-expanded={expandido}
+                                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-card"
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  className={cn("h-4 w-4 transition-transform", expandido && "rotate-180")}
+                                >
+                                  <path d="m6 9 6 6 6-6" />
+                                </svg>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                        {expandido && (
+                          <tr className="bg-muted/30">
+                            <td colSpan={5} className="px-4 py-3">
+                              <table className="w-full max-w-3xl text-chico">
+                                <thead>
+                                  <tr className="text-left">
+                                    <th className="w-1/4 pb-1 t-etiqueta">Dato</th>
+                                    {l.datos_antes && <th className="pb-1 t-etiqueta">Antes</th>}
+                                    <th className="pb-1 t-etiqueta">{l.datos_antes ? "Después" : "Valor"}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {claves.map((k) => {
+                                    const antes = l.datos_antes?.[k];
+                                    const despues = l.datos_despues?.[k];
+                                    const cambio = l.datos_antes && JSON.stringify(antes) !== JSON.stringify(despues);
+                                    return (
+                                      <tr key={k} className="border-t border-border/70 align-top">
+                                        <td className="py-1.5 pr-3 font-semibold text-muted-foreground">{k.replace(/_/g, " ")}</td>
+                                        {l.datos_antes && <td className="cifras break-all py-1.5 pr-3 text-muted-foreground line-through decoration-red-300">{cambio ? valorLegible(antes) : ""}</td>}
+                                        <td className={cn("cifras break-all py-1.5 font-semibold", cambio && "text-emerald-700")}>{valorLegible(despues ?? (l.datos_antes ? undefined : antes))}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="border-t border-border px-4 py-2.5">
+              <Leyenda
+                items={[
+                  { texto: "Aprobar o activar", color: "bg-emerald-500" },
+                  { texto: "Rechazar, bloquear o quitar", color: "bg-red-500" },
+                  { texto: "Crear o cambiar", color: "bg-marca-500" },
+                  { texto: "Pagos", color: "bg-oro-500" },
+                ]}
+              />
+            </div>
           </div>
 
-          <Paginador
-            pagina={pagina}
-            porPagina={POR_PAGINA}
-            total={total}
-            cargando={refrescando}
-            onCambio={setPagina}
-          />
+          <Paginador pagina={pagina} porPagina={POR_PAGINA} total={total} cargando={refrescando} onCambio={setPagina} />
         </>
       )}
     </Shell>
