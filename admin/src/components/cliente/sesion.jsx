@@ -1,70 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import {
-  supabaseCliente,
-  tiempoRestante,
-  cerrarSesionCliente,
-} from "@/lib/cliente";
 import { nombreBanco } from "@/lib/bancos";
 import { prepararFoto, ElegirFoto } from "./fotos";
 import { Encabezado } from "./piezas";
+import { useCuenta } from "./contexto";
 
 /**
- * Las pantallas para operar (tarjeta, cuenta, solicitud) solo son para
- * clientes con la cuenta aprobada, como en la app. Cualquier otro caso
- * vuelve a Mi cuenta, que sabe explicar en qué estado está.
+ * Las pantallas para operar (tarjeta, cuenta, solicitud) son solo para
+ * clientes con la cuenta aprobada. La sesión la carga una sola vez el
+ * layout de /cuenta (ProveedorCuenta); aquí solo se lee.
  */
 export function useClienteActivo() {
-  const router = useRouter();
-  const [sesion, setSesion] = useState(null);
-
-  useEffect(() => {
-    const sb = supabaseCliente();
-    let vivo = true;
-    (async () => {
-      const {
-        data: { session },
-      } = await sb.auth.getSession();
-      if (!session) return router.replace("/ingresar");
-      if (tiempoRestante() <= 0) {
-        await cerrarSesionCliente();
-        return router.replace("/ingresar?expirada=1");
-      }
-      const [{ data: u }, { data: p }] = await Promise.all([
-        sb
-          .from("users")
-          .select("rol, estado")
-          .eq("id", session.user.id)
-          .maybeSingle(),
-        sb
-          .from("perfiles_cliente")
-          .select("id, nombres, apellidos")
-          .eq("user_id", session.user.id)
-          .maybeSingle(),
-      ]);
-      if (!p || u?.rol !== "cliente" || u?.estado !== "activo")
-        return router.replace("/cuenta");
-      if (vivo) setSesion({ usuario: session.user, perfil: p });
-    })();
-    // Cierre automático al cumplirse las dos horas.
-    const t = setTimeout(
-      async () => {
-        await cerrarSesionCliente();
-        router.replace("/ingresar?expirada=1");
-      },
-      Math.max(0, tiempoRestante()),
-    );
-    return () => {
-      vivo = false;
-      clearTimeout(t);
-    };
-  }, [router]);
-
-  return sesion;
+  const cuenta = useCuenta();
+  if (!cuenta || cuenta.estado !== "activo" || !cuenta.perfil) return null;
+  return { usuario: cuenta.usuario, perfil: cuenta.perfil };
 }
 
 /** Encabezado de las pantallas internas: siempre se puede volver a Mi cuenta. */
@@ -92,6 +44,15 @@ export function EncabezadoInterno() {
       }
     />
   );
+}
+
+/**
+ * Contenido de una pantalla de Mi cuenta. El encabezado y la barra los
+ * pone el layout, así que al navegar solo cambia esto.
+ */
+// eslint-disable-next-line no-unused-vars
+export function PantallaCuenta({ activa, sesion, children }) {
+  return children;
 }
 
 /** Grilla para elegir banco. `deshabilitado(b)` devuelve el motivo, o null. */

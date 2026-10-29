@@ -20,7 +20,7 @@ import {
 } from "@/components/cliente/piezas";
 import {
   useClienteActivo,
-  EncabezadoInterno,
+  PantallaCuenta,
   ElegirBanco,
   FotoUnica,
 } from "@/components/cliente/sesion";
@@ -155,8 +155,7 @@ function TarjetaNueva() {
   }
 
   return (
-    <>
-      <EncabezadoInterno />
+    <PantallaCuenta activa="tarjeta" sesion={sesion}>
       <Marco
         titulo="Agregar tarjeta"
         subtitulo="Tarjeta de crédito a tu nombre. Una persona del equipo la verifica antes de que puedas operar."
@@ -252,6 +251,6 @@ function TarjetaNueva() {
           </Boton>
         </form>
       </Marco>
-    </>
+    </PantallaCuenta>
   );
 }

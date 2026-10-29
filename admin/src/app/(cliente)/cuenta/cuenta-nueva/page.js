@@ -15,7 +15,7 @@ import {
 } from "@/components/cliente/piezas";
 import {
   useClienteActivo,
-  EncabezadoInterno,
+  PantallaCuenta,
   ElegirBanco,
 } from "@/components/cliente/sesion";
 
@@ -132,8 +132,7 @@ function CuentaNueva() {
   }
 
   return (
-    <>
-      <EncabezadoInterno />
+    <PantallaCuenta activa="cuenta" sesion={sesion}>
       <Marco
         titulo="Agregar cuenta"
         subtitulo="Aquí te depositamos. Debe estar a tu nombre."
@@ -230,6 +229,6 @@ function CuentaNueva() {
           </Boton>
         </form>
       </Marco>
-    </>
+    </PantallaCuenta>
   );
 }

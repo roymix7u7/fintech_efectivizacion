@@ -10,10 +10,15 @@ import { cn } from "@/lib/utils";
    dorado como acento. */
 
 /** Barra superior del área de clientes: solo la marca y una acción. */
-export function Encabezado({ derecha }) {
+export function Encabezado({ derecha, completo }) {
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0B1426]/95 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-5xl items-center gap-3 px-5">
+      <div
+        className={cn(
+          "mx-auto flex h-16 items-center gap-3 px-4 lg:px-6",
+          completo ? "max-w-none" : "max-w-7xl",
+        )}
+      >
         <Link
           href="/"
           className="flex items-center gap-2.5"

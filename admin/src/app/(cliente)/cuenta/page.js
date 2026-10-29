@@ -10,13 +10,9 @@ import {
 } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  supabaseCliente,
-  tiempoRestante,
-  cerrarSesionCliente,
-  motivoDelBloqueo,
   aceptarDocumentos,
   subirFotosIdentidad,
   mensajeError,
@@ -30,15 +26,13 @@ import {
   bancosDelCliente,
   BANCOS_PRINCIPALES,
 } from "@/lib/bancos";
-import {
-  Encabezado,
-  Boton,
-  Aviso,
-  Cargando,
-  Casilla,
-} from "@/components/cliente/piezas";
-import SubidaFotos, { fotosCompletas } from "@/components/cliente/fotos";
+import { Boton, Aviso, Cargando, Casilla } from "@/components/cliente/piezas";
+import SubidaFotos, {
+  fotosCompletas,
+  Ventana,
+} from "@/components/cliente/fotos";
 import { WHATSAPP } from "@/components/sitio/datos";
+import { useCuenta } from "@/components/cliente/contexto";
 
 /**
  * Mi cuenta: lo que ve el cliente con la sesión abierta. Solo sus
@@ -87,13 +81,6 @@ const ESTADO_BANCO = {
   },
 };
 
-const PESTANAS = [
-  { k: "resumen", t: "Resumen" },
-  { k: "solicitudes", t: "Solicitudes" },
-  { k: "bancos", t: "Tarjetas y cuentas", corto: "Tarjetas" },
-  { k: "perfil", t: "Mi perfil" },
-];
-
 const fecha = (f, conHora) =>
   f
     ? new Date(f).toLocaleString("es-PE", {
@@ -120,177 +107,54 @@ export default function CuentaPage() {
 }
 
 function Cuenta() {
-  const sb = supabaseCliente();
-  const router = useRouter();
+  const {
+    sb,
+    estado,
+    usuario,
+    perfil,
+    legales,
+    setLegales,
+    bloqueo,
+    recienAprobada,
+    recargar,
+    salir,
+  } = useCuenta();
   const params = useSearchParams();
   const bienvenida = params.get("bienvenida") === "1";
   const guardado = {
     tarjeta: "Tarjeta enviada a verificación. Te avisaremos cuando esté lista.",
     cuenta: "Cuenta agregada.",
   }[params.get("aviso")];
-  const [estado, setEstado] = useState(null); // pendiente | observado | activo
-  // Si la aprobaron mientras miraba la pantalla, se le dice al entrar.
-  const [recienAprobada, setRecienAprobada] = useState(false);
-  const estadoPrevio = useRef(null);
-  const [usuario, setUsuario] = useState(null);
-  const [perfil, setPerfil] = useState(null);
-  const [legales, setLegales] = useState([]);
-  const [bloqueo, setBloqueo] = useState(null);
-  const [error, setError] = useState("");
 
-  const salir = useCallback(
-    async (motivo) => {
-      await cerrarSesionCliente();
-      router.replace(motivo ? `/ingresar?${motivo}=1` : "/ingresar");
-    },
-    [router],
-  );
-
-  const cargar = useCallback(async () => {
-    setError("");
-    try {
-      const {
-        data: { session },
-      } = await sb.auth.getSession();
-      if (!session) return router.replace("/ingresar");
-      // Dos horas desde que se escribió la contraseña, como en la app.
-      if (tiempoRestante() <= 0) return salir("expirada");
-
-      const user = session.user;
-      const [{ data: u }, { data: p }] = await Promise.all([
-        sb.from("users").select("rol, estado").eq("id", user.id).maybeSingle(),
-        sb
-          .from("perfiles_cliente")
-          .select(
-            "id, nombres, apellidos, tipo_documento, dni, telefono, direccion, motivo_observacion, created_at, acepta_promociones",
-          )
-          .eq("user_id", user.id)
-          .maybeSingle(),
-      ]);
-      if (u && u.rol !== "cliente") return salir();
-      // Verificó el correo pero no terminó: se retoma el registro.
-      if (!p) return router.replace("/registro");
-      if (u?.estado === "bloqueado") {
-        const motivo = await motivoDelBloqueo(user.id);
-        await cerrarSesionCliente();
-        return setBloqueo({ motivo });
-      }
-      setUsuario(user);
-      setPerfil(p);
-      setEstado(u?.estado || "pendiente");
-      const { data: pend } = await sb.rpc("consentimientos_pendientes");
-      setLegales(pend || []);
-    } catch (e) {
-      setError(mensajeError(e));
-    }
-  }, [sb, router, salir]);
-
-  useEffect(() => {
-    cargar();
-  }, [cargar]);
-
-  // Mientras espera la revisión se entera sola de la respuesta del
-  // equipo, como en la app: en vivo por la fila de users, cada 30 s por
-  // si se cortó la conexión, y al volver a la pestaña.
-  const enEspera = estado === "pendiente" || estado === "observado";
-  useEffect(() => {
-    if (!usuario || !enEspera) return;
-    const canal = sb
-      .channel(`mi-revision-${usuario.id}-${Date.now()}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "users",
-          filter: `id=eq.${usuario.id}`,
-        },
-        () => cargar(),
-      )
-      .subscribe();
-    const reloj = setInterval(cargar, 30000);
-    const alVolver = () => document.visibilityState === "visible" && cargar();
-    document.addEventListener("visibilitychange", alVolver);
-    return () => {
-      sb.removeChannel(canal);
-      clearInterval(reloj);
-      document.removeEventListener("visibilitychange", alVolver);
-    };
-  }, [sb, usuario, enEspera, cargar]);
-
-  useEffect(() => {
-    if (
-      estado === "activo" &&
-      (estadoPrevio.current === "pendiente" ||
-        estadoPrevio.current === "observado")
-    )
-      setRecienAprobada(true);
-    if (estado) estadoPrevio.current = estado;
-  }, [estado]);
-
-  // Cierre automático al cumplirse las dos horas.
-  useEffect(() => {
-    if (!estado) return;
-    const t = setTimeout(
-      () => salir("expirada"),
-      Math.max(0, tiempoRestante()),
-    );
-    return () => clearTimeout(t);
-  }, [estado, salir]);
-
-  const derecha = estado && (
-    <button
-      onClick={() => salir()}
-      className="rounded-full px-4 py-2 text-sm font-semibold text-white/80 ring-1 ring-white/15 transition hover:bg-white/10 hover:text-white"
-    >
-      Cerrar sesión
-    </button>
-  );
-
-  if (bloqueo)
+  if (estado === "bloqueado")
     return (
-      <>
-        <Encabezado />
-        <Franja>
-          <span className="inline-flex rounded-full bg-red-500/15 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-red-300">
-            Cuenta bloqueada
-          </span>
-          <h1 className="mt-4 font-heading text-3xl font-normal">
-            No puedes operar por ahora
-          </h1>
-          <p className="mt-3 max-w-xl text-white/70">
-            {bloqueo.motivo
-              ? `Motivo: ${bloqueo.motivo}`
-              : "Escríbenos para conocer el motivo."}
-          </p>
-          <a
-            href={`https://wa.me/${WHATSAPP}`}
-            target="_blank"
-            rel="noopener"
-            className="mt-6 inline-flex h-12 items-center rounded-full bg-oro-500 px-6 font-bold text-marca-900 hover:bg-oro-300"
-          >
-            Escribir por WhatsApp
-          </a>
-        </Franja>
-      </>
+      <Franja>
+        <span className="inline-flex rounded-full bg-red-500/15 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-red-300">
+          Cuenta bloqueada
+        </span>
+        <h1 className="mt-4 font-heading text-3xl font-normal">
+          No puedes operar por ahora
+        </h1>
+        <p className="mt-3 max-w-xl text-white/70">
+          {bloqueo?.motivo
+            ? `Motivo: ${bloqueo.motivo}`
+            : "Escríbenos para conocer el motivo."}
+        </p>
+        <a
+          href={`https://wa.me/${WHATSAPP}`}
+          target="_blank"
+          rel="noopener"
+          className="mt-6 inline-flex h-12 items-center rounded-full bg-oro-500 px-6 font-bold text-marca-900 hover:bg-oro-300"
+        >
+          Escribir por WhatsApp
+        </a>
+      </Franja>
     );
 
-  if (error)
-    return (
-      <>
-        <Encabezado />
-        <main className="mx-auto max-w-lg px-4 py-14">
-          <Aviso>{error}</Aviso>
-          <Boton onClick={cargar}>Reintentar</Boton>
-        </main>
-      </>
-    );
-
-  if (!estado) return <Cargando texto="Abriendo tu cuenta..." />;
+  if (!estado || !perfil) return <Cargando />;
 
   return (
     <>
-      <Encabezado derecha={derecha} />
       {legales.length > 0 && (
         <AceptarLegales
           lista={legales}
@@ -317,7 +181,7 @@ function Cuenta() {
           perfil={perfil}
           usuario={usuario}
           bienvenida={bienvenida}
-          onEnviado={cargar}
+          onEnviado={recargar}
         />
       )}
     </>
@@ -325,9 +189,14 @@ function Cuenta() {
 }
 
 /** Franja azul noche bajo el encabezado: el saludo y lo principal. */
-function Franja({ children, pie }) {
+function Franja({ children, pie, enMarco }) {
   return (
-    <section className="relative isolate overflow-hidden bg-[#0B1426] text-white">
+    <section
+      className={cn(
+        "relative isolate overflow-hidden bg-[#0B1426] text-white",
+        enMarco && "rounded-3xl",
+      )}
+    >
       <div
         aria-hidden
         className="pointer-events-none absolute -right-32 -top-40 -z-10 h-96 w-96 rounded-full bg-oro-500/15 blur-3xl"
@@ -336,7 +205,15 @@ function Franja({ children, pie }) {
         aria-hidden
         className="pointer-events-none absolute -bottom-48 -left-24 -z-10 h-96 w-96 rounded-full bg-[#2B4C9B]/35 blur-3xl"
       />
-      <div className="mx-auto max-w-5xl px-4 pb-8 pt-9 sm:px-5">{children}</div>
+      <div
+        className={
+          enMarco
+            ? "px-4 pb-7 pt-8 sm:px-7"
+            : "mx-auto max-w-5xl px-4 pb-8 pt-9 sm:px-5"
+        }
+      >
+        {children}
+      </div>
       {pie}
     </section>
   );
@@ -520,33 +397,70 @@ function EnRevision({ sb, estado, perfil, usuario, bienvenida, onEnviado }) {
 
 /* ───────── Cuenta activa ───────── */
 
-function Activo({ sb, perfil, usuario, guardado, onSalir }) {
-  const params = useSearchParams();
-  const [datos, setDatos] = useState(null);
-  const [error, setError] = useState("");
-  // Tras agregar una tarjeta o cuenta se vuelve a su pestaña.
-  const [pestana, setPestana] = useState(() =>
-    params.get("aviso") ? "bancos" : "resumen",
+/** Qué cambió desde la carga anterior, dicho para el cliente. */
+function novedadesEntre(antes, ahora) {
+  if (!antes) return [];
+  const out = [];
+  const previas = Object.fromEntries(
+    antes.tarjetas.map((t) => [t.id, t.estado]),
   );
-
-  useEffect(() => {
-    const leer = () => {
-      const h = window.location.hash.slice(1);
-      if (PESTANAS.some((p) => p.k === h)) setPestana(h);
-    };
-    leer();
-    window.addEventListener("hashchange", leer);
-    return () => window.removeEventListener("hashchange", leer);
-  }, []);
-
-  function irA(k) {
-    setPestana(k);
-    window.history.replaceState(null, "", `/cuenta#${k}`);
+  for (const t of ahora.tarjetas) {
+    const e = previas[t.id];
+    if (!e || e === t.estado) continue;
+    const cual = `${nombreBanco(t.banco)} •••• ${t.ultimos_4}`;
+    if (t.estado === "aprobado")
+      out.push({
+        tono: "exito",
+        texto: `Tu tarjeta ${cual} fue verificada. Ya puedes operar con ella.`,
+      });
+    if (t.estado === "rechazado")
+      out.push({
+        tono: "error",
+        texto: `Tu tarjeta ${cual} fue rechazada${t.motivo_rechazo ? `: ${t.motivo_rechazo}` : "."}`,
+      });
   }
+  const solPrevias = Object.fromEntries(
+    antes.solicitudes.map((x) => [x.id, x.estado]),
+  );
+  for (const x of ahora.solicitudes) {
+    const e = solPrevias[x.id];
+    if (!e || e === x.estado) continue;
+    if (x.estado === "aprobado")
+      out.push({
+        tono: "exito",
+        texto: `Tu solicitud ${x.codigo} fue aprobada: estamos preparando tu depósito.`,
+      });
+    if (x.estado === "pagado")
+      out.push({
+        tono: "exito",
+        texto: `¡Te depositamos la solicitud ${x.codigo}! Revisa tu cuenta.`,
+      });
+    if (x.estado === "rechazado")
+      out.push({
+        tono: "error",
+        texto: `Tu solicitud ${x.codigo} fue rechazada${x.motivo_rechazo ? `: ${x.motivo_rechazo}` : "."}`,
+      });
+  }
+  return out;
+}
+
+function Activo({ sb, perfil, usuario, guardado, onSalir }) {
+  const {
+    vista: pestana,
+    irA,
+    setEnCurso,
+    setNoticiasNuevas,
+    cache,
+  } = useCuenta();
+  // Lo último cargado se muestra al instante y se actualiza detrás.
+  const [datos, setDatos] = useState(() => cache.current);
+  const [novedades, setNovedades] = useState([]);
+  const previo = useRef(cache.current);
+  const [error, setError] = useState("");
 
   const cargar = useCallback(async () => {
     try {
-      const [s, t, c, com, alertas, avisos] = await Promise.all([
+      const [s, t, c, com, alertas, avisos, noticias] = await Promise.all([
         sb
           .from("solicitudes")
           .select(
@@ -575,31 +489,79 @@ function Activo({ sb, perfil, usuario, guardado, onSalir }) {
           .eq("user_id", usuario.id)
           .order("created_at", { ascending: false })
           .limit(50),
+        sb
+          .from("alertas_sistema")
+          .select(
+            "id, titulo, mensaje, tipo, imagenes, fecha_inicio, fecha_fin",
+          )
+          .eq("categoria", "noticia")
+          .order("fecha_inicio", { ascending: false })
+          .limit(30),
       ]);
       const fallo = s.error || t.error || c.error || com.error;
       if (fallo) throw fallo;
-      setDatos({
+      const nuevos = {
         solicitudes: s.data || [],
         tarjetas: t.data || [],
         cuentas: c.data || [],
         comisiones: com.data || { bancos: [] },
         alertas,
         avisos: avisos.data || [],
-      });
+        noticias: noticias.data || [],
+      };
+      const cambios = novedadesEntre(previo.current, nuevos);
+      if (cambios.length) setNovedades((n) => [...cambios, ...n].slice(0, 4));
+      previo.current = nuevos;
+      cache.current = nuevos;
+      setDatos(nuevos);
       setError("");
     } catch (e) {
       setError(mensajeError(e));
     }
-  }, [sb, perfil.id, usuario.id]);
+  }, [sb, perfil.id, usuario.id, cache]);
 
-  // Al volver a la pestaña del navegador se actualiza: el equipo pudo
-  // aprobar o pagar algo mientras tanto.
+  // En vivo: lo que el equipo decide en el panel (verificar una tarjeta,
+  // aprobar o pagar una solicitud, publicar una alerta) llega solo. Como
+  // respaldo, se vuelve a pedir cada minuto y al volver a la pestaña.
   useEffect(() => {
     cargar();
+    const canal = sb
+      .channel(`mi-cuenta-${perfil.id}-${Date.now()}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tarjetas",
+          filter: `cliente_id=eq.${perfil.id}`,
+        },
+        () => cargar(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "solicitudes",
+          filter: `cliente_id=eq.${perfil.id}`,
+        },
+        () => cargar(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "alertas_sistema" },
+        () => cargar(),
+      )
+      .subscribe();
+    const reloj = setInterval(cargar, 60000);
     const alVolver = () => document.visibilityState === "visible" && cargar();
     document.addEventListener("visibilitychange", alVolver);
-    return () => document.removeEventListener("visibilitychange", alVolver);
-  }, [cargar]);
+    return () => {
+      sb.removeChannel(canal);
+      clearInterval(reloj);
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+  }, [sb, perfil.id, cargar]);
 
   const solicitudes = useMemo(() => datos?.solicitudes || [], [datos]);
   const tarjetas = useMemo(() => datos?.tarjetas || [], [datos]);
@@ -608,58 +570,19 @@ function Activo({ sb, perfil, usuario, guardado, onSalir }) {
     (x) => x.estado === "pendiente" || x.estado === "aprobado",
   ).length;
   const pagadas = solicitudes.filter((x) => x.estado === "pagado").length;
+  useEffect(() => setEnCurso(enCurso), [enCurso, setEnCurso]);
+  const nuevasNoticias = (datos?.noticias || []).filter(esNueva).length;
+  useEffect(
+    () => setNoticiasNuevas(nuevasNoticias),
+    [nuevasNoticias, setNoticiasNuevas],
+  );
   const listos = bancosDelCliente(tarjetas, cuentas).filter(
     (b) => estadoBanco(b, tarjetas, cuentas) === "listo",
   ).length;
 
-  const pie = (
-    <nav
-      aria-label="Secciones de Mi cuenta"
-      className="mx-auto max-w-5xl overflow-x-auto px-4 sm:px-5"
-    >
-      <ul className="flex min-w-max gap-1">
-        {PESTANAS.map((p) => {
-          const activa = pestana === p.k;
-          return (
-            <li key={p.k}>
-              <button
-                onClick={() => irA(p.k)}
-                aria-current={activa ? "page" : undefined}
-                className={cn(
-                  "relative px-3 pb-4 pt-2 text-sm font-semibold transition sm:px-4",
-                  activa ? "text-white" : "text-white/55 hover:text-white/85",
-                )}
-              >
-                {p.corto ? (
-                  <>
-                    <span className="sm:hidden">{p.corto}</span>
-                    <span className="hidden sm:inline">{p.t}</span>
-                  </>
-                ) : (
-                  p.t
-                )}
-                {p.k === "solicitudes" && enCurso > 0 && (
-                  <span className="cifras ml-1.5 rounded-full bg-oro-500 px-1.5 py-0.5 text-[0.7rem] text-marca-900">
-                    {enCurso}
-                  </span>
-                )}
-                <span
-                  className={cn(
-                    "absolute inset-x-3 bottom-0 h-[3px] rounded-t-full transition",
-                    activa ? "bg-oro-500" : "bg-transparent",
-                  )}
-                />
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
-  );
-
   return (
     <>
-      <Franja pie={pie}>
+      <Franja enMarco>
         <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-sm text-white/60">Hola,</p>
@@ -696,8 +619,17 @@ function Activo({ sb, perfil, usuario, guardado, onSalir }) {
         </dl>
       </Franja>
 
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-5">
+      <main className="py-6">
         {guardado && <Aviso tono="exito">{guardado}</Aviso>}
+        {novedades.map((n, i) => (
+          <Aviso
+            key={n.texto}
+            tono={n.tono}
+            onCerrar={() => setNovedades((l) => l.filter((_, k) => k !== i))}
+          >
+            {n.texto}
+          </Aviso>
+        ))}
         {datos?.alertas?.length > 0 && (
           <AlertasServicio alertas={datos.alertas} userId={usuario.id} />
         )}
@@ -717,12 +649,16 @@ function Activo({ sb, perfil, usuario, guardado, onSalir }) {
             tarjetas={tarjetas}
             cuentas={cuentas}
             comisiones={datos.comisiones}
+            noticias={datos.noticias || []}
+            sb={sb}
             irA={irA}
           />
         ) : pestana === "solicitudes" ? (
           <Solicitudes sb={sb} solicitudes={solicitudes} />
         ) : pestana === "bancos" ? (
           <TarjetasYCuentas tarjetas={tarjetas} cuentas={cuentas} />
+        ) : pestana === "noticias" ? (
+          <Noticias sb={sb} noticias={datos.noticias || []} />
         ) : (
           <Perfil
             sb={sb}
@@ -1276,9 +1212,248 @@ function CuponVigente({ cupon }) {
   );
 }
 
+/* ── Noticias ── */
+
+/** Sobretítulo de cada tipo de noticia, como en la app. */
+const TIPOS_NOTICIA = {
+  promocion: { etiqueta: "Promoción", clase: "bg-oro-500 text-marca-900" },
+  info: { etiqueta: "Aviso", clase: "bg-[#DCE6F7] text-[#1E3A8A]" },
+  advertencia: { etiqueta: "Importante", clase: "bg-[#FCEFC7] text-[#6E5300]" },
+  critico: { etiqueta: "Urgente", clase: "bg-red-600 text-white" },
+};
+const tipoNoticia = (n) => TIPOS_NOTICIA[n?.tipo] || TIPOS_NOTICIA.info;
+// Publicada en los últimos tres días: lleva la marca "Nueva".
+const esNueva = (n) =>
+  n?.fecha_inicio &&
+  Date.now() - new Date(n.fecha_inicio).getTime() < 3 * 86400000;
+function quedanTexto(fin) {
+  if (!fin) return null;
+  const q = Math.ceil((new Date(fin).getTime() - Date.now()) / 86400000);
+  if (q <= 0) return "Último día";
+  return q === 1 ? "Queda 1 día" : `Quedan ${q} días`;
+}
+/** Las imágenes viven en un bucket público: la URL se arma directo. */
+const imagenesDe = (sb, n) =>
+  (n?.imagenes || [])
+    .map((p) =>
+      p.includes("://")
+        ? p
+        : sb.storage.from("noticias-fotos").getPublicUrl(p).data.publicUrl,
+    )
+    .filter(Boolean);
+
+function ChipsNoticia({ n }) {
+  const t = tipoNoticia(n);
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      <Chip clase={t.clase}>{t.etiqueta}</Chip>
+      {esNueva(n) && <Chip clase="bg-emerald-500 text-white">Nueva</Chip>}
+    </span>
+  );
+}
+
+function FechaNoticia({ n, className }) {
+  const quedan = quedanTexto(n.fecha_fin);
+  return (
+    <span className={cn("text-chico", className)}>
+      {fecha(n.fecha_inicio)}
+      {quedan && ` · ${quedan}`}
+    </span>
+  );
+}
+
+/** Portada (la más reciente) y las demás en tarjetas, como en la app. */
+function Noticias({ sb, noticias }) {
+  const [abierta, setAbierta] = useState(null);
+  const noticia = noticias.find((n) => n.id === abierta);
+  if (!noticias.length)
+    return (
+      <Vacio
+        titulo="Sin noticias por ahora"
+        texto="Aquí verás promociones, feriados y novedades del servicio."
+      />
+    );
+  const [portada, ...resto] = noticias;
+  const imgPortada = imagenesDe(sb, portada)[0];
+
+  return (
+    <div className="space-y-5">
+      <button
+        onClick={() => setAbierta(portada.id)}
+        className="group block w-full overflow-hidden rounded-3xl bg-white text-left shadow-[0_1px_2px_rgba(15,27,51,0.05)] ring-1 ring-transparent transition hover:ring-[#C9D6EC]"
+      >
+        <div className="grid md:grid-cols-[1.2fr_1fr]">
+          <div className="relative aspect-[16/9] bg-[#0B1426] md:aspect-auto md:min-h-[260px]">
+            {imgPortada ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={imgPortada}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]"
+              />
+            ) : (
+              <span className="absolute inset-0 flex items-center justify-center text-white/30">
+                Sin imagen
+              </span>
+            )}
+          </div>
+          <div className="flex flex-col gap-3 p-6">
+            <ChipsNoticia n={portada} />
+            <h2 className="font-heading text-2xl leading-tight">
+              {portada.titulo}
+            </h2>
+            {portada.mensaje && (
+              <p className="line-clamp-4 whitespace-pre-line text-[#4F5B74]">
+                {portada.mensaje}
+              </p>
+            )}
+            <span className="mt-auto flex items-center justify-between gap-3 pt-2">
+              <FechaNoticia n={portada} className="text-[#8A93A6]" />
+              <span className="text-sm font-semibold text-marca-700 group-hover:underline">
+                Leer más →
+              </span>
+            </span>
+          </div>
+        </div>
+      </button>
+
+      {resto.length > 0 && (
+        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {resto.map((n) => {
+            const img = imagenesDe(sb, n)[0];
+            return (
+              <li key={n.id}>
+                <button
+                  onClick={() => setAbierta(n.id)}
+                  className="group flex h-full w-full flex-col overflow-hidden rounded-3xl bg-white text-left shadow-[0_1px_2px_rgba(15,27,51,0.05)] ring-1 ring-transparent transition hover:ring-[#C9D6EC]"
+                >
+                  <span className="relative block aspect-[16/9] overflow-hidden bg-[#0B1426]">
+                    {img && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={img}
+                        alt=""
+                        className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                      />
+                    )}
+                  </span>
+                  <span className="flex flex-1 flex-col gap-2 p-4">
+                    <ChipsNoticia n={n} />
+                    <span className="font-semibold leading-snug">
+                      {n.titulo}
+                    </span>
+                    {n.mensaje && (
+                      <span className="line-clamp-2 text-sm text-[#4F5B74]">
+                        {n.mensaje}
+                      </span>
+                    )}
+                    <FechaNoticia
+                      n={n}
+                      className="mt-auto pt-1 text-[#8A93A6]"
+                    />
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <Ventana
+        abierto={Boolean(noticia)}
+        onCerrar={() => setAbierta(null)}
+        titulo={noticia?.titulo || ""}
+        ancho="max-w-2xl"
+      >
+        {noticia && (
+          <div className="space-y-4">
+            <span className="flex flex-wrap items-center justify-between gap-2">
+              <ChipsNoticia n={noticia} />
+              <FechaNoticia n={noticia} className="text-[#8A93A6]" />
+            </span>
+            {imagenesDe(sb, noticia).map((url, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={url}
+                src={url}
+                alt={`${noticia.titulo} (imagen ${i + 1})`}
+                className="w-full rounded-2xl bg-[#0B1426] object-contain"
+              />
+            ))}
+            {noticia.mensaje && (
+              <p className="whitespace-pre-line leading-relaxed text-[#2E3A52]">
+                {noticia.mensaje}
+              </p>
+            )}
+          </div>
+        )}
+      </Ventana>
+    </div>
+  );
+}
+
+/** En el Resumen: las tres últimas, con acceso a todas. */
+function NovedadesResumen({ sb, noticias, irA }) {
+  return (
+    <Panel
+      titulo="Novedades"
+      accion={
+        <BotonChico onClick={() => irA("noticias")}>Ver todas</BotonChico>
+      }
+    >
+      <ul className="grid gap-3 sm:grid-cols-3">
+        {noticias.slice(0, 3).map((n) => {
+          const img = imagenesDe(sb, n)[0];
+          return (
+            <li key={n.id}>
+              <button
+                onClick={() => irA("noticias")}
+                className="flex w-full items-center gap-3 rounded-2xl bg-[#F4F7FB] p-2.5 text-left ring-1 ring-[#E3E9F2] transition hover:bg-[#EEF2F8]"
+              >
+                <span className="h-14 w-20 shrink-0 overflow-hidden rounded-xl bg-[#0B1426]">
+                  {img && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={img}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  )}
+                </span>
+                <span className="min-w-0">
+                  <span className="line-clamp-2 text-sm font-semibold leading-snug">
+                    {n.titulo}
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-1.5 text-chico text-[#8A93A6]">
+                    {esNueva(n) && (
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-emerald-500"
+                        aria-label="Nueva"
+                      />
+                    )}
+                    {tipoNoticia(n).etiqueta} · {fecha(n.fecha_inicio)}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </Panel>
+  );
+}
+
 /* ── Resumen ── */
 
-function Resumen({ solicitudes, tarjetas, cuentas, comisiones, irA }) {
+function Resumen({
+  solicitudes,
+  tarjetas,
+  cuentas,
+  comisiones,
+  noticias,
+  sb,
+  irA,
+}) {
   const bancos = bancosDelCliente(tarjetas, cuentas);
   const rechazadas = tarjetas.filter((t) => t.estado === "rechazado");
   const ultimas = solicitudes.slice(0, 4);
@@ -1398,6 +1573,11 @@ function Resumen({ solicitudes, tarjetas, cuentas, comisiones, irA }) {
           </ul>
         )}
       </Panel>
+      {noticias.length > 0 && (
+        <div className="lg:col-span-2">
+          <NovedadesResumen sb={sb} noticias={noticias} irA={irA} />
+        </div>
+      )}
     </div>
   );
 }

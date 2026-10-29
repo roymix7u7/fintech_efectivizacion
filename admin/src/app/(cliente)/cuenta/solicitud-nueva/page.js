@@ -21,7 +21,7 @@ import {
 import { Marco, Boton, Aviso, Cargando } from "@/components/cliente/piezas";
 import {
   useClienteActivo,
-  EncabezadoInterno,
+  PantallaCuenta,
   FotoUnica,
 } from "@/components/cliente/sesion";
 
@@ -126,7 +126,7 @@ export default function SolicitudNuevaPage() {
 
   if (!sesion || (!datos && !error)) return <Cargando />;
 
-  if (enviada) return <Enviada codigo={enviada} />;
+  if (enviada) return <Enviada codigo={enviada} sesion={sesion} />;
 
   const { tarjetas = [], cuentas = [], comisiones = [] } = datos || {};
   const destinos = cuentasDeDeposito(bancoTarjeta, cuentas);
@@ -211,8 +211,7 @@ export default function SolicitudNuevaPage() {
   }
 
   return (
-    <>
-      <EncabezadoInterno />
+    <PantallaCuenta activa="nueva" sesion={sesion}>
       <Marco
         titulo="Nueva solicitud"
         subtitulo="Paga con tu tarjeta, adjunta el comprobante y te depositamos en tu cuenta."
@@ -485,7 +484,7 @@ export default function SolicitudNuevaPage() {
           </div>
         </div>
       )}
-    </>
+    </PantallaCuenta>
   );
 }
 
@@ -508,10 +507,9 @@ function Paso({ n, titulo, hecho, children }) {
   );
 }
 
-function Enviada({ codigo }) {
+function Enviada({ codigo, sesion }) {
   return (
-    <>
-      <EncabezadoInterno />
+    <PantallaCuenta activa="nueva" sesion={sesion}>
       <main className="mx-auto max-w-lg px-4 py-14">
         <div className="rounded-3xl bg-[#0B1426] p-8 text-center text-white">
           <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-oro-500 text-2xl text-marca-900">
@@ -531,6 +529,6 @@ function Enviada({ codigo }) {
           </Link>
         </div>
       </main>
-    </>
+    </PantallaCuenta>
   );
 }
