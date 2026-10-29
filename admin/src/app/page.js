@@ -385,7 +385,7 @@ export default function Inicio() {
               <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0F1B33] ring-1 ring-white/10">
                 <Image src="/logo.png" alt="" width={26} height={26} className="object-contain" />
               </span>
-              <span className="font-heading font-semibold">AlToque Perú WK</span>
+              <span className="font-heading font-bold tracking-[0.06em]">ALTOQUE PERU <span className="text-oro-500">WK</span></span>
             </div>
             <div className="mt-6 flex gap-2">
               {REDES.map((r) => (

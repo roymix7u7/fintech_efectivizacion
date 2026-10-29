@@ -45,7 +45,7 @@ export default function Menu() {
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0F1B33] ring-1 ring-white/10">
             <Image src="/logo.png" alt="" width={26} height={26} priority className="object-contain" />
           </span>
-          <span className="font-heading text-[0.95rem] font-semibold tracking-tight text-white">AlToque Perú</span>
+          <span className="whitespace-nowrap font-heading text-[0.9rem] font-bold tracking-[0.06em] text-white">ALTOQUE PERU <span className="text-oro-500">WK</span></span>
         </Link>
 
         <ul className="mx-auto hidden items-center gap-1 lg:flex">

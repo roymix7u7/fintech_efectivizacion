@@ -34,7 +34,7 @@ export default function LayoutPublico({ children }) {
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-marca-900">
               <Image src="/logo.png" alt="" width={26} height={26} className="object-contain" />
             </span>
-            <span className="hidden font-heading text-[0.95rem] font-semibold tracking-tight text-marca-900 sm:block">AlToque Perú</span>
+            <span className="hidden font-heading text-[0.95rem] font-bold tracking-[0.06em] text-marca-900 sm:block">ALTOQUE PERU <span className="text-oro-600">WK</span></span>
           </Link>
           <Link
             href="/"
