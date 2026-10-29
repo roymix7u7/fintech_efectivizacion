@@ -49,7 +49,7 @@ export const TARIFAS = [
   { nombre: "Scotiabank", color: "#EC111A", pct: 1.5, limite: 2000, minimo: 20 },
   { nombre: "Interbank", color: "#00A651", pct: 2, limite: 1500, minimo: 30, codigo: true },
   { nombre: "CMR", color: "#00897B", pct: 2, limite: 1500, minimo: 30, codigo: true },
-  { nombre: "iO", color: "#5B6CFF", pct: 2, limite: 1000, minimo: 30, codigo: true },
+  { nombre: "iO", color: "#5B3FD6", pct: 2, limite: 1000, minimo: 30, codigo: true },
 ];
 
 export const BANCOS = TARIFAS;

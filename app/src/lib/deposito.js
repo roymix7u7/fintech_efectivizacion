@@ -9,7 +9,7 @@
 //      (CCI) es opcional: sola no alcanza para recibir.
 //   2. Tarjeta de un banco principal → cuenta normal del MISMO banco.
 //      Es inmediato y no paga comisión interbancaria.
-//   3. Tarjeta CMR u "Otros" → cuenta normal de CUALQUIER banco que
+//   3. Tarjeta CMR, iO u "Otros" → cuenta normal de CUALQUIER banco que
 //      tenga el cliente: esos emisores no tienen cuentas propias en las
 //      que depositar.
 //
@@ -66,7 +66,7 @@ export function faltaParaRecibir(bancoTarjeta, cuentas = []) {
 }
 
 /** Orden en que se muestran los bancos en todas las listas. */
-export const ORDEN_BANCOS = [...BANCOS_PRINCIPALES, "CMR", "Otros"];
+export const ORDEN_BANCOS = [...BANCOS_PRINCIPALES, "CMR", "iO", "Otros"];
 
 /**
  * Cómo está un banco del cliente, para la lista "Mis bancos":

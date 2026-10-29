@@ -11,7 +11,7 @@ export function AvisoMarcas({ conEmpresa }) {
   return (
     <View style={{ gap: 6, paddingHorizontal: 8, paddingTop: 8 }}>
       <Text style={{ fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.text3, textAlign: "center" }}>
-        AlToque no está afiliado ni es patrocinado por BCP, BBVA, Interbank, Scotiabank, BanBif, CMR ni ningún otro
+        AlToque no está afiliado ni es patrocinado por BCP, BBVA, Interbank, Scotiabank, BanBif, CMR, iO ni ningún otro
         banco o emisor. Sus nombres y marcas pertenecen a sus dueños y se usan solo para identificar el banco de tu
         tarjeta o cuenta.
       </Text>

@@ -75,7 +75,7 @@ export default function LayoutPublico({ children }) {
             </p>
           </div>
           <p className="text-xs text-white/40">
-            AlToque no está afiliado ni es patrocinado por BCP, BBVA, Interbank, Scotiabank, BanBif, CMR ni ningún otro banco o emisor. Sus
+            AlToque no está afiliado ni es patrocinado por BCP, BBVA, Interbank, Scotiabank, BanBif, CMR, iO ni ningún otro banco o emisor. Sus
             marcas pertenecen a sus dueños.
           </p>
         </div>

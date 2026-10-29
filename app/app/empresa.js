@@ -244,6 +244,7 @@ export default function EmpresaScreen() {
               <View style={s.destino}>
                 <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
                   <BankBadge bank="CMR" size={26} />
+                  <BankBadge bank="iO" size={26} />
                   <View style={s.otras}>
                     <Text style={s.otrasTexto}>Otras</Text>
                   </View>

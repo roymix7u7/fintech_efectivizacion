@@ -56,7 +56,7 @@ export const colors = {
   white: "#FFFFFF",
 };
 
-/** Claves: BCP | BBVA | INTERBANK | SCOTIABANK | BANBIF | CMR | OTROS */
+/** Claves: BCP | BBVA | INTERBANK | SCOTIABANK | BANBIF | CMR | IO | OTROS */
 export const banks = {
   // En BCP el texto encima va oscuro: el blanco no pasa contraste.
   BCP: { code: "BCP", name: "BCP", color: "#E67E00", onColor: "#0F1B33" },
@@ -65,6 +65,7 @@ export const banks = {
   SCOTIABANK: { code: "SBK", name: "Scotiabank", color: "#CC0000", onColor: "#FFFFFF" },
   BANBIF: { code: "BIF", name: "BanBif", color: "#0077C0", onColor: "#FFFFFF" },
   CMR: { code: "CMR", name: "CMR", color: "#00897B", onColor: "#FFFFFF" },
+  IO: { code: "iO", name: "iO", color: "#5B3FD6", onColor: "#FFFFFF" },
   OTROS: { code: "···", name: "Otros", color: "#8A93A6", onColor: "#FFFFFF" },
 };
 

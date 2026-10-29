@@ -13,7 +13,7 @@ import { Rueda, BotonAccion, Esqueleto, CargaPantalla } from "@/components/carga
 import { Campo, Panel, Tostada, MensajeError, useConfirmar } from "@/components/piezas";
 import Pista from "@/components/pista";
 
-const BANCOS_DEFAULT = ["BCP", "BBVA", "Interbank", "Scotiabank", "BanBif"];
+const BANCOS_DEFAULT = ["BCP", "BBVA", "Interbank", "Scotiabank", "BanBif", "CMR", "iO"];
 
 // Público (migración 50): la app usa la URL directa y la guarda con la
 // guía en el teléfono. Solo el administrador puede subir.

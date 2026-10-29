@@ -53,7 +53,7 @@ begin
   if not exists (select 1 from public.bloques_comision where id = p_cupon) then
     raise exception 'Ese cupón no existe.' using errcode = 'P0001';
   end if;
-  if p_banco is null or p_banco not in ('BCP', 'BBVA', 'Interbank', 'Scotiabank', 'BanBif', 'CMR', 'Otros') then
+  if p_banco is null or p_banco not in ('BCP', 'BBVA', 'Interbank', 'Scotiabank', 'BanBif', 'CMR', 'iO', 'Otros') then
     raise exception 'Banco no válido: %.', coalesce(p_banco, '(vacío)') using errcode = 'P0001';
   end if;
   if p_porcentaje is null or p_porcentaje < 0 or p_porcentaje > 100 then
@@ -205,6 +205,7 @@ $$;
 --      BCP, BBVA, BanBif     1 %   mínimo S/12 bajo S/1,200
 --      Scotiabank            1.5 % mínimo S/20 bajo S/2,000
 --      Interbank, CMR        2 %   mínimo S/30 bajo S/1,500
+--      iO                    2 %   mínimo S/30 bajo S/1,000
 --      Otras tarjetas        8 %   (hoja oficial; no se publica)
 -- ------------------------------------------------------------
 insert into public.bloques_comision_banco (bloque_id, banco, porcentaje, minimo, limite)
@@ -217,6 +218,7 @@ cross join (values
   ('Scotiabank', 1.50, 20.00, 2000.00),
   ('Interbank',  2.00, 30.00, 1500.00),
   ('CMR',        2.00, 30.00, 1500.00),
+  ('iO',         2.00, 30.00, 1000.00),
   ('Otros',      8.00, null,  null)
 ) as t(banco, porcentaje, minimo, limite)
 where b.es_default

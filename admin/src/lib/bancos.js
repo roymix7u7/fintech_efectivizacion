@@ -11,6 +11,7 @@ export const BANCOS_TARJETA = [
   "Scotiabank",
   "BanBif",
   "CMR",
+  "iO",
   "Otros",
 ];
 
@@ -22,7 +23,7 @@ export const BANCOS_TARJETA = [
  *
  *   - Recibe la cuenta NORMAL (ahorros). La CCI es solo un dato extra.
  *   - Tarjeta de banco principal: cuenta normal del mismo banco.
- *   - Tarjeta CMR u "Otros": cuenta normal de cualquier banco.
+ *   - Tarjeta CMR, iO u "Otros": cuenta normal de cualquier banco.
  */
 export const BANCOS_PRINCIPALES = [
   "BCP",
@@ -40,7 +41,7 @@ export function recibeDeposito(bancoTarjeta, cuenta) {
 }
 
 /** Orden en que se muestran los bancos (igual que la app). */
-export const ORDEN_BANCOS = [...BANCOS_PRINCIPALES, "CMR", "Otros"];
+export const ORDEN_BANCOS = [...BANCOS_PRINCIPALES, "CMR", "iO", "Otros"];
 export const nombreBanco = (b) => (b === "Otros" ? "Otro banco" : b);
 
 /** Cuentas en las que se puede depositar una operación de esa tarjeta. */
@@ -83,6 +84,7 @@ export const COLOR_BANCO = {
   Scotiabank: { fondo: "#CC0000", texto: "#FFFFFF", sigla: "SBK" },
   BanBif: { fondo: "#0077C0", texto: "#FFFFFF", sigla: "BIF" },
   CMR: { fondo: "#00897B", texto: "#FFFFFF", sigla: "CMR" },
+  iO: { fondo: "#5B3FD6", texto: "#FFFFFF", sigla: "iO" },
   Otros: { fondo: "#5B6B8C", texto: "#FFFFFF", sigla: "···" },
 };
 export const colorBanco = (b) => COLOR_BANCO[b] || COLOR_BANCO.Otros;

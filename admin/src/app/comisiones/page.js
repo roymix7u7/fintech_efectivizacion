@@ -148,6 +148,7 @@ export default function ComisionesPage() {
 
   const [busqueda, setBusqueda] = useState("");
   const termino = useRetraso(busqueda);
+  const [editando, setEditando] = useState(null); // id del cupón en edición
   const [ficha, setFicha] = useState(null); // nuevo o renombrar: { id?, nombre, descripcion, base }
   const [tocadoFicha, setTocadoFicha] = useState(false);
   const [especial, setEspecial] = useState(null); // { cliente, banco, valor, motivo }
@@ -313,7 +314,7 @@ export default function ComisionesPage() {
     cargarCupones();
   }
 
-  /** Guarda las filas cambiadas de un cupón. Devuelve true si guardó todo. */
+  /** Guarda las filas cambiadas de un cupón. Devuelve true, o el motivo si falló. */
   async function guardarTarifas(cupon, cambios) {
     setGuardando(cupon.id);
     let hechas = 0;
@@ -327,16 +328,17 @@ export default function ComisionesPage() {
       });
       if (e) {
         setGuardando(null);
-        setError(
-          e.code === "PGRST202" || /guardar_tarifa_cupon/.test(e.message || "")
-            ? "Falta aplicar la migración de cupones (supabase/migrations/20261029000062_cupones.sql) en Supabase."
-            : explicarError(
-                e,
-                `No se guardó ${nombreBanco(banco)}${hechas ? ` (sí se guardaron ${hechas} antes)` : ""}.`,
-              ),
-        );
         await cargarCupones();
-        return false;
+        if (
+          e.code === "PGRST202" ||
+          /guardar_tarifa_cupon/.test(e.message || "")
+        ) {
+          return "No se guardó: falta aplicar en Supabase la migración de cupones (supabase/migrations/20261029000062_cupones.sql). Ejecútala en SQL Editor y vuelve a guardar.";
+        }
+        return explicarError(
+          e,
+          `No se guardó ${nombreBanco(banco)}${hechas ? ` (sí se guardaron ${hechas} antes)` : ""}.`,
+        );
       }
       hechas++;
     }
@@ -438,6 +440,11 @@ export default function ComisionesPage() {
   if (!session) return <CargaPantalla />;
 
   const activos = cupones.filter((c) => c.activo);
+  const cuponEditando = editando ? cuponPorId[editando] : null;
+  // Sin la migración, las tarifas llegan sin el campo "minimo".
+  const sinMigracion = cupones.some(
+    (c) => (c.bancos || []).length > 0 && !("minimo" in c.bancos[0]),
+  );
   const VISTAS = [
     ...(esAdmin
       ? [
@@ -532,24 +539,34 @@ export default function ComisionesPage() {
             }
           />
         ) : (
-          <div className="space-y-5">
-            {cupones.map((c) => (
-              <TarjetaCupon
-                key={c.id}
-                cupon={c}
-                guardando={guardando === c.id}
-                onGuardar={(cambios) => guardarTarifas(c, cambios)}
-                onRenombrar={() => {
-                  setFicha({
-                    id: c.id,
-                    nombre: c.nombre,
-                    descripcion: c.descripcion || "",
-                  });
-                  setTocadoFicha(false);
-                }}
-                onDesactivar={() => desactivar(c)}
-              />
-            ))}
+          <div className="space-y-4">
+            {sinMigracion && (
+              <Aviso
+                tono="espera"
+                titulo="Falta un paso en Supabase para guardar"
+              >
+                Los mínimos y los montos todavía no se pueden guardar: ejecuta
+                la migración{" "}
+                <code className="rounded bg-muted px-1 font-mono text-chico">
+                  supabase/migrations/20261029000062_cupones.sql
+                </code>{" "}
+                en Supabase → SQL Editor. Después recarga esta página.
+              </Aviso>
+            )}
+            <TablaCupones
+              cupones={cupones}
+              guardando={guardando}
+              onEditar={(c) => setEditando(c.id)}
+              onRenombrar={(c) => {
+                setFicha({
+                  id: c.id,
+                  nombre: c.nombre,
+                  descripcion: c.descripcion || "",
+                });
+                setTocadoFicha(false);
+              }}
+              onDesactivar={desactivar}
+            />
           </div>
         )
       ) : vista === "clientes" ? (
@@ -713,6 +730,31 @@ export default function ComisionesPage() {
           </div>
         </div>
       )}
+
+      {/* Editar tarifas de un cupón */}
+      <Dialogo
+        abierto={Boolean(cuponEditando)}
+        onCerrar={() => setEditando(null)}
+        bloqueado={guardando === editando}
+        titulo={cuponEditando ? `Tarifas de "${cuponEditando.nombre}"` : ""}
+        descripcion={
+          cuponEditando
+            ? `${cuponEditando.clientes} cliente${cuponEditando.clientes === 1 ? "" : "s"} con este cupón. Los cambios aplican desde su próxima solicitud.`
+            : ""
+        }
+        icono={<Porcentaje className="h-5 w-5" />}
+        ancho="max-w-3xl"
+      >
+        {cuponEditando && (
+          <EditorCupon
+            key={cuponEditando.id}
+            cupon={cuponEditando}
+            guardando={guardando === cuponEditando.id}
+            onGuardar={(cambios) => guardarTarifas(cuponEditando, cambios)}
+            onCerrar={() => setEditando(null)}
+          />
+        )}
+      </Dialogo>
 
       {/* Nuevo cupón o renombrar */}
       <Dialogo
@@ -952,18 +994,25 @@ export default function ComisionesPage() {
 
 /* ───────── Piezas ───────── */
 
-function SiglaBanco({ banco, conNombre }) {
+function SiglaBanco({ banco, conNombre, chica }) {
   const c = colorBanco(banco);
   return (
     <span className="inline-flex items-center gap-2.5">
       <span
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[0.68rem] font-bold tracking-wide"
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-lg font-bold tracking-wide",
+          chica ? "h-7 w-7 text-[0.6rem]" : "h-9 w-9 text-[0.68rem]",
+        )}
         style={{ background: c.fondo, color: c.texto }}
         aria-hidden
       >
         {c.sigla}
       </span>
-      {conNombre && <span className="font-semibold">{nombreBanco(banco)}</span>}
+      {conNombre && (
+        <span className="whitespace-nowrap font-semibold">
+          {nombreBanco(banco)}
+        </span>
+      )}
     </span>
   );
 }
@@ -998,7 +1047,7 @@ function Numero({
           title={error || undefined}
           placeholder={placeholder}
           className={cn(
-            "campo cifras h-10 w-full text-md font-semibold",
+            "campo cifras h-9 w-full text-sm font-semibold",
             prefijo ? "pl-8 pr-2" : "pl-2.5 pr-7",
             error && "border-red-400 bg-red-50 focus:ring-red-500/15",
           )}
@@ -1013,23 +1062,181 @@ function Numero({
   );
 }
 
+/** Resumen de una tarifa en texto: "1 %" y "mín. S/12 bajo S/1,200". */
+function textoTarifa(t) {
+  if (!t || vacio(t.porcentaje)) return null;
+  return {
+    pct: pct(t.porcentaje),
+    min:
+      !vacio(t.minimo) && !vacio(t.limite)
+        ? `mín. ${soles(t.minimo)} bajo ${soles(t.limite)}`
+        : null,
+  };
+}
+
 /**
- * Un cupón con su tarifa por banco. Se edita todo y se guarda de una vez:
- * cada fila se valida en el momento y "Guardar" no se activa mientras
- * haya un error. Si el cupón es el estándar, marca los bancos que no
- * coinciden con lo publicado en la web.
+ * Todos los cupones en una tabla: un banco por fila, un cupón por
+ * columna. Se lee de un vistazo y se compara; editar abre la ventana.
  */
-function TarjetaCupon({
-  cupon,
-  guardando,
-  onGuardar,
+function TablaCupones({
+  cupones,
+  onEditar,
   onRenombrar,
   onDesactivar,
+  guardando,
 }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-panel">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="sticky left-0 z-10 w-[150px] bg-muted/60 px-4 py-3 text-left t-etiqueta">
+                Banco
+              </th>
+              {cupones.map((c) => (
+                <th
+                  key={c.id}
+                  className={cn(
+                    "min-w-[170px] px-3 py-3 text-left align-top font-normal",
+                    c.es_default ? "bg-[#0F1B33] text-white" : "bg-muted/60",
+                    !c.activo && "opacity-60",
+                  )}
+                >
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-heading text-md font-semibold">
+                      {c.nombre}
+                    </span>
+                    {c.es_default && (
+                      <Pista texto="Tarifa publicada en la web. La reciben los clientes nuevos.">
+                        <span className="cursor-help rounded-full bg-oro-500 px-2 py-0.5 text-[0.68rem] font-bold text-marca-900">
+                          Estándar
+                        </span>
+                      </Pista>
+                    )}
+                    {!c.activo && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[0.68rem] font-bold text-muted-foreground">
+                        Inactivo
+                      </span>
+                    )}
+                  </div>
+                  <p
+                    className={cn(
+                      "cifras mt-0.5 text-chico",
+                      c.es_default ? "text-white/60" : "text-muted-foreground",
+                    )}
+                  >
+                    {c.clientes} cliente{c.clientes === 1 ? "" : "s"}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <button
+                      onClick={() => onEditar(c)}
+                      className={cn(
+                        "rounded-md px-2.5 py-1 text-chico font-semibold transition",
+                        c.es_default
+                          ? "bg-oro-500 text-marca-900 hover:bg-oro-300"
+                          : "bg-marca-900 text-white hover:bg-marca-700",
+                      )}
+                    >
+                      Editar tarifas
+                    </button>
+                    <button
+                      onClick={() => onRenombrar(c)}
+                      className={cn(
+                        "rounded-md px-2 py-1 text-chico font-semibold transition",
+                        c.es_default
+                          ? "text-white/70 hover:bg-white/10"
+                          : "text-muted-foreground hover:bg-muted",
+                      )}
+                    >
+                      Renombrar
+                    </button>
+                    {!c.es_default && c.activo && c.clientes === 0 && (
+                      <button
+                        onClick={() => onDesactivar(c)}
+                        disabled={guardando === c.id}
+                        className="rounded-md px-2 py-1 text-chico font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                      >
+                        Desactivar
+                      </button>
+                    )}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {BANCOS_TARJETA.map((banco) => (
+              <tr key={banco} className="hover:bg-muted/20">
+                <td className="sticky left-0 z-10 bg-card px-4 py-2">
+                  <SiglaBanco banco={banco} conNombre chica />
+                </td>
+                {cupones.map((c) => {
+                  const t = textoTarifa(
+                    (c.bancos || []).find((x) => x.banco === banco),
+                  );
+                  const difiere =
+                    c.es_default &&
+                    t &&
+                    difiereDeLaWeb(banco, filasDe(c)[banco]);
+                  return (
+                    <td
+                      key={c.id}
+                      className={cn(
+                        "px-3 py-2",
+                        c.es_default && "bg-oro-50/30",
+                      )}
+                    >
+                      {t ? (
+                        <span className="block">
+                          <span className="cifras font-semibold text-foreground">
+                            {t.pct}
+                          </span>
+                          {difiere && (
+                            <Pista texto="No coincide con la tarifa que publica la web para este banco.">
+                              <span className="ml-1.5 cursor-help rounded bg-red-50 px-1.5 py-0.5 text-[0.65rem] font-bold text-red-700">
+                                ≠ web
+                              </span>
+                            </Pista>
+                          )}
+                          <span className="cifras block text-chico text-muted-foreground">
+                            {t.min || "sin mínimo"}
+                          </span>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => onEditar(c)}
+                          className="rounded border border-dashed border-oro-500 bg-oro-50 px-2 py-0.5 text-chico font-semibold text-oro-700"
+                        >
+                          Sin tarifa
+                        </button>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="border-t border-border px-4 py-2.5 text-chico text-muted-foreground">
+        El mínimo se cobra cuando la operación es menor al monto indicado. Un
+        cambio en un cupón aplica a todos sus clientes, salvo sus comisiones
+        especiales.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Edición de un cupón, dentro de una ventana. Cada fila se valida en el
+ * momento y "Guardar" no se activa mientras haya un error. Si al guardar
+ * algo falla, el motivo se muestra aquí mismo.
+ */
+function EditorCupon({ cupon, guardando, onGuardar, onCerrar }) {
   const original = useMemo(() => filasDe(cupon), [cupon]);
   const [filas, setFilas] = useState(original);
-  useEffect(() => setFilas(original), [original]);
-  const [guardado, setGuardado] = useState(false);
+  const [falla, setFalla] = useState("");
 
   const cambios = BANCOS_TARJETA.filter((b) =>
     filaCambiada(filas[b], original[b]),
@@ -1042,153 +1249,47 @@ function TarjetaCupon({
       Object.values(errores[b]).some(Boolean) &&
       (filaCambiada(filas[b], original[b]) || !vacio(filas[b].porcentaje)),
   );
-  const sinTarifa = BANCOS_TARJETA.filter((b) => vacio(original[b].porcentaje));
-  const difieren = cupon.es_default
-    ? BANCOS_TARJETA.filter(
-        (b) => !vacio(original[b].porcentaje) && difiereDeLaWeb(b, original[b]),
-      )
-    : [];
   const editar = (banco, campo, v) =>
     setFilas((f) => ({ ...f, [banco]: { ...f[banco], [campo]: v } }));
 
   async function guardar() {
     if (!cambios.length || conError.length) return;
-    const listo = await onGuardar(cambios);
-    if (listo) {
-      setGuardado(true);
-      setTimeout(() => setGuardado(false), 2500);
-    }
+    setFalla("");
+    const r = await onGuardar(cambios);
+    if (r === true) onCerrar();
+    else setFalla(r || "No se pudo guardar.");
   }
 
   return (
-    <section
-      className={cn(
-        "overflow-hidden rounded-2xl border bg-card shadow-panel",
-        cupon.es_default ? "border-oro-300" : "border-border",
-        !cupon.activo && "opacity-60",
+    <div className="space-y-3">
+      {cupon.es_default && (
+        <p className="rounded-lg bg-oro-50 px-3 py-2 text-chico text-[#6E5300]">
+          Es el cupón estándar: lo que pongas aquí es lo que paga la mayoría y
+          debería coincidir con la web.
+        </p>
       )}
-    >
-      {/* Cabecera */}
-      <header
-        className={cn(
-          "flex flex-wrap items-start gap-4 px-5 py-4",
-          cupon.es_default ? "bg-[#0F1B33] text-white" : "bg-muted/40",
-        )}
-      >
-        <span
-          className={cn(
-            "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
-            cupon.es_default
-              ? "bg-oro-500 text-marca-900"
-              : "bg-marca-100 text-marca-700",
-          )}
-          aria-hidden
+      {falla && (
+        <p
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
         >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.9"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-5 w-5"
-          >
-            <path d="M3 9V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v3a3 3 0 0 0 0 6v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a3 3 0 0 0 0-6z" />
-            <path d="M14.5 9.5l-5 5M9.5 9.5h.01M14.5 14.5h.01" />
-          </svg>
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="font-heading text-lg">{cupon.nombre}</h2>
-            {cupon.es_default && (
-              <Pista texto="Es la tarifa publicada en la web. La reciben los clientes nuevos al aprobarlos.">
-                <span className="cursor-help rounded-full bg-oro-500 px-2.5 py-0.5 text-xs font-bold text-marca-900">
-                  Estándar
-                </span>
-              </Pista>
-            )}
-            {!cupon.activo && (
-              <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-bold text-muted-foreground">
-                Inactivo
-              </span>
-            )}
-            <span
-              className={cn(
-                "cifras rounded-full px-2.5 py-0.5 text-xs font-semibold",
-                cupon.es_default
-                  ? "bg-white/10 text-white/80"
-                  : "bg-card text-muted-foreground ring-1 ring-border",
-              )}
-            >
-              {cupon.clientes} cliente{cupon.clientes === 1 ? "" : "s"}
-            </span>
-          </div>
-          {cupon.descripcion && (
-            <p
-              className={cn(
-                "mt-0.5 text-sm",
-                cupon.es_default ? "text-white/65" : "text-muted-foreground",
-              )}
-            >
-              {cupon.descripcion}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <BotonAccion tono="neutro" tamano="chico" onClick={onRenombrar}>
-            Editar nombre
-          </BotonAccion>
-          {!cupon.es_default && cupon.activo && cupon.clientes === 0 && (
-            <BotonAccion
-              tono="peligroSuave"
-              tamano="chico"
-              onClick={onDesactivar}
-              cargando={guardando}
-            >
-              Desactivar
-            </BotonAccion>
-          )}
-        </div>
-      </header>
-
-      {/* Avisos del cupón */}
-      {(sinTarifa.length > 0 || difieren.length > 0) && (
-        <div className="space-y-1.5 border-b border-border px-5 py-3 text-sm">
-          {sinTarifa.length > 0 && (
-            <p className="text-oro-700">
-              <strong>Sin tarifa:</strong>{" "}
-              {sinTarifa.map(nombreBanco).join(", ")}. Sus clientes ven 0 % en
-              esos bancos.
-            </p>
-          )}
-          {difieren.length > 0 && (
-            <p className="text-red-700">
-              <strong>No coincide con la web:</strong>{" "}
-              {difieren.map(nombreBanco).join(", ")}. La landing publica otra
-              tarifa para {difieren.length === 1 ? "ese banco" : "esos bancos"}.
-            </p>
-          )}
-        </div>
+          {falla}
+        </p>
       )}
-
-      {/* Tarifas */}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] table-fixed text-sm">
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full min-w-[640px] table-fixed text-sm">
           <thead>
-            <tr className="border-b border-border text-left">
-              <th className="w-[24%] px-5 py-2.5 t-etiqueta">Banco</th>
-              <th className="w-[130px] px-2 py-2.5 t-etiqueta">Comisión</th>
-              <th className="w-[140px] px-2 py-2.5 t-etiqueta">
-                <Pista texto="Se cobra este monto como mínimo cuando la operación es menor al monto de la columna siguiente. Déjalo vacío si no aplica.">
+            <tr className="border-b border-border bg-muted/50 text-left">
+              <th className="w-[140px] px-3 py-2 t-etiqueta">Banco</th>
+              <th className="w-[96px] px-1.5 py-2 t-etiqueta">Comisión</th>
+              <th className="px-1.5 py-2 t-etiqueta">
+                <Pista texto="Se cobra como mínimo cuando la operación es menor al monto. Deja los dos vacíos si no aplica.">
                   <span className="cursor-help underline decoration-dotted underline-offset-4">
-                    Mínimo
+                    Mínimo · si opera menos de
                   </span>
                 </Pista>
               </th>
-              <th className="w-[160px] px-2 py-2.5 t-etiqueta">
-                Si opera menos de
-              </th>
-              <th className="px-5 py-2.5 t-etiqueta">Ejemplo</th>
+              <th className="w-[165px] px-3 py-2 t-etiqueta">Ejemplo</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -1202,25 +1303,22 @@ function TarjetaCupon({
               const msg =
                 mostrar("porcentaje") || mostrar("minimo") || mostrar("limite");
               return (
-                <tr
-                  key={banco}
-                  className={cn("align-top", cambiada && "bg-marca-50/60")}
-                >
-                  <td className="px-5 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <SiglaBanco banco={banco} conNombre />
+                <tr key={banco} className={cn(cambiada && "bg-marca-50/60")}>
+                  <td className="px-3 py-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <SiglaBanco banco={banco} conNombre chica />
                       {cambiada && (
                         <span
-                          className="h-2 w-2 rounded-full bg-marca-500"
+                          className="h-1.5 w-1.5 shrink-0 rounded-full bg-marca-500"
                           title="Cambio sin guardar"
                         />
                       )}
-                    </div>
+                    </span>
                   </td>
-                  <td className="w-[120px] px-2 py-2.5">
+                  <td className="px-1.5 py-1.5">
                     <Numero
                       id={`${cupon.id}-${banco}-pct`}
-                      etiqueta={`Comisión de ${nombreBanco(banco)} en ${cupon.nombre}`}
+                      etiqueta={`Comisión de ${nombreBanco(banco)}`}
                       valor={f.porcentaje}
                       onCambio={(v) => editar(banco, "porcentaje", v)}
                       error={mostrar("porcentaje")}
@@ -1228,48 +1326,43 @@ function TarjetaCupon({
                       placeholder="—"
                     />
                   </td>
-                  <td className="w-[130px] px-2 py-2.5">
-                    <Numero
-                      id={`${cupon.id}-${banco}-min`}
-                      etiqueta={`Mínimo de ${nombreBanco(banco)}`}
-                      valor={f.minimo}
-                      onCambio={(v) => editar(banco, "minimo", v)}
-                      error={mostrar("minimo")}
-                      prefijo="S/"
-                      placeholder="Sin mín."
-                    />
-                  </td>
-                  <td className="w-[150px] px-2 py-2.5">
-                    <Numero
-                      id={`${cupon.id}-${banco}-lim`}
-                      etiqueta={`Monto límite de ${nombreBanco(banco)}`}
-                      valor={f.limite}
-                      onCambio={(v) => editar(banco, "limite", v)}
-                      error={mostrar("limite")}
-                      prefijo="S/"
-                      placeholder="—"
-                    />
-                  </td>
-                  <td className="px-5 py-2.5">
-                    {msg ? (
-                      <span className="text-chico font-semibold text-red-600">
-                        {msg}
+                  <td className="px-1.5 py-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <Numero
+                        id={`${cupon.id}-${banco}-min`}
+                        etiqueta={`Mínimo de ${nombreBanco(banco)}`}
+                        valor={f.minimo}
+                        onCambio={(v) => editar(banco, "minimo", v)}
+                        error={mostrar("minimo")}
+                        prefijo="S/"
+                        placeholder="—"
+                      />
+                      <span className="shrink-0 text-chico text-muted-foreground">
+                        bajo
                       </span>
+                      <Numero
+                        id={`${cupon.id}-${banco}-lim`}
+                        etiqueta={`Monto límite de ${nombreBanco(banco)}`}
+                        valor={f.limite}
+                        onCambio={(v) => editar(banco, "limite", v)}
+                        error={mostrar("limite")}
+                        prefijo="S/"
+                        placeholder="—"
+                      />
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-1.5 text-chico leading-tight">
+                    {msg ? (
+                      <span className="font-semibold text-red-600">{msg}</span>
                     ) : ej ? (
-                      <span className="text-chico text-muted-foreground">
-                        Opera{" "}
-                        <span className="cifras font-semibold text-foreground">
-                          {soles(ej.monto)}
-                        </span>{" "}
-                        → paga{" "}
+                      <span className="text-muted-foreground">
+                        <span className="cifras">{soles(ej.monto)}</span> → paga{" "}
                         <span className="cifras font-semibold text-foreground">
                           {soles(Math.round(ej.cobra * 100) / 100)}
                         </span>
                       </span>
                     ) : (
-                      <span className="text-chico text-muted-foreground">
-                        —
-                      </span>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </td>
                 </tr>
@@ -1278,42 +1371,28 @@ function TarjetaCupon({
           </tbody>
         </table>
       </div>
-
-      {/* Pie: guardar */}
-      <footer className="flex flex-wrap items-center gap-3 border-t border-border bg-muted/30 px-5 py-3">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
         <p className="text-chico text-muted-foreground">
           {conError.length
-            ? `Corrige ${conError.length === 1 ? "la fila marcada" : `las ${conError.length} filas marcadas`} para guardar.`
+            ? `Corrige ${conError.length === 1 ? "la fila marcada" : `las ${conError.length} filas marcadas`}.`
             : cambios.length
-              ? `${cambios.length} cambio${cambios.length === 1 ? "" : "s"} sin guardar. Aplica${cambios.length === 1 ? "" : "n"} a ${cupon.clientes} cliente${cupon.clientes === 1 ? "" : "s"}, salvo sus especiales.`
-              : "Edita los valores y guarda. El mínimo y el monto van juntos: completa los dos o deja los dos vacíos."}
+              ? `${cambios.length} cambio${cambios.length === 1 ? "" : "s"} · aplica a ${cupon.clientes} cliente${cupon.clientes === 1 ? "" : "s"}.`
+              : "Sin cambios."}
         </p>
-        <div className="ml-auto flex items-center gap-2">
-          {guardado && (
-            <span className="flex items-center gap-1 text-chico font-semibold text-emerald-700">
-              <Check className="h-4 w-4" /> Guardado
-            </span>
-          )}
-          {cambios.length > 0 && (
-            <BotonAccion
-              tono="neutro"
-              tamano="chico"
-              onClick={() => setFilas(original)}
-              disabled={guardando}
-            >
-              Descartar
-            </BotonAccion>
-          )}
+        <div className="ml-auto flex gap-2">
+          <BotonAccion tono="neutro" onClick={onCerrar} disabled={guardando}>
+            Cancelar
+          </BotonAccion>
           <BotonAccion
-            tamano="chico"
             onClick={guardar}
             cargando={guardando}
             disabled={!cambios.length || conError.length > 0}
+            icono={<Check className="h-4 w-4" />}
           >
             Guardar cambios
           </BotonAccion>
         </div>
-      </footer>
-    </section>
+      </div>
+    </div>
   );
 }
