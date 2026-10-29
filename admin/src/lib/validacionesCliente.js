@@ -94,7 +94,7 @@ export function validarUltimos4(valor) {
 }
 
 /** Largo típico de una cuenta de ahorros por banco, para dar un mejor mensaje. */
-const LARGO_AHORROS = {
+export const LARGO_AHORROS = {
   BCP: [14],
   BBVA: [18, 20],
   Interbank: [13, 20],

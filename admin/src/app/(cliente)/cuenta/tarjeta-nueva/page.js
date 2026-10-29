@@ -11,13 +11,11 @@ import {
 import { ORDEN_BANCOS, nombreBanco } from "@/lib/bancos";
 import { validarUltimos4 } from "@/lib/validacionesCliente";
 import { SeguridadFotos, EjemploFotoTarjeta } from "@/components/cliente/fotos";
-import {
-  Marco,
-  Campo,
-  Boton,
-  Aviso,
-  Cargando,
-} from "@/components/cliente/piezas";
+import MarcoFormulario, {
+  BotonEnviar,
+  IlustracionTarjeta,
+} from "@/components/cliente/formulario";
+import { Campo, Aviso, Cargando } from "@/components/cliente/piezas";
 import {
   useClienteActivo,
   PantallaCuenta,
@@ -157,10 +155,39 @@ function TarjetaNueva() {
 
   return (
     <PantallaCuenta activa="tarjeta" sesion={sesion}>
-      <Marco
+      <MarcoFormulario
+        ilustracion={<IlustracionTarjeta />}
+        mensaje="Registra tu tarjeta de forma"
+        resaltado="segura"
+        texto="Una persona de nuestro equipo la verifica antes de que puedas operar con ella."
+        condiciones={[
+          {
+            tono: "si",
+            texto: "Tarjeta de crédito a tu nombre",
+            corto: "A tu nombre",
+            detalle: "Comparamos el nombre con tu documento.",
+          },
+          {
+            tono: "no",
+            texto: "No aceptamos tarjetas de terceros",
+            corto: "No de terceros",
+            detalle: "Ni de familiares ni de empresas.",
+          },
+          {
+            tono: "candado",
+            texto: "No se edita ni se elimina",
+            corto: "No se edita",
+            detalle: "Puedes agregar todas las que tengas.",
+          },
+          {
+            tono: "info",
+            texto: "Para darla de baja, habla con un asesor",
+            corto: "Baja con un asesor",
+            detalle: "Por WhatsApp o en nuestros locales.",
+          },
+        ]}
         titulo="Agregar tarjeta"
-        subtitulo="Tarjeta de crédito a tu nombre. Una persona del equipo la verifica antes de que puedas operar."
-        ancho="max-w-2xl"
+        subtitulo="Tarjeta de crédito a tu nombre."
       >
         <form onSubmit={enviar} noValidate className="space-y-6">
           {aviso && (
@@ -173,8 +200,10 @@ function TarjetaNueva() {
             valor={banco}
             onCambio={setBanco}
           />
-          <div className="grid items-center gap-5 sm:grid-cols-[280px_1fr]">
-            <VistaTarjeta banco={banco} ultimos4={ultimos4} nombre={nombre} />
+          <div className="grid items-center gap-5 md:grid-cols-[260px_1fr]">
+            <div className="hidden md:block">
+              <VistaTarjeta banco={banco} ultimos4={ultimos4} nombre={nombre} />
+            </div>
             <div className="space-y-4">
               <Campo
                 id="ultimos4"
@@ -210,7 +239,7 @@ function TarjetaNueva() {
 
           <EjemploFotoTarjeta />
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
             <FotoUnica
               id="foto-frente"
               forma="tarjeta"
@@ -242,23 +271,11 @@ function TarjetaNueva() {
             />
           </div>
 
-          <ul className="grid gap-1.5 text-chico text-[#8A93A6] sm:grid-cols-2">
-            <li>• No aceptamos tarjetas de terceros.</li>
-            <li>• Una tarjeta registrada no se edita ni se elimina.</li>
-            <li>• Para darla de baja, habla con un asesor.</li>
-            <li>• Puedes agregar todas las que tengas a tu nombre.</li>
-          </ul>
-
-          <Boton
-            type="submit"
-            tono="oro"
-            cargando={guardando}
-            className="w-full"
-          >
+          <BotonEnviar tono="oro" cargando={guardando}>
             {guardando ? "Enviando..." : "Enviar a verificación"}
-          </Boton>
+          </BotonEnviar>
         </form>
-      </Marco>
+      </MarcoFormulario>
     </PantallaCuenta>
   );
 }

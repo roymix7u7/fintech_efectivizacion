@@ -7,6 +7,7 @@ import { nombreBanco, colorBanco } from "@/lib/bancos";
 import { prepararFoto, ElegirFoto } from "./fotos";
 import { Encabezado } from "./piezas";
 import { useCuenta } from "./contexto";
+import { Visto } from "./formulario";
 
 /**
  * Las pantallas para operar (tarjeta, cuenta, solicitud) son solo para
@@ -65,8 +66,15 @@ export function ElegirBanco({
 }) {
   return (
     <fieldset>
-      <legend className="mb-2 text-sm font-semibold">{etiqueta}</legend>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup">
+      <legend className="mb-2.5 text-sm font-semibold text-marca-900">
+        {etiqueta}
+      </legend>
+      {/* En el celular, 3 por fila con la sigla encima: ocupa menos alto. */}
+      <div
+        className={cn("grid grid-cols-3 gap-2 sm:gap-2.5", "sm:grid-cols-4")}
+        role="radiogroup"
+        aria-label={etiqueta}
+      >
         {bancos.map((b) => {
           const motivo = deshabilitado(b);
           const activo = valor === b;
@@ -87,12 +95,12 @@ export function ElegirBanco({
                       background: c.fondo,
                       borderColor: c.fondo,
                       color: c.texto,
-                      boxShadow: `0 10px 22px -12px ${c.fondo}`,
+                      boxShadow: `0 12px 24px -12px ${c.fondo}`,
                     }
                   : undefined
               }
               className={cn(
-                "flex h-12 items-center gap-2.5 rounded-xl border px-2.5 text-left text-sm font-semibold transition",
+                "relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl border px-1.5 py-2.5 text-xs font-semibold transition sm:h-14 sm:flex-row sm:justify-start sm:gap-2.5 sm:px-3 sm:py-0 sm:text-sm",
                 !activo &&
                   "border-[#DCE3EE] bg-white hover:border-[#C3CFE0] hover:bg-[#F6F8FC]",
                 motivo && "cursor-not-allowed opacity-40",
@@ -100,23 +108,115 @@ export function ElegirBanco({
             >
               <span
                 className={cn(
-                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[0.6rem] font-bold tracking-wide",
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[0.6rem] font-bold tracking-wide",
                   activo && "ring-2 ring-white/40",
                 )}
                 style={{
                   background: activo ? "rgba(255,255,255,0.18)" : c.fondo,
-                  color: activo ? c.texto : c.texto,
+                  color: c.texto,
                 }}
                 aria-hidden
               >
                 {c.sigla}
               </span>
-              <span className="truncate">{nombreBanco(b)}</span>
+              <span className="max-w-full truncate">{nombreBanco(b)}</span>
+              {activo && (
+                <Visto className="absolute -right-1.5 -top-1.5 h-5 w-5" />
+              )}
             </button>
           );
         })}
       </div>
     </fieldset>
+  );
+}
+
+/** Ícono y color de cada tipo de regla, como el "Consejo" de la app. */
+const TONOS_REGLA = {
+  si: { clase: "bg-emerald-100 text-emerald-700", d: "M20 6 9 17l-5-5" },
+  no: { clase: "bg-red-100 text-red-700", d: "M18 6 6 18M6 6l12 12" },
+  banco: {
+    clase: "bg-[#DCE6F7] text-[#1E3A8A]",
+    d: "M3 10 12 4l9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 20h18",
+  },
+  candado: {
+    clase: "bg-[#FCEFC7] text-[#6E5300]",
+    d: "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3",
+  },
+  info: {
+    clase: "bg-[#E6ECF5] text-[#3D4A63]",
+    d: "M12 16v-4M12 8h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
+  },
+};
+
+/**
+ * "Importante antes de agregarla": las condiciones de una tarjeta o
+ * cuenta, con el mismo contenido que la app (Consejo).
+ */
+export function Condiciones({
+  titulo = "Importante antes de agregarla",
+  reglas,
+}) {
+  return (
+    <section
+      className="rounded-2xl border border-[#E3E9F2] bg-[#F7F9FC] p-4"
+      aria-label={titulo}
+    >
+      <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-marca-900">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-4 w-4 text-oro-600"
+          aria-hidden
+        >
+          <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+        </svg>
+        {titulo}
+      </p>
+      <ul className="grid gap-2.5 sm:grid-cols-2">
+        {reglas.map((r) => {
+          const t = TONOS_REGLA[r.tono] || TONOS_REGLA.info;
+          return (
+            <li
+              key={r.texto}
+              className="flex items-start gap-2.5 text-sm text-[#2E3A52]"
+            >
+              <span
+                className={cn(
+                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
+                  t.clase,
+                )}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-3.5 w-3.5"
+                  aria-hidden
+                >
+                  <path d={t.d} />
+                </svg>
+              </span>
+              <span className="pt-0.5 leading-snug">
+                <span className="font-semibold">{r.texto}</span>
+                {r.detalle && (
+                  <span className="block text-chico text-[#6B7690]">
+                    {r.detalle}
+                  </span>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

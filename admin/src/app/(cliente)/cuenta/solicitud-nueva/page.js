@@ -18,7 +18,10 @@ import {
   nombreBanco,
   BANCOS_PRINCIPALES,
 } from "@/lib/bancos";
-import { Marco, Boton, Aviso, Cargando } from "@/components/cliente/piezas";
+import { Boton, Aviso, Cargando } from "@/components/cliente/piezas";
+import MarcoFormulario, {
+  IlustracionSolicitud,
+} from "@/components/cliente/formulario";
 import {
   useClienteActivo,
   PantallaCuenta,
@@ -212,10 +215,39 @@ export default function SolicitudNuevaPage() {
 
   return (
     <PantallaCuenta activa="nueva" sesion={sesion}>
-      <Marco
+      <MarcoFormulario
+        ilustracion={<IlustracionSolicitud />}
+        mensaje="Paga con tu tarjeta y recibe el dinero"
+        resaltado="en tu cuenta"
+        texto="Elige tu tarjeta, paga siguiendo la guía de tu banco y adjunta el comprobante. Nosotros hacemos el resto."
+        condiciones={[
+          {
+            tono: "si",
+            texto: "Solo tarjetas verificadas y a tu nombre",
+            corto: "Tarjeta verificada",
+          },
+          {
+            tono: "banco",
+            texto: "Te depositamos en tu cuenta de ahorros",
+            corto: "A tu cuenta",
+            detalle:
+              "Del mismo banco de la tarjeta; con CMR, iO u otro banco, en cualquiera.",
+          },
+          {
+            tono: "info",
+            texto: "Lunes a sábado, de 9:00 a. m. a 6:00 p. m.",
+            corto: "Horario",
+            detalle:
+              "Fuera de horario, la atendemos al día siguiente en la mañana.",
+          },
+          {
+            tono: "no",
+            texto: "Nunca te pediremos tu clave ni el CVV",
+            corto: "Sin claves",
+          },
+        ]}
         titulo="Nueva solicitud"
         subtitulo="Paga con tu tarjeta, adjunta el comprobante y te depositamos en tu cuenta."
-        ancho="max-w-2xl"
       >
         {error && <Aviso>{error}</Aviso>}
         {aviso && (
@@ -435,7 +467,7 @@ export default function SolicitudNuevaPage() {
             </div>
           </div>
         )}
-      </Marco>
+      </MarcoFormulario>
 
       {urgentes && (
         <div
