@@ -190,7 +190,7 @@ export function Ventana({
         aria-label={titulo}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white text-marca-900 shadow-2xl sm:rounded-3xl",
+          "scroll-fino max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white text-marca-900 shadow-2xl sm:rounded-3xl",
           ancho,
         )}
       >

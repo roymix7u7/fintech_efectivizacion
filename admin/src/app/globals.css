@@ -254,6 +254,49 @@
     background: transparent;
   }
 
+  /* Barra de desplazamiento casi invisible sobre fondo azul noche
+     (barra lateral de Mi cuenta): una línea de 4 px que se aclara solo
+     al pasar el mouse. */
+  .scroll-noche {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 0.12) transparent;
+  }
+  .scroll-noche:hover {
+    scrollbar-color: rgb(255 255 255 / 0.28) transparent;
+  }
+  .scroll-noche::-webkit-scrollbar {
+    width: 4px;
+  }
+  .scroll-noche::-webkit-scrollbar-thumb {
+    background-color: rgb(255 255 255 / 0.12);
+    border-radius: 999px;
+  }
+  .scroll-noche:hover::-webkit-scrollbar-thumb {
+    background-color: rgb(255 255 255 / 0.28);
+  }
+  .scroll-noche::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Área de clientes: la barra de la página también delgada y suave. */
+  html:has(.area-cliente) {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(15 27 51 / 0.22) transparent;
+  }
+  html:has(.area-cliente)::-webkit-scrollbar {
+    width: 6px;
+  }
+  html:has(.area-cliente)::-webkit-scrollbar-thumb {
+    background-color: rgb(15 27 51 / 0.22);
+    border-radius: 999px;
+  }
+  html:has(.area-cliente)::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(15 27 51 / 0.4);
+  }
+  html:has(.area-cliente)::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
   /* Columna que ocupa el alto que queda debajo de la cabecera y se
      desplaza por dentro: la lista y el detalle se mueven cada uno por
      su cuenta y la página entera no salta. */

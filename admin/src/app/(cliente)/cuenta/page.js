@@ -948,7 +948,7 @@ function MisAvisos({ sb, avisos }) {
                   </BotonChico>
                 </div>
               )}
-              <div className="flex-1 overflow-y-auto px-4 py-3">
+              <div className="scroll-fino flex-1 overflow-y-auto px-4 py-3">
                 {lista.length === 0 ? (
                   <Vacio
                     titulo="Sin avisos por ahora"

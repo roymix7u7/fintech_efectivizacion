@@ -120,7 +120,7 @@ export default function MarcoCuenta({
   return (
     <div className="flex w-full">
       {/* ── Barra lateral (computadora) ── */}
-      <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-[260px] shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-[#0B1426] px-3 pb-4 pt-3 text-white lg:flex">
+      <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] scroll-noche w-[260px] shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-[#0B1426] px-3 pb-4 pt-3 text-white lg:flex">
         <nav aria-label="Mi cuenta" className="space-y-1">
           <p className="px-3 pb-1 pt-2 text-[0.68rem] font-bold uppercase tracking-[0.16em] text-white/40">
             Mi cuenta

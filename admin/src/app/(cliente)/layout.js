@@ -10,7 +10,7 @@ export const metadata = {
 
 export default function LayoutCliente({ children }) {
   return (
-    <div className="min-h-screen bg-[#E6ECF4] font-sans text-marca-900">
+    <div className="area-cliente min-h-screen bg-[#E6ECF4] font-sans text-marca-900">
       {children}
     </div>
   );
