@@ -55,7 +55,7 @@ export default function Calculadora() {
         Monto
       </label>
       <div className={cn("mt-2 flex items-baseline gap-2 border-b-2 pb-2 transition", error ? "border-red-300" : "border-[#E3E9F2] focus-within:border-marca-900")}>
-        <span className="font-heading text-3xl font-light text-[#8A93A6]">S/</span>
+        <span className="font-heading text-3xl font-normal text-[#8A93A6]">S/</span>
         <input
           id="monto"
           inputMode="decimal"
@@ -69,7 +69,7 @@ export default function Calculadora() {
           }}
           aria-invalid={Boolean(error)}
           aria-describedby="monto-error"
-          className="cifras w-full bg-transparent font-heading text-5xl font-light tracking-tight text-marca-900 outline-none"
+          className="cifras w-full bg-transparent font-heading text-5xl font-normal tracking-tight text-marca-900 outline-none"
         />
       </div>
       <p id="monto-error" role={error ? "alert" : undefined} className="mt-2 min-h-[1.25rem] text-chico font-medium text-red-600">

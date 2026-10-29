@@ -77,9 +77,9 @@ module.exports = {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ["var(--font-texto)", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
-        heading: ["var(--font-titulo)", "var(--font-texto)", "system-ui", "sans-serif"],
-        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "Consolas", "monospace"],
+        sans: ["var(--font-texto, system-ui)", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
+        heading: ["var(--font-titulo, system-ui)", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono, ui-monospace)", "ui-monospace", "SFMono-Regular", "Consolas", "monospace"],
       },
       // Escala del panel. Nada por debajo de 12 px: antes había textos de
       // 9 y 10 px que no se leían en una pantalla normal.

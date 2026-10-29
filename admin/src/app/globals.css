@@ -64,7 +64,7 @@
   h1,
   h2,
   h3 {
-    font-family: var(--font-titulo), var(--font-texto), system-ui, sans-serif;
+    font-family: var(--font-titulo, system-ui), system-ui, sans-serif;
     letter-spacing: -0.015em;
     text-wrap: balance;
   }
@@ -98,7 +98,7 @@
    Escala nombrada por función, no por tamaño. */
 @layer components {
   .t-pagina {
-    font-family: var(--font-titulo), var(--font-texto), sans-serif;
+    font-family: var(--font-titulo, system-ui), system-ui, sans-serif;
     font-size: 1.25rem; /* 20 */
     font-weight: 600;
     letter-spacing: -0.02em;
@@ -106,7 +106,7 @@
   }
 
   .t-seccion {
-    font-family: var(--font-titulo), var(--font-texto), sans-serif;
+    font-family: var(--font-titulo, system-ui), system-ui, sans-serif;
     font-size: 0.9375rem; /* 15 */
     font-weight: 600;
     letter-spacing: -0.01em;

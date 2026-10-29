@@ -42,31 +42,22 @@ export const metadata = {
  */
 export default function Inicio() {
   return (
-    <div className="sitio-publico overflow-x-clip bg-white font-sans text-marca-900">
+    <div className="sitio-publico overflow-x-clip bg-[#EFF3F9] font-sans text-marca-900">
       <Menu />
       <Animaciones />
 
-      {/* ═════════════ Portada ═════════════ */}
-      <section className="relative isolate overflow-hidden bg-[#0B1426] pb-40 pt-36 text-white sm:pt-44">
-        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-          <div className="absolute left-1/2 top-[-30%] h-[720px] w-[1100px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(232,184,0,0.22),transparent)]" />
-          <div className="absolute bottom-[-35%] left-[-10%] h-[620px] w-[820px] rounded-full bg-[radial-gradient(closest-side,rgba(47,86,176,0.45),transparent)]" />
-          <div className="absolute bottom-[-30%] right-[-15%] h-[560px] w-[760px] rounded-full bg-[radial-gradient(closest-side,rgba(44,66,112,0.6),transparent)]" />
-        </div>
-
+      {/* ═════════════ Portada (azul noche) ═════════════ */}
+      <section className="relative isolate overflow-hidden bg-[#0B1426] pb-40 pt-40 text-white sm:pt-48">
+        <Brillos />
         <div className="mx-auto max-w-4xl px-5 text-center">
-          <p className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-1.5 text-chico text-white/70">
-            <span className="h-1.5 w-1.5 rounded-full bg-oro-500" />
-            Empresa peruana · RUC {EMPRESA.ruc}
-          </p>
-          <h1 className="mt-8 text-balance font-heading text-[2.6rem] font-light leading-[1.05] tracking-[-0.03em] sm:text-6xl lg:text-[4.75rem]">
+          <h1 className="text-balance font-heading text-[2.6rem] font-normal leading-[1.05] tracking-[-0.03em] sm:text-6xl lg:text-[4.75rem]">
             El efectivo que necesitas, con la <span className="text-oro-500">confianza</span> que mereces.
           </h1>
           <p className="mx-auto mt-7 max-w-2xl text-lg leading-relaxed text-white/65">
             Convertimos la línea de tu tarjeta de crédito en dinero en tu cuenta. Comisión clara, depósito el mismo día y oficinas en Lima.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-4">
-            <a href="#empieza" className="rounded-full bg-white px-7 py-3.5 text-md font-semibold text-marca-900 transition hover:bg-oro-100">
+            <a href="#empieza" className="rounded-full bg-oro-500 px-7 py-3.5 text-md font-bold text-marca-900 shadow-[0_12px_32px_-8px_rgba(232,184,0,0.6)] transition hover:bg-oro-300">
               Empieza ahora
             </a>
             <a href="#comisiones" className="group inline-flex items-center gap-1.5 text-md font-medium text-white/80 transition hover:text-white">
@@ -82,15 +73,16 @@ export default function Inicio() {
         <Operacion />
       </div>
 
-      {/* ═════════════ Tarjetas ═════════════ */}
-      <section className="pb-20 pt-16" aria-labelledby="titulo-tarjetas">
+      {/* ═════════════ Tarjetas y servicio (azul hielo) ═════════════ */}
+      <section className="pb-28 pt-16" aria-labelledby="titulo-tarjetas">
         <div className="mx-auto max-w-6xl px-5 text-center">
-          <p id="titulo-tarjetas" className="text-sm text-[#626D82]">
+          <p id="titulo-tarjetas" className="text-sm font-medium text-[#626D82]">
             Aceptamos tarjetas de
           </p>
           <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-12 gap-y-5">
             {BANCOS.map((b) => (
-              <li key={b.nombre} className="font-heading text-2xl font-medium tracking-tight text-[#8A93A6]">
+              <li key={b.nombre} className="inline-flex items-center gap-2 font-heading text-2xl font-medium tracking-tight text-marca-700/70">
+                <span className="h-2 w-2 rounded-full" style={{ background: b.color }} />
                 {b.nombre}
               </li>
             ))}
@@ -99,25 +91,27 @@ export default function Inicio() {
             No estamos afiliados a ningún banco ni emisor. Los nombres solo indican qué tarjetas aceptamos.
           </p>
         </div>
-      </section>
 
-      {/* ═════════════ Servicio ═════════════ */}
-      <section id="servicio" className="border-t border-[#E3E9F2] py-28">
-        <div className="mx-auto max-w-6xl px-5">
+        <div id="servicio" className="mx-auto mt-28 max-w-6xl scroll-mt-28 px-5">
           <div className="max-w-3xl" data-revelar>
             <Etiqueta>Servicio</Etiqueta>
-            <h2 className="mt-4 text-balance font-heading text-4xl font-light leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
+            <h2 className="mt-4 text-balance font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
               Simple, transparente y atendido por personas.
             </h2>
           </div>
-          <div className="mt-16 grid gap-px overflow-hidden rounded-2xl border border-[#E3E9F2] bg-[#E3E9F2] md:grid-cols-3">
+          <div className="mt-14 grid gap-5 md:grid-cols-3">
             {[
               { i: <Porcentaje />, t: "Comisión clara", d: "Desde 1 %, según tu tarjeta. Sabes cuánto recibes antes de confirmar." },
               { i: <Reloj />, t: "Depósito el mismo día", d: "Normalmente en menos de 1 hora, en horario de atención." },
               { i: <Persona />, t: "Revisión humana", d: "Nuestro equipo revisa cada operación y te atiende en persona o por WhatsApp." },
             ].map((x, i) => (
-              <div key={x.t} className="bg-white p-8" data-revelar style={{ "--retraso": `${i * 90}ms` }}>
-                <span className="text-oro-600">{x.i}</span>
+              <div
+                key={x.t}
+                className="rounded-2xl bg-white p-8 shadow-[0_1px_2px_rgba(15,27,51,0.04),0_20px_40px_-24px_rgba(15,27,51,0.2)]"
+                data-revelar
+                style={{ "--retraso": `${i * 90}ms` }}
+              >
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-marca-900 text-oro-500">{x.i}</span>
                 <h3 className="mt-6 font-heading text-xl font-normal">{x.t}</h3>
                 <p className="mt-2 leading-relaxed text-[#4F5B74]">{x.d}</p>
               </div>
@@ -126,35 +120,41 @@ export default function Inicio() {
         </div>
       </section>
 
-      {/* ═════════════ Comisiones ═════════════ */}
-      <section id="comisiones" className="bg-[#F6F8FC] py-28">
+      {/* ═════════════ Comisiones (azul noche) ═════════════ */}
+      <section id="comisiones" className="relative isolate overflow-hidden bg-[#0F1B33] py-28 text-white">
+        <div aria-hidden className="pointer-events-none absolute -left-40 top-0 -z-10 h-[560px] w-[560px] rounded-full bg-[radial-gradient(closest-side,rgba(232,184,0,0.12),transparent)]" />
         <div className="mx-auto grid max-w-6xl items-start gap-14 px-5 lg:grid-cols-[1fr_440px]">
           <div data-revelar>
-            <Etiqueta>Comisiones</Etiqueta>
-            <h2 className="mt-4 font-heading text-4xl font-light leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
-              Desde <span className="font-normal">1 %</span>.
+            <Etiqueta oscura>Comisiones</Etiqueta>
+            <h2 className="mt-4 font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
+              Desde <span className="text-oro-500">1 %</span>.
               <br />
-              <span className="text-[#8A93A6]">Sin cargos escondidos.</span>
+              <span className="text-white/45">Sin cargos escondidos.</span>
             </h2>
 
-            <div className="mt-12 divide-y divide-[#E3E9F2] border-y border-[#E3E9F2]">
+            <div className="mt-12 divide-y divide-white/10 border-y border-white/10">
               {GRUPOS_TARIFA.map((g) => (
                 <div key={g.bancos.join()} className="grid grid-cols-[88px_1fr_auto] items-center gap-4 py-5">
-                  <span className="font-heading text-3xl font-light tracking-tight">
+                  <span className="font-heading text-3xl font-normal tracking-tight">
                     {g.pct.toLocaleString("es-PE")}
-                    <span className="text-oro-600">%</span>
+                    <span className="text-oro-500">%</span>
                   </span>
-                  <span className="font-medium">{g.bancos.join(" · ")}</span>
-                  <span className="text-right text-chico leading-tight text-[#8A93A6]">
+                  <span className="font-medium text-white/90">{g.bancos.join(" · ")}</span>
+                  <span className="text-right text-chico leading-tight text-white/45">
                     Mín. S/ {g.minimo}
                     <span className="block">bajo S/ {g.limite.toLocaleString("es-PE")}</span>
                   </span>
                 </div>
               ))}
             </div>
-            <p className="mt-6 text-sm text-[#626D82]">
+            <p className="mt-6 text-sm text-white/55">
               ¿Operas seguido?{" "}
-              <a href={enlaceWhatsapp("Hola, quiero consultar la tasa preferencial.")} target="_blank" rel="noopener" className="font-medium text-marca-900 underline underline-offset-4 hover:text-oro-700">
+              <a
+                href={enlaceWhatsapp("Hola, quiero consultar la tasa preferencial.")}
+                target="_blank"
+                rel="noopener"
+                className="font-medium text-oro-500 underline underline-offset-4 hover:text-oro-300"
+              >
                 Pide tu tasa preferencial
               </a>
               .
@@ -166,15 +166,48 @@ export default function Inicio() {
         </div>
       </section>
 
-      {/* ═════════════ Seguridad ═════════════ */}
+      {/* ═════════════ Cómo funciona (azul hielo) ═════════════ */}
+      <section className="py-28">
+        <div className="mx-auto max-w-6xl px-5">
+          <div className="max-w-3xl" data-revelar>
+            <Etiqueta>Cómo funciona</Etiqueta>
+            <h2 className="mt-4 font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">Cuatro pasos. Una sola vez el registro.</h2>
+            <p className="mt-5 text-lg text-[#4F5B74]">En nuestros locales, por WhatsApp o desde la app de AlToque.</p>
+          </div>
+          <ol className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { t: "Regístrate", d: "Con tu DNI y una selfie. Verificamos tu identidad." },
+              { t: "Registra tu tarjeta", d: "Y la cuenta de ahorros a tu nombre donde recibirás el dinero." },
+              { t: "Envía tu comprobante", d: "De la operación con tu tarjeta. Ves la comisión antes." },
+              { t: "Recibe tu depósito", d: "El mismo día, en tu cuenta. Te avisamos al instante." },
+            ].map((p, i) => (
+              <li
+                key={p.t}
+                className="rounded-2xl bg-white p-7 shadow-[0_1px_2px_rgba(15,27,51,0.04),0_20px_40px_-24px_rgba(15,27,51,0.2)]"
+                data-revelar
+                style={{ "--retraso": `${i * 90}ms` }}
+              >
+                <span className="cifras flex h-10 w-10 items-center justify-center rounded-full bg-oro-500 font-heading text-sm font-semibold text-marca-900">
+                  0{i + 1}
+                </span>
+                <h3 className="mt-6 font-heading text-xl font-normal">{p.t}</h3>
+                <p className="mt-2 leading-relaxed text-[#4F5B74]">{p.d}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* ═════════════ Seguridad (azul noche) ═════════════ */}
       <section id="seguridad" className="relative isolate overflow-hidden bg-[#0B1426] py-28 text-white">
-        <div aria-hidden className="pointer-events-none absolute right-[-10%] top-[-20%] -z-10 h-[600px] w-[600px] rounded-full bg-[radial-gradient(closest-side,rgba(232,184,0,0.14),transparent)]" />
+        <div aria-hidden className="pointer-events-none absolute right-[-10%] top-[-20%] -z-10 h-[600px] w-[600px] rounded-full bg-[radial-gradient(closest-side,rgba(232,184,0,0.16),transparent)]" />
+        <div aria-hidden className="pointer-events-none absolute bottom-[-30%] left-[-10%] -z-10 h-[600px] w-[700px] rounded-full bg-[radial-gradient(closest-side,rgba(47,86,176,0.35),transparent)]" />
         <div className="mx-auto max-w-6xl px-5">
           <div className="grid items-end gap-10 lg:grid-cols-2" data-revelar>
             <div>
               <Etiqueta oscura>Seguridad</Etiqueta>
-              <h2 className="mt-4 font-heading text-4xl font-light leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
-                Tu dinero y tus datos, protegidos.
+              <h2 className="mt-4 font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
+                Tu dinero y tus datos, <span className="text-oro-500">protegidos</span>.
               </h2>
             </div>
             <p className="max-w-lg text-lg leading-relaxed text-white/60">
@@ -182,7 +215,7 @@ export default function Inicio() {
             </p>
           </div>
 
-          <div className="mt-16 grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {[
               { i: <Persona />, t: "Identidad verificada", d: "Validamos tu documento y tu rostro antes de tu primera operación." },
               { i: <Banco />, t: "Solo a tu nombre", d: "Depositamos únicamente en cuentas tuyas. Nunca a terceros ni por interbancaria." },
@@ -191,8 +224,13 @@ export default function Inicio() {
               { i: <Escudo />, t: "Datos protegidos", d: "Tratamos tu información según la Ley N.° 29733 de Protección de Datos Personales." },
               { i: <Libro />, t: "Reglas claras", d: "Términos, privacidad y Libro de Reclamaciones a tu alcance, siempre." },
             ].map((x, i) => (
-              <div key={x.t} className="bg-[#0B1426] p-8" data-revelar style={{ "--retraso": `${(i % 3) * 90}ms` }}>
-                <span className="text-oro-500">{x.i}</span>
+              <div
+                key={x.t}
+                className="rounded-2xl bg-white/[0.04] p-8 ring-1 ring-white/10 backdrop-blur transition hover:bg-white/[0.07]"
+                data-revelar
+                style={{ "--retraso": `${(i % 3) * 90}ms` }}
+              >
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-oro-500/15 text-oro-500 ring-1 ring-oro-500/30">{x.i}</span>
                 <h3 className="mt-6 font-heading text-lg font-normal">{x.t}</h3>
                 <p className="mt-2 leading-relaxed text-white/55">{x.d}</p>
               </div>
@@ -201,58 +239,32 @@ export default function Inicio() {
         </div>
       </section>
 
-      {/* ═════════════ Cómo funciona ═════════════ */}
-      <section className="py-28">
-        <div className="mx-auto max-w-6xl px-5">
-          <div className="max-w-3xl" data-revelar>
-            <Etiqueta>Cómo funciona</Etiqueta>
-            <h2 className="mt-4 font-heading text-4xl font-light leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">Cuatro pasos. Una sola vez el registro.</h2>
-            <p className="mt-5 text-lg text-[#4F5B74]">En nuestros locales, por WhatsApp o desde la app de AlToque.</p>
-          </div>
-          <ol className="mt-16 grid gap-10 md:grid-cols-4 md:gap-6">
-            {[
-              { t: "Regístrate", d: "Con tu DNI y una selfie. Verificamos tu identidad." },
-              { t: "Registra tu tarjeta", d: "Y la cuenta de ahorros a tu nombre donde recibirás el dinero." },
-              { t: "Envía tu comprobante", d: "De la operación con tu tarjeta. Ves la comisión antes." },
-              { t: "Recibe tu depósito", d: "El mismo día, en tu cuenta. Te avisamos al instante." },
-            ].map((p, i) => (
-              <li key={p.t} className="relative border-t border-[#E3E9F2] pt-6" data-revelar style={{ "--retraso": `${i * 90}ms` }}>
-                <span className="absolute -top-px left-0 h-px w-12 bg-oro-500" />
-                <span className="cifras font-heading text-sm text-[#8A93A6]">0{i + 1}</span>
-                <h3 className="mt-3 font-heading text-xl font-normal">{p.t}</h3>
-                <p className="mt-2 leading-relaxed text-[#4F5B74]">{p.d}</p>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </section>
-
-      {/* ═════════════ Nosotros ═════════════ */}
-      <section id="nosotros" className="bg-[#F6F8FC] py-28">
+      {/* ═════════════ Nosotros (azul hielo) ═════════════ */}
+      <section id="nosotros" className="py-28">
         <div className="mx-auto max-w-6xl px-5">
           <div className="grid gap-14 lg:grid-cols-[1fr_1fr]">
             <div data-revelar>
               <Etiqueta>Nosotros</Etiqueta>
-              <h2 className="mt-4 font-heading text-4xl font-light leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">Una empresa peruana, con oficinas de verdad.</h2>
+              <h2 className="mt-4 font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">Una empresa peruana, con oficinas de verdad.</h2>
               <p className="mt-6 max-w-lg text-lg leading-relaxed text-[#4F5B74]">
                 Atendemos en persona en tres locales de Lima y por WhatsApp, de {HORARIO.dias.toLowerCase()}.
               </p>
 
-              <div className="mt-12 grid grid-cols-2 gap-8">
+              <div className="mt-10 grid grid-cols-2 gap-4">
                 {[
                   { n: 20000, t: "operaciones realizadas" },
                   { n: 8000, t: "clientes registrados" },
                 ].map((x) => (
-                  <div key={x.t}>
-                    <p className="font-heading text-5xl font-light tracking-tight">
+                  <div key={x.t} className="min-w-0 rounded-2xl bg-marca-900 p-5 text-white sm:p-6">
+                    <p className="font-heading text-[1.7rem] font-normal tracking-tight text-oro-500 sm:text-5xl">
                       <Contador hasta={x.n} prefijo="+" />
                     </p>
-                    <p className="mt-1 text-[#626D82]">{x.t}</p>
+                    <p className="mt-1 text-white/65">{x.t}</p>
                   </div>
                 ))}
               </div>
 
-              <dl className="mt-12 grid gap-x-8 gap-y-5 border-t border-[#E3E9F2] pt-8 text-sm sm:grid-cols-2">
+              <dl className="mt-10 grid gap-x-8 gap-y-5 border-t border-[#DCE3EE] pt-8 text-sm sm:grid-cols-2">
                 <Fila t="Razón social" v={EMPRESA.razonSocial} />
                 <Fila t="RUC" v={EMPRESA.ruc} />
                 <Fila t="Domicilio legal" v={EMPRESA.domicilio} />
@@ -260,16 +272,16 @@ export default function Inicio() {
               </dl>
             </div>
 
-            <div className="space-y-3" data-revelar style={{ "--retraso": "120ms" }}>
+            <div className="space-y-4" data-revelar style={{ "--retraso": "120ms" }}>
               {LOCALES.map((l) => (
                 <a
                   key={l.distrito}
                   href={enlaceMapa(l)}
                   target="_blank"
                   rel="noopener"
-                  className="group flex items-center gap-5 rounded-2xl border border-[#E3E9F2] bg-white p-6 transition hover:border-[#C3CEE2] hover:shadow-[0_24px_48px_-28px_rgba(15,27,51,0.25)]"
+                  className="group flex items-center gap-5 rounded-2xl bg-white p-6 shadow-[0_1px_2px_rgba(15,27,51,0.04),0_20px_40px_-24px_rgba(15,27,51,0.2)] transition hover:-translate-y-0.5"
                 >
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#F6F8FC] text-oro-600">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-oro-100 text-oro-700">
                     <Ubicacion />
                   </span>
                   <span className="min-w-0 flex-1">
@@ -285,32 +297,34 @@ export default function Inicio() {
         </div>
       </section>
 
-      {/* ═════════════ Opiniones ═════════════ */}
-      <section className="py-28">
+      {/* ═════════════ Opiniones (azul noche) ═════════════ */}
+      <section className="relative isolate overflow-hidden bg-[#0F1B33] py-28 text-white">
+        <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 -z-10 h-[500px] w-[900px] -translate-x-1/2 -translate-y-1/3 rounded-full bg-[radial-gradient(closest-side,rgba(232,184,0,0.14),transparent)]" />
         <div className="mx-auto max-w-6xl px-5">
           <figure className="mx-auto max-w-4xl text-center" data-revelar>
-            <blockquote className="text-balance font-heading text-3xl font-light leading-snug tracking-[-0.01em] sm:text-4xl">
-              “{OPINIONES[0].texto}”
+            <span aria-hidden className="font-heading text-7xl leading-none text-oro-500">“</span>
+            <blockquote className="mt-2 text-balance font-heading text-3xl font-normal leading-snug tracking-[-0.01em] sm:text-4xl">
+              {OPINIONES[0].texto}
             </blockquote>
-            <figcaption className="mt-8 text-[#626D82]">{OPINIONES[0].nombre}</figcaption>
+            <figcaption className="mt-8 text-white/55">{OPINIONES[0].nombre}</figcaption>
           </figure>
-          <div className="mt-20 grid gap-6 md:grid-cols-3">
+          <div className="mt-20 grid gap-5 md:grid-cols-3">
             {OPINIONES.slice(1).map((o, i) => (
-              <figure key={o.nombre} className="border-t border-[#E3E9F2] pt-6" data-revelar style={{ "--retraso": `${i * 90}ms` }}>
-                <blockquote className="leading-relaxed text-[#2E3A52]">“{o.texto}”</blockquote>
-                <figcaption className="mt-4 text-sm text-[#8A93A6]">{o.nombre}</figcaption>
+              <figure key={o.nombre} className="rounded-2xl bg-white/[0.04] p-7 ring-1 ring-white/10" data-revelar style={{ "--retraso": `${i * 90}ms` }}>
+                <blockquote className="leading-relaxed text-white/80">“{o.texto}”</blockquote>
+                <figcaption className="mt-5 text-sm text-oro-500">{o.nombre}</figcaption>
               </figure>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ═════════════ Preguntas ═════════════ */}
-      <section id="preguntas" className="border-t border-[#E3E9F2] py-28">
+      {/* ═════════════ Preguntas (azul hielo) ═════════════ */}
+      <section id="preguntas" className="py-28">
         <div className="mx-auto grid max-w-6xl gap-12 px-5 lg:grid-cols-[0.8fr_1.2fr]">
           <div data-revelar className="lg:sticky lg:top-28 lg:self-start">
             <Etiqueta>Ayuda</Etiqueta>
-            <h2 className="mt-4 font-heading text-4xl font-light leading-[1.1] tracking-[-0.02em]">Preguntas frecuentes</h2>
+            <h2 className="mt-4 font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em]">Preguntas frecuentes</h2>
             <p className="mt-4 text-[#4F5B74]">
               ¿Otra duda?{" "}
               <a href={enlaceWhatsapp()} target="_blank" rel="noopener" className="font-medium text-marca-900 underline underline-offset-4">
@@ -319,49 +333,56 @@ export default function Inicio() {
               .
             </p>
           </div>
-          <div className="divide-y divide-[#E3E9F2] border-y border-[#E3E9F2]" data-revelar>
+          <div className="space-y-3" data-revelar>
             {PREGUNTAS.map((q) => (
-              <details key={q.p} className="group">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-6 font-heading text-lg font-normal [&::-webkit-details-marker]:hidden">
+              <details key={q.p} className="group rounded-2xl bg-white px-6 shadow-[0_1px_2px_rgba(15,27,51,0.04)] transition open:shadow-[0_20px_40px_-24px_rgba(15,27,51,0.25)]">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 font-heading text-lg font-normal [&::-webkit-details-marker]:hidden">
                   {q.p}
-                  <Mas className="h-5 w-5 shrink-0 text-[#8A93A6] transition group-open:rotate-45" />
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EFF3F9] text-marca-700 transition group-open:rotate-45 group-open:bg-oro-500 group-open:text-marca-900">
+                    <Mas className="h-4 w-4" />
+                  </span>
                 </summary>
-                <p className="-mt-2 pb-6 pr-10 leading-relaxed text-[#4F5B74]">{q.r}</p>
+                <p className="-mt-1 pb-6 pr-10 leading-relaxed text-[#4F5B74]">{q.r}</p>
               </details>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ═════════════ Llamado final ═════════════ */}
-      <section id="empieza" className="px-5 pb-28">
-        <div className="relative isolate mx-auto max-w-6xl overflow-hidden rounded-3xl bg-[#0B1426] px-8 py-20 text-center text-white sm:px-16" data-revelar>
-          <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 -z-10 h-[460px] w-[900px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(232,184,0,0.25),transparent)]" />
-          <h2 className="mx-auto max-w-2xl text-balance font-heading text-4xl font-light leading-[1.1] tracking-[-0.02em] sm:text-5xl">Empieza hoy. Te acompañamos desde el primer paso.</h2>
+      {/* ═════════════ Llamado final (dorado) ═════════════ */}
+      <section id="empieza" className="scroll-mt-28 px-5 pb-28">
+        <div
+          className="relative isolate mx-auto max-w-6xl overflow-hidden rounded-3xl bg-gradient-to-br from-[#F5D976] via-[#E8B800] to-[#C49B00] px-8 py-20 text-center text-marca-900 sm:px-16"
+          data-revelar
+        >
+          <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 -z-10 h-80 w-80 rounded-full bg-white/30 blur-3xl" />
+          <h2 className="mx-auto max-w-2xl text-balance font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-5xl">
+            Empieza hoy. Te acompañamos desde el primer paso.
+          </h2>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-4">
             <a
               href={enlaceWhatsapp("Hola, quiero empezar con AlToque Perú WK.")}
               target="_blank"
               rel="noopener"
-              className="rounded-full bg-white px-7 py-3.5 font-semibold text-marca-900 transition hover:bg-oro-100"
+              className="rounded-full bg-marca-900 px-7 py-3.5 font-semibold text-white shadow-[0_12px_30px_-8px_rgba(15,27,51,0.5)] transition hover:bg-marca-700"
             >
               Escríbenos por WhatsApp
             </a>
-            <a href="#nosotros" className="group inline-flex items-center gap-1.5 font-medium text-white/80 hover:text-white">
+            <a href="#nosotros" className="group inline-flex items-center gap-1.5 font-semibold text-marca-900/80 hover:text-marca-900">
               Visítanos en un local
               <Flecha className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </a>
           </div>
-          <p className="mt-8 text-sm text-white/45">La app de AlToque llega pronto a Google Play.</p>
+          <p className="mt-8 text-sm text-marca-900/60">La app de AlToque llega pronto a Google Play.</p>
         </div>
       </section>
 
-      {/* ═════════════ Pie ═════════════ */}
-      <footer className="border-t border-[#E3E9F2] bg-[#F6F8FC]">
+      {/* ═════════════ Pie (azul noche) ═════════════ */}
+      <footer className="bg-[#0B1426] text-white">
         <div className="mx-auto grid max-w-6xl gap-10 px-5 py-16 md:grid-cols-[1.5fr_1fr_1fr_1fr]">
           <div>
             <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-marca-900">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0F1B33] ring-1 ring-white/10">
                 <Image src="/logo.png" alt="" width={26} height={26} className="object-contain" />
               </span>
               <span className="font-heading font-semibold">AlToque Perú WK</span>
@@ -374,7 +395,7 @@ export default function Inicio() {
                   target="_blank"
                   rel="noopener"
                   aria-label={r.nombre}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-[#DCE3EE] text-[#626D82] transition hover:border-marca-900 hover:text-marca-900"
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-white/70 ring-1 ring-white/15 transition hover:text-oro-500 hover:ring-oro-500"
                 >
                   <IconoRed nombre={r.nombre} />
                 </a>
@@ -402,19 +423,19 @@ export default function Inicio() {
           />
           <div>
             <p className="text-sm font-semibold">Contacto</p>
-            <ul className="mt-4 space-y-2.5 text-sm text-[#4F5B74]">
+            <ul className="mt-4 space-y-2.5 text-sm text-white/60">
               <li>
-                <a href={enlaceWhatsapp()} target="_blank" rel="noopener" className="hover:text-marca-900">
+                <a href={enlaceWhatsapp()} target="_blank" rel="noopener" className="hover:text-oro-500">
                   WhatsApp {WHATSAPP_TEXTO}
                 </a>
               </li>
               <li>
-                <a href={`tel:+51${LLAMADAS_TEXTO.replace(/\s/g, "")}`} className="hover:text-marca-900">
+                <a href={`tel:+51${LLAMADAS_TEXTO.replace(/\s/g, "")}`} className="hover:text-oro-500">
                   Llamadas {LLAMADAS_TEXTO}
                 </a>
               </li>
               <li>
-                <a href={`mailto:${EMPRESA.correo}`} className="hover:text-marca-900">
+                <a href={`mailto:${EMPRESA.correo}`} className="hover:text-oro-500">
                   {EMPRESA.correo}
                 </a>
               </li>
@@ -425,7 +446,7 @@ export default function Inicio() {
           </div>
         </div>
 
-        <div className="mx-auto max-w-6xl space-y-3 border-t border-[#E3E9F2] px-5 py-8 text-xs leading-relaxed text-[#8A93A6]">
+        <div className="mx-auto max-w-6xl space-y-3 border-t border-white/10 px-5 py-8 text-xs leading-relaxed text-white/40">
           <p>
             {EMPRESA.razonSocial} · RUC {EMPRESA.ruc} · {EMPRESA.domicilio}.
           </p>
@@ -437,7 +458,7 @@ export default function Inicio() {
           </p>
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
             <p>© {new Date().getFullYear()} {EMPRESA.razonSocial} Todos los derechos reservados.</p>
-            <Link href="/login" className="hover:text-marca-900">
+            <Link href="/login" className="hover:text-white/70">
               Acceso del equipo
             </Link>
           </div>
@@ -454,6 +475,17 @@ export default function Inicio() {
       >
         <Whatsapp className="h-7 w-7" />
       </a>
+    </div>
+  );
+}
+
+/** Luces de fondo de la portada. */
+function Brillos() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+      <div className="absolute left-1/2 top-[-30%] h-[720px] w-[1100px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(232,184,0,0.22),transparent)]" />
+      <div className="absolute bottom-[-35%] left-[-10%] h-[620px] w-[820px] rounded-full bg-[radial-gradient(closest-side,rgba(47,86,176,0.45),transparent)]" />
+      <div className="absolute bottom-[-30%] right-[-15%] h-[560px] w-[760px] rounded-full bg-[radial-gradient(closest-side,rgba(44,66,112,0.6),transparent)]" />
     </div>
   );
 }
@@ -545,7 +577,7 @@ function PieColumna({ titulo, enlaces }) {
       <ul className="mt-4 space-y-2.5">
         {enlaces.map((e) => (
           <li key={e.href}>
-            <Link href={e.href} className="text-sm text-[#4F5B74] transition hover:text-marca-900">
+            <Link href={e.href} className="text-sm text-white/60 transition hover:text-oro-500">
               {e.t}
             </Link>
           </li>

@@ -1,30 +1,35 @@
 import localFont from "next/font/local";
-import { Manrope, Sora } from "next/font/google";
 import "./globals.css";
 
 // Las mismas fuentes que la app móvil: Manrope para leer y operar,
-// Sora para títulos y cifras grandes. Así el panel y la app se sienten
-// de la misma casa.
+// Sora para títulos y cifras grandes.
+//
+// Van dentro del proyecto (src/app/fonts) y no se descargan de Google
+// Fonts al compilar: si esa descarga fallaba, la página se quedaba sin
+// fuente y el navegador mostraba Times New Roman. Son variables, así que
+// un solo archivo trae todos los grosores. Licencia OFL 1.1.
 //
 // Las variables van en <html> y no en <body>: Tailwind aplica la fuente
-// en <html>, y si la variable no existe ahí el navegador cae a su letra
-// por defecto (Times New Roman), que es lo que se veía antes.
-const manrope = Manrope({
-  subsets: ["latin", "latin-ext"],
+// en <html>.
+const manrope = localFont({
+  src: "./fonts/Manrope-variable.woff2",
   variable: "--font-texto",
+  weight: "200 800",
   display: "swap",
+  fallback: ["system-ui", "Segoe UI", "Roboto", "Arial", "sans-serif"],
 });
-const sora = Sora({
-  subsets: ["latin", "latin-ext"],
-  // 300 y 400 para los títulos grandes y livianos de la web pública.
-  weight: ["300", "400", "500", "600", "700"],
+const sora = localFont({
+  src: "./fonts/Sora-variable.woff2",
   variable: "--font-titulo",
+  weight: "100 800",
   display: "swap",
+  fallback: ["system-ui", "Segoe UI", "Roboto", "Arial", "sans-serif"],
 });
 const geistMono = localFont({
   src: "./fonts/GeistMonoVF.woff",
   variable: "--font-mono",
   weight: "100 900",
+  fallback: ["ui-monospace", "Consolas", "monospace"],
 });
 
 export const metadata = {

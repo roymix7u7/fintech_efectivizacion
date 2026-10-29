@@ -15,75 +15,59 @@ const ENLACES = [
 ];
 
 /**
- * Barra superior. Transparente sobre la portada oscura; al bajar se
- * vuelve blanca con texto azul, como el resto de la página.
+ * Barra flotante y centrada. Siempre tiene fondo propio (azul noche con
+ * desenfoque y sombra): antes era transparente y, al bajar, las letras
+ * quedaban encima del contenido y no se leían.
  */
 export default function Menu() {
-  const [solida, setSolida] = useState(false);
+  const [bajo, setBajo] = useState(false);
   const [abierto, setAbierto] = useState(false);
 
   useEffect(() => {
-    const alBajar = () => setSolida(window.scrollY > 40);
+    const alBajar = () => setBajo(window.scrollY > 24);
     alBajar();
     window.addEventListener("scroll", alBajar, { passive: true });
     return () => window.removeEventListener("scroll", alBajar);
   }, []);
 
-  useEffect(() => {
-    document.body.style.overflow = abierto ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [abierto]);
-
-  const clara = solida || abierto;
-
   return (
-    <header
-      className={cn(
-        "fixed inset-x-0 top-0 z-50 transition-colors duration-300",
-        clara ? "border-b border-[#E3E9F2] bg-white/90 backdrop-blur-md" : "border-b border-transparent bg-transparent",
-      )}
-    >
-      <nav className="mx-auto flex h-[68px] max-w-6xl items-center gap-8 px-5" aria-label="Principal">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="AlToque Perú WK, inicio">
-          <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg transition-colors", clara ? "bg-marca-900" : "bg-white/10")}>
+    <header className="fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:pt-4">
+      <nav
+        aria-label="Principal"
+        className={cn(
+          "mx-auto flex h-14 max-w-5xl items-center gap-2 rounded-full pl-2 pr-2 ring-1 backdrop-blur-xl transition-all duration-300",
+          bajo || abierto
+            ? "bg-[#0B1426]/90 shadow-[0_12px_40px_-8px_rgba(11,20,38,0.55)] ring-white/10"
+            : "bg-[#0B1426]/60 shadow-[0_8px_30px_-10px_rgba(11,20,38,0.4)] ring-white/15",
+        )}
+      >
+        <Link href="/" className="flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-3" aria-label="AlToque Perú WK, inicio">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0F1B33] ring-1 ring-white/10">
             <Image src="/logo.png" alt="" width={26} height={26} priority className="object-contain" />
           </span>
-          <span className={cn("font-heading text-[0.95rem] font-semibold tracking-tight transition-colors", clara ? "text-marca-900" : "text-white")}>
-            AlToque Perú
-          </span>
+          <span className="font-heading text-[0.95rem] font-semibold tracking-tight text-white">AlToque Perú</span>
         </Link>
 
-        <ul className="hidden items-center gap-7 lg:flex">
+        <ul className="mx-auto hidden items-center gap-1 lg:flex">
           {ENLACES.map((e) => (
             <li key={e.href}>
-              <a
-                href={e.href}
-                className={cn("whitespace-nowrap text-sm font-medium transition-colors", clara ? "text-[#4F5B74] hover:text-marca-900" : "text-white/70 hover:text-white")}
-              >
+              <a href={e.href} className="whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white">
                 {e.texto}
               </a>
             </li>
           ))}
         </ul>
 
-        <div className="ml-auto hidden items-center gap-5 lg:flex">
+        <div className="ml-auto hidden items-center gap-1 lg:flex">
           <a
             href={enlaceWhatsapp()}
             target="_blank"
             rel="noopener"
-            className={cn("text-sm font-medium transition-colors", clara ? "text-[#4F5B74] hover:text-marca-900" : "text-white/80 hover:text-white")}
+            className="whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
           >
             Escríbenos
           </a>
-          <a
-            href="#empieza"
-            className={cn(
-              "rounded-full px-5 py-2.5 text-sm font-semibold transition",
-              clara ? "bg-marca-900 text-white hover:bg-marca-700" : "bg-white text-marca-900 hover:bg-oro-100",
-            )}
-          >
+          <a href="#empieza" className="whitespace-nowrap rounded-full bg-oro-500 px-5 py-2.5 text-sm font-bold text-marca-900 transition hover:bg-oro-300">
             Empieza ahora
           </a>
         </div>
@@ -93,34 +77,41 @@ export default function Menu() {
           aria-expanded={abierto}
           aria-controls="menu-movil"
           aria-label={abierto ? "Cerrar menú" : "Abrir menú"}
-          className={cn("ml-auto flex h-11 w-11 items-center justify-center rounded-full transition lg:hidden", clara ? "text-marca-900 hover:bg-[#EFF3F9]" : "text-white hover:bg-white/10")}
+          className="ml-auto flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/10 lg:hidden"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-6 w-6">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-5 w-5">
             {abierto ? <path d="M18 6 6 18M6 6l12 12" /> : <path d="M4 8h16M4 16h16" />}
           </svg>
         </button>
       </nav>
 
       {abierto && (
-        <div id="menu-movil" className="h-[calc(100dvh-68px)] overflow-y-auto bg-white px-5 pb-10 pt-4 lg:hidden">
-          <ul className="divide-y divide-[#E3E9F2]">
+        <div
+          id="menu-movil"
+          className="mx-auto mt-2 max-w-5xl overflow-hidden rounded-3xl bg-[#0B1426]/95 p-3 shadow-[0_24px_60px_-12px_rgba(11,20,38,0.6)] ring-1 ring-white/10 backdrop-blur-xl lg:hidden"
+        >
+          <ul>
             {ENLACES.map((e) => (
               <li key={e.href}>
-                <a href={e.href} onClick={() => setAbierto(false)} className="block py-5 font-heading text-2xl font-light text-marca-900">
+                <a
+                  href={e.href}
+                  onClick={() => setAbierto(false)}
+                  className="block rounded-2xl px-4 py-3.5 font-heading text-lg font-normal text-white transition hover:bg-white/10"
+                >
                   {e.texto}
                 </a>
               </li>
             ))}
           </ul>
-          <div className="mt-8 grid gap-3">
-            <a href="#empieza" onClick={() => setAbierto(false)} className="rounded-full bg-marca-900 px-5 py-4 text-center font-semibold text-white">
+          <div className="mt-2 grid gap-2 border-t border-white/10 pt-3">
+            <a href="#empieza" onClick={() => setAbierto(false)} className="rounded-full bg-oro-500 px-5 py-3.5 text-center font-bold text-marca-900">
               Empieza ahora
             </a>
             <a
               href={enlaceWhatsapp()}
               target="_blank"
               rel="noopener"
-              className="rounded-full border border-[#DCE3EE] px-5 py-4 text-center font-semibold text-marca-900"
+              className="rounded-full px-5 py-3.5 text-center font-semibold text-white ring-1 ring-white/20"
             >
               Escríbenos por WhatsApp
             </a>
