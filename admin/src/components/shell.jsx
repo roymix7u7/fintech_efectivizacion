@@ -62,9 +62,17 @@ export const SECCIONES = [
     grupo: "Operación",
   },
   {
+    ruta: "/clientes",
+    titulo: "Clientes",
+    detalle: "Buscar clientes, ver sus datos y su cupón",
+    roles: ["admin", "supervisor", "pagos"],
+    icono: Lupa,
+    grupo: "Gestión",
+  },
+  {
     ruta: "/comisiones",
     titulo: "Comisiones",
-    detalle: "Bloques de tarifas y comisiones especiales",
+    detalle: "Tarifa estándar, cupones y comisiones especiales",
     roles: ["admin", "supervisor"],
     icono: Porcentaje,
     grupo: "Gestión",
@@ -158,7 +166,9 @@ async function pedirContadores(rol) {
 
   if (["admin", "supervisor", "gestor"].includes(rol)) {
     tareas.push(
-      estadoCola().then(({ colas }) => Object.assign(salida, contadoresDe(colas))),
+      estadoCola().then(({ colas }) =>
+        Object.assign(salida, contadoresDe(colas)),
+      ),
     );
   }
   if (["admin", "supervisor"].includes(rol)) {
@@ -179,7 +189,10 @@ async function pedirContadores(rol) {
     tareas.push(
       supabase.rpc("pagos_resumen").then(({ data }) => {
         const filas = (data || []).filter((r) => rol === "admin" || r.es_mio);
-        salida.porPagar = filas.reduce((n, r) => n + Number(r.por_pagar || 0), 0);
+        salida.porPagar = filas.reduce(
+          (n, r) => n + Number(r.por_pagar || 0),
+          0,
+        );
       }),
     );
   }
@@ -190,7 +203,10 @@ async function pedirContadores(rol) {
 
 function leerPlegado() {
   try {
-    return typeof window !== "undefined" && window.localStorage.getItem("panel-plegado") === "1";
+    return (
+      typeof window !== "undefined" &&
+      window.localStorage.getItem("panel-plegado") === "1"
+    );
   } catch {
     return false;
   }
@@ -200,7 +216,16 @@ function leerPlegado() {
  * Armazón de todas las pantallas: barra lateral, cabecera con el título
  * y el área de contenido, que ocupa todo el ancho disponible.
  */
-export default function Shell({ session, titulo, descripcion, ayuda, acciones, volver, contadores = {}, children }) {
+export default function Shell({
+  session,
+  titulo,
+  descripcion,
+  ayuda,
+  acciones,
+  volver,
+  contadores = {},
+  children,
+}) {
   const [abierto, setAbierto] = useState(false);
   const [plegado, setPlegado] = useState(leerPlegado);
   const [globales, setGlobales] = useState(contadoresGuardados);
@@ -212,7 +237,9 @@ export default function Shell({ session, titulo, descripcion, ayuda, acciones, v
   // Guardia de rutas. Esconder un enlace no impide escribir la
   // dirección a mano: se le devuelve a lo suyo. Los datos igual están
   // protegidos por las políticas; esto evita la pantalla confusa.
-  const permitida = visibles.some((s) => pathname === s.ruta || pathname.startsWith(s.ruta + "/"));
+  const permitida = visibles.some(
+    (s) => pathname === s.ruta || pathname.startsWith(s.ruta + "/"),
+  );
   useEffect(() => {
     if (!permitida && visibles.length > 0) router.replace(visibles[0].ruta);
   }, [permitida, visibles, router]);
@@ -230,8 +257,12 @@ export default function Shell({ session, titulo, descripcion, ayuda, acciones, v
 
   useEffect(() => {
     refrescar();
-    const t = setInterval(() => document.visibilityState === "visible" && refrescar(true), 60000);
-    const alVolver = () => document.visibilityState === "visible" && refrescar();
+    const t = setInterval(
+      () => document.visibilityState === "visible" && refrescar(true),
+      60000,
+    );
+    const alVolver = () =>
+      document.visibilityState === "visible" && refrescar();
     document.addEventListener("visibilitychange", alVolver);
     return () => {
       clearInterval(t);
@@ -285,8 +316,18 @@ export default function Shell({ session, titulo, descripcion, ayuda, acciones, v
           compacta ? "lg:w-[72px]" : "lg:w-[248px]",
         )}
       >
-        <div className={cn("flex h-[60px] shrink-0 items-center border-b border-white/10", compacta ? "lg:justify-center lg:px-0" : "", "px-4")}>
-          <Link href={visibles[0]?.ruta || "/"} className="min-w-0" onClick={() => setAbierto(false)}>
+        <div
+          className={cn(
+            "flex h-[60px] shrink-0 items-center border-b border-white/10",
+            compacta ? "lg:justify-center lg:px-0" : "",
+            "px-4",
+          )}
+        >
+          <Link
+            href={visibles[0]?.ruta || "/"}
+            className="min-w-0"
+            onClick={() => setAbierto(false)}
+          >
             <span className={cn(compacta && "lg:hidden")}>
               <Logo />
             </span>
@@ -298,7 +339,10 @@ export default function Shell({ session, titulo, descripcion, ayuda, acciones, v
           </Link>
         </div>
 
-        <nav className="scroll-fino flex-1 overflow-y-auto overflow-x-hidden px-3 py-3" aria-label="Secciones del panel">
+        <nav
+          className="scroll-fino flex-1 overflow-y-auto overflow-x-hidden px-3 py-3"
+          aria-label="Secciones del panel"
+        >
           {grupos.map((g) => (
             <div key={g.titulo || "inicio"} className="mb-3 last:mb-0">
               {g.titulo &&
@@ -306,7 +350,12 @@ export default function Shell({ session, titulo, descripcion, ayuda, acciones, v
                   <div className="mx-2 mb-2 mt-1 hidden h-px bg-white/10 lg:block" />
                 ) : null)}
               {g.titulo && (
-                <p className={cn("mb-1 px-3 pt-1 text-xs font-bold uppercase tracking-[0.08em] text-white/40", compacta && "lg:hidden")}>
+                <p
+                  className={cn(
+                    "mb-1 px-3 pt-1 text-xs font-bold uppercase tracking-[0.08em] text-white/40",
+                    compacta && "lg:hidden",
+                  )}
+                >
                   {g.titulo}
                 </p>
               )}
@@ -314,7 +363,9 @@ export default function Shell({ session, titulo, descripcion, ayuda, acciones, v
                 <Enlace
                   key={s.ruta}
                   s={s}
-                  activo={pathname === s.ruta || pathname.startsWith(s.ruta + "/")}
+                  activo={
+                    pathname === s.ruta || pathname.startsWith(s.ruta + "/")
+                  }
                   n={cuentas[s.contador] || 0}
                   compacta={compacta}
                   onClick={() => setAbierto(false)}
@@ -325,25 +376,49 @@ export default function Shell({ session, titulo, descripcion, ayuda, acciones, v
         </nav>
 
         <div className="shrink-0 border-t border-white/10 p-3">
-          <div className={cn("flex items-center gap-3 rounded-lg px-2 py-1.5", compacta && "lg:justify-center lg:px-0")}>
-            <Pista texto={`${session.user.email} · ${ROL_TEXTO[session.rol] || session.rol}`} lado="right">
+          <div
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-2 py-1.5",
+              compacta && "lg:justify-center lg:px-0",
+            )}
+          >
+            <Pista
+              texto={`${session.user.email} · ${ROL_TEXTO[session.rol] || session.rol}`}
+              lado="right"
+            >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-oro-500 text-chico font-bold text-marca-900">
                 {(session.user.email || "?").slice(0, 2).toUpperCase()}
               </span>
             </Pista>
             <div className={cn("min-w-0 flex-1", compacta && "lg:hidden")}>
-              <p className="truncate text-chico font-semibold text-white/90">{session.user.email}</p>
-              <p className="text-xs font-semibold text-oro-500">{ROL_TEXTO[session.rol] || session.rol}</p>
+              <p className="truncate text-chico font-semibold text-white/90">
+                {session.user.email}
+              </p>
+              <p className="text-xs font-semibold text-oro-500">
+                {ROL_TEXTO[session.rol] || session.rol}
+              </p>
             </div>
           </div>
           <div className={cn("mt-1 flex gap-1", compacta ? "lg:flex-col" : "")}>
-            <BotonBarra onClick={salir} texto="Cerrar sesión" compacta={compacta} icono={<Salida className="h-[18px] w-[18px]" />} />
+            <BotonBarra
+              onClick={salir}
+              texto="Cerrar sesión"
+              compacta={compacta}
+              icono={<Salida className="h-[18px] w-[18px]" />}
+            />
             <span className="hidden lg:block">
               <BotonBarra
                 onClick={alternarPlegado}
                 texto={plegado ? "Mostrar los nombres" : "Plegar la barra"}
                 compacta
-                icono={<Plegar className={cn("h-[18px] w-[18px] transition-transform", plegado && "rotate-180")} />}
+                icono={
+                  <Plegar
+                    className={cn(
+                      "h-[18px] w-[18px] transition-transform",
+                      plegado && "rotate-180",
+                    )}
+                  />
+                }
               />
             </span>
           </div>
@@ -386,7 +461,9 @@ export default function Shell({ session, titulo, descripcion, ayuda, acciones, v
           <div className="flex min-w-0 flex-1 items-baseline gap-3">
             <h1 className="t-pagina min-w-0 truncate">{titulo}</h1>
             {descripcion && (
-              <p className="hidden min-w-0 truncate text-sm font-medium text-muted-foreground md:block">{descripcion}</p>
+              <p className="hidden min-w-0 truncate text-sm font-medium text-muted-foreground md:block">
+                {descripcion}
+              </p>
             )}
             {ayuda && (
               <span className="self-center">
@@ -395,7 +472,9 @@ export default function Shell({ session, titulo, descripcion, ayuda, acciones, v
             )}
           </div>
 
-          {acciones && <div className="flex shrink-0 items-center gap-2">{acciones}</div>}
+          {acciones && (
+            <div className="flex shrink-0 items-center gap-2">{acciones}</div>
+          )}
         </header>
 
         <main className="flex-1 px-4 py-5 lg:px-6">{children}</main>
@@ -413,20 +492,31 @@ function Enlace({ s, activo, n, compacta, onClick }) {
       aria-current={activo ? "page" : undefined}
       className={cn(
         "group relative mb-0.5 flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition",
-        activo ? "bg-white/10 text-white" : "text-white/65 hover:bg-white/5 hover:text-white",
+        activo
+          ? "bg-white/10 text-white"
+          : "text-white/65 hover:bg-white/5 hover:text-white",
         compacta && "lg:justify-center lg:px-0",
       )}
     >
-      {activo && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r bg-oro-500" />}
+      {activo && (
+        <span className="absolute inset-y-2 left-0 w-[3px] rounded-r bg-oro-500" />
+      )}
       <span className="relative">
-        <Icono className={cn("h-[19px] w-[19px] shrink-0", activo ? "text-oro-500" : "text-white/50 group-hover:text-white/80")} />
+        <Icono
+          className={cn(
+            "h-[19px] w-[19px] shrink-0",
+            activo ? "text-oro-500" : "text-white/50 group-hover:text-white/80",
+          )}
+        />
         {compacta && n > 0 && (
           <span className="absolute -right-2 -top-1.5 hidden h-4 min-w-[16px] items-center justify-center rounded-full bg-oro-500 px-1 text-[0.6875rem] font-bold leading-none text-marca-900 lg:flex">
             {n > 99 ? "99+" : n}
           </span>
         )}
       </span>
-      <span className={cn("min-w-0 flex-1 truncate", compacta && "lg:hidden")}>{s.titulo}</span>
+      <span className={cn("min-w-0 flex-1 truncate", compacta && "lg:hidden")}>
+        {s.titulo}
+      </span>
       {n > 0 && (
         <span
           className={cn(
@@ -445,7 +535,11 @@ function Enlace({ s, activo, n, compacta, onClick }) {
   // la burbuja explica para qué sirve la sección.
   return (
     <Pista
-      texto={compacta ? `${s.titulo}${n > 0 ? ` · ${n} pendiente${n === 1 ? "" : "s"}` : ""}` : s.detalle}
+      texto={
+        compacta
+          ? `${s.titulo}${n > 0 ? ` · ${n} pendiente${n === 1 ? "" : "s"}` : ""}`
+          : s.detalle
+      }
       lado="right"
       className="block w-full"
     >

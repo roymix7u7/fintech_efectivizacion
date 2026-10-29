@@ -1,6 +1,13 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -122,6 +129,9 @@ function Cuenta() {
     cuenta: "Cuenta agregada.",
   }[params.get("aviso")];
   const [estado, setEstado] = useState(null); // pendiente | observado | activo
+  // Si la aprobaron mientras miraba la pantalla, se le dice al entrar.
+  const [recienAprobada, setRecienAprobada] = useState(false);
+  const estadoPrevio = useRef(null);
   const [usuario, setUsuario] = useState(null);
   const [perfil, setPerfil] = useState(null);
   const [legales, setLegales] = useState([]);
@@ -178,6 +188,45 @@ function Cuenta() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  // Mientras espera la revisión se entera sola de la respuesta del
+  // equipo, como en la app: en vivo por la fila de users, cada 30 s por
+  // si se cortó la conexión, y al volver a la pestaña.
+  const enEspera = estado === "pendiente" || estado === "observado";
+  useEffect(() => {
+    if (!usuario || !enEspera) return;
+    const canal = sb
+      .channel(`mi-revision-${usuario.id}-${Date.now()}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "users",
+          filter: `id=eq.${usuario.id}`,
+        },
+        () => cargar(),
+      )
+      .subscribe();
+    const reloj = setInterval(cargar, 30000);
+    const alVolver = () => document.visibilityState === "visible" && cargar();
+    document.addEventListener("visibilitychange", alVolver);
+    return () => {
+      sb.removeChannel(canal);
+      clearInterval(reloj);
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+  }, [sb, usuario, enEspera, cargar]);
+
+  useEffect(() => {
+    if (
+      estado === "activo" &&
+      (estadoPrevio.current === "pendiente" ||
+        estadoPrevio.current === "observado")
+    )
+      setRecienAprobada(true);
+    if (estado) estadoPrevio.current = estado;
+  }, [estado]);
 
   // Cierre automático al cumplirse las dos horas.
   useEffect(() => {
@@ -254,7 +303,11 @@ function Cuenta() {
           sb={sb}
           perfil={perfil}
           usuario={usuario}
-          guardado={guardado}
+          guardado={
+            recienAprobada
+              ? "¡Tu cuenta fue aprobada! Ya puedes registrar tus tarjetas y cuentas y enviar solicitudes."
+              : guardado
+          }
           onSalir={() => salir()}
         />
       ) : (
@@ -446,7 +499,14 @@ function EnRevision({ sb, estado, perfil, usuario, bienvenida, onEnviado }) {
                 y enviar solicitudes, aquí o en la app.
               </p>
               {aviso && <Aviso tono={aviso.tono}>{aviso.texto}</Aviso>}
-              <Boton tono="primario" className="mt-6" onClick={onEnviado}>
+              <p className="mt-5 flex items-center gap-2 text-sm text-[#4F5B74]">
+                <span className="relative flex h-2.5 w-2.5" aria-hidden>
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:hidden" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                </span>
+                Esta página se actualiza sola apenas el equipo responda.
+              </p>
+              <Boton tono="neutro" className="mt-4" onClick={onEnviado}>
                 Ver si ya está lista
               </Boton>
             </>
@@ -1166,6 +1226,56 @@ function FilaAlerta({ a }) {
   );
 }
 
+/* ── Cupón vigente ── */
+
+/** Banda con el cupón del cliente y los días que le quedan. */
+function CuponVigente({ cupon }) {
+  if (!cupon) return null;
+  const quedan = cupon.hasta
+    ? Math.max(
+        0,
+        Math.ceil((new Date(cupon.hasta).getTime() - Date.now()) / 86400000),
+      )
+    : null;
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-[#0F1B33] px-4 py-3 text-white">
+      <span
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-oro-500 text-marca-900"
+        aria-hidden
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.9"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-5 w-5"
+        >
+          <path d="M3 9V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v3a3 3 0 0 0 0 6v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a3 3 0 0 0 0-6z" />
+          <path d="M14.5 9.5l-5 5M9.5 9.5h.01M14.5 14.5h.01" />
+        </svg>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-chico text-white/60">
+          Tienes un cupón con tarifa preferencial
+        </span>
+        <span className="block font-semibold">{cupon.nombre}</span>
+      </span>
+      {quedan !== null && (
+        <span className="text-right">
+          <span className="cifras block font-heading text-2xl leading-none text-oro-500">
+            {quedan}
+          </span>
+          <span className="block text-chico text-white/60">
+            día{quedan === 1 ? "" : "s"} · vence {fecha(cupon.hasta)}
+          </span>
+        </span>
+      )}
+    </div>
+  );
+}
+
 /* ── Resumen ── */
 
 function Resumen({ solicitudes, tarjetas, cuentas, comisiones, irA }) {
@@ -1178,6 +1288,11 @@ function Resumen({ solicitudes, tarjetas, cuentas, comisiones, irA }) {
 
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[1.15fr_1fr]">
+      {comisiones.cupon && (
+        <div className="lg:col-span-2">
+          <CuponVigente cupon={comisiones.cupon} />
+        </div>
+      )}
       <Panel
         titulo="Mis bancos"
         accion={
@@ -1602,6 +1717,11 @@ function Perfil({ sb, perfil, usuario, comisiones, onSalir }) {
       <MisDatos perfil={perfil} usuario={usuario} />
       <div className="space-y-6">
         <Panel titulo="Mis comisiones">
+          {comisiones.cupon && (
+            <div className="mb-3">
+              <CuponVigente cupon={comisiones.cupon} />
+            </div>
+          )}
           {bancos.length === 0 ? (
             <p className="text-sm text-[#4F5B74]">
               Cuando verifiquemos tu tarjeta verás aquí tu porcentaje.

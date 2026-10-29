@@ -199,7 +199,7 @@ export default function KYCDetallePage() {
       return;
     }
     if (!bloqueId) {
-      setError("Elige el cupón de comisiones que le corresponde.");
+      setError("Elige la tarifa que le corresponde.");
       return;
     }
 
@@ -389,7 +389,7 @@ export default function KYCDetallePage() {
   const faltaAprobar = !perfil
     ? "El cliente aún no subió sus documentos."
     : !bloqueId
-      ? "Elige el cupón de comisiones."
+      ? "Elige la tarifa del cliente."
       : !todoRevisado
         ? "Marca todo lo de la lista de comprobación."
         : ajeno
@@ -490,9 +490,9 @@ export default function KYCDetallePage() {
                   <div>
                     <div className="mb-2 flex items-center gap-1.5">
                       <p className="text-sm font-semibold">
-                        Cupón de comisiones
+                        Tarifa del cliente
                       </p>
-                      <Pista texto="Define su tarifa en cada banco. Los cupones los crea el administrador en Comisiones; aquí eliges cuál le toca. El estándar es el que se publica en la web." />
+                      <Pista texto="Lo normal es la tarifa estándar, la publicada en la web. Si eliges un cupón, rige desde hoy por su duración y al vencer vuelve a la estándar." />
                     </div>
                     {bloques.length === 0 ? (
                       <Aviso tono="espera">
@@ -503,7 +503,7 @@ export default function KYCDetallePage() {
                       <div
                         className="space-y-1.5"
                         role="radiogroup"
-                        aria-label="Cupón de comisiones"
+                        aria-label="Tarifa del cliente"
                       >
                         {bloques.map((b) => (
                           <button
@@ -533,13 +533,17 @@ export default function KYCDetallePage() {
                             <span className="min-w-0 flex-1">
                               <span className="flex items-center gap-2">
                                 <span className="text-sm font-bold text-foreground">
-                                  {b.nombre}
+                                  {b.es_default ? "Tarifa estándar" : b.nombre}
                                 </span>
-                                {b.es_default && (
+                                {b.es_default ? (
                                   <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
-                                    estándar
+                                    recomendada
                                   </span>
-                                )}
+                                ) : b.duracion_dias ? (
+                                  <span className="rounded bg-oro-50 px-1.5 py-0.5 text-xs font-semibold text-oro-700">
+                                    cupón · {b.duracion_dias} días
+                                  </span>
+                                ) : null}
                               </span>
                               <span className="mt-0.5 block truncate text-chico text-muted-foreground">
                                 {(b.bancos || [])
@@ -677,8 +681,11 @@ export default function KYCDetallePage() {
                 <Dato etiqueta="Validado el">
                   {fechaLarga(perfil?.fecha_validacion)}
                 </Dato>
-                <Dato etiqueta="Cupón de comisiones">
-                  {bloques.find((b) => b.id === perfil?.bloque_id)?.nombre}
+                <Dato etiqueta="Tarifa">
+                  {(() => {
+                    const b = bloques.find((x) => x.id === perfil?.bloque_id);
+                    return !b || b.es_default ? "Tarifa estándar" : b.nombre;
+                  })()}
                 </Dato>
               </dl>
             </Panel>
