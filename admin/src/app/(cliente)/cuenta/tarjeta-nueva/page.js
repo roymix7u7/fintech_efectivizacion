@@ -10,6 +10,7 @@ import {
 } from "@/lib/cliente";
 import { ORDEN_BANCOS, nombreBanco } from "@/lib/bancos";
 import { validarUltimos4 } from "@/lib/validacionesCliente";
+import { SeguridadFotos } from "@/components/cliente/fotos";
 import {
   Marco,
   Campo,
@@ -202,21 +203,19 @@ function TarjetaNueva() {
             />
           </div>
 
-          <div className="rounded-2xl bg-[#F6F8FC] p-4 text-sm text-[#4F5B74]">
-            <p className="font-semibold text-marca-900">
-              En la foto deben leerse tu nombre y los últimos 4 dígitos.
-            </p>
-            <p className="mt-1">
-              Tapa el resto del número y nunca envíes el código de seguridad
-              (CVV). También sirve una captura de la app de tu banco.
-            </p>
-          </div>
+          <SeguridadFotos tipo="tarjeta" />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <FotoUnica
               id="foto-frente"
               titulo="Foto de la tarjeta"
               ayuda="Frente o captura de la app del banco."
+              consejos={[
+                "Que se lean tu nombre y los últimos 4 dígitos.",
+                "Tapa el resto del número con un papel o con el dedo.",
+                "Nunca muestres el código de seguridad (CVV).",
+                "También sirve una captura de la app de tu banco.",
+              ]}
               foto={frente}
               onCambio={setFrente}
               deshabilitado={guardando}
@@ -226,6 +225,10 @@ function TarjetaNueva() {
               titulo="Segunda foto"
               opcional
               ayuda="Reverso u otra captura, si ayuda."
+              consejos={[
+                "Si es el reverso, tapa el código de seguridad (CVV).",
+                "Sirve otra captura de la app del banco con tu nombre.",
+              ]}
               foto={reverso}
               onCambio={setReverso}
               deshabilitado={guardando}

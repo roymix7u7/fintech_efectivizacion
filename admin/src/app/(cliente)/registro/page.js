@@ -68,6 +68,32 @@ const VACIO = {
   codigo_promo: "",
 };
 
+/**
+ * Borrador del paso 1 en esta pestaña (sessionStorage: se borra al
+ * cerrarla). Nunca la contraseña. Así, si la página se recarga a mitad
+ * del registro, no hay que volver a escribir todo.
+ */
+const BORRADOR = "atk-registro";
+const leerBorrador = () => {
+  try {
+    return JSON.parse(sessionStorage.getItem(BORRADOR) || "null");
+  } catch {
+    return null;
+  }
+};
+const guardarBorrador = (form) => {
+  try {
+    // eslint-disable-next-line no-unused-vars
+    const { password, confirmar, ...resto } = form;
+    sessionStorage.setItem(BORRADOR, JSON.stringify(resto));
+  } catch {}
+};
+const borrarBorrador = () => {
+  try {
+    sessionStorage.removeItem(BORRADOR);
+  } catch {}
+};
+
 export default function RegistroPage() {
   const sb = supabaseCliente();
   const router = useRouter();
@@ -99,6 +125,14 @@ export default function RegistroPage() {
 
   // ¿Ya hay una cuenta a medio terminar en este navegador?
   useEffect(() => {
+    const borrador = leerBorrador();
+    // Desde "Ingresar", con un correo que nunca se verificó.
+    const correo = new URLSearchParams(window.location.search).get("correo");
+    setForm((f) => ({
+      ...f,
+      ...(borrador || {}),
+      ...(correo ? { email: correo } : {}),
+    }));
     (async () => {
       const {
         data: { session },
@@ -112,6 +146,12 @@ export default function RegistroPage() {
         if (perfil) return router.replace("/cuenta");
         setCompletar(true);
         setForm((f) => ({ ...f, email: session.user.email || "" }));
+        if (borrador)
+          setAviso({
+            tono: "info",
+            texto:
+              "Recuperamos los datos que ya habías escrito. Revísalos y continúa con tus fotos.",
+          });
       }
       setRevisando(false);
     })();
@@ -128,6 +168,9 @@ export default function RegistroPage() {
   }, [espera]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  useEffect(() => {
+    if (!revisando) guardarBorrador(form);
+  }, [form, revisando]);
 
   // ── ¿Ya registrado? Se consulta al terminar de escribir ──
   const emailNormal = form.email.trim().toLowerCase();
@@ -326,6 +369,27 @@ export default function RegistroPage() {
     }
   }
 
+  // Se equivocó de correo: vuelve al paso 1 con todo lo demás escrito.
+  // La cuenta con el correo mal escrito nunca se confirma, así que no
+  // queda activa ni bloquea nada.
+  function cambiarCorreo() {
+    setCodigo("");
+    setCodigoError("");
+    setEspera(0);
+    setPaso(1);
+    setAviso({
+      tono: "info",
+      texto:
+        "Corrige tu correo y vuelve a pulsar «Crear cuenta y enviar código». Tus demás datos siguen aquí.",
+    });
+    setTimeout(() => {
+      const campo = document.getElementById("email");
+      campo?.scrollIntoView({ behavior: "smooth", block: "center" });
+      campo?.focus();
+      campo?.select();
+    }, 80);
+  }
+
   async function reenviar() {
     setAviso(null);
     const { error } = await sb.auth.resend({
@@ -390,6 +454,7 @@ export default function RegistroPage() {
             .eq("user_id", user.id)
         : await sb.from("perfiles_cliente").insert(perfil);
       if (error) throw error;
+      borrarBorrador();
       router.replace("/cuenta?bienvenida=1");
     } catch (e4) {
       if (paths)
@@ -797,10 +862,39 @@ export default function RegistroPage() {
       {paso === 2 && (
         <Marco
           titulo="Revisa tu correo"
-          subtitulo={`Te enviamos un código de 6 dígitos a ${form.email}.`}
+          subtitulo="Te enviamos un código de 6 dígitos. Escríbelo aquí para verificar tu correo."
           paso={2}
           pasos={PASOS}
         >
+          <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl bg-[#F4F7FB] px-4 py-3 ring-1 ring-[#E3E9F2]">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-5 w-5 shrink-0 text-marca-700"
+              aria-hidden
+            >
+              <path d="M3 6h18v12H3z" />
+              <path d="m3 7 9 6 9-6" />
+            </svg>
+            <span className="min-w-0 flex-1">
+              <span className="block text-chico text-[#6B7690]">Enviado a</span>
+              <span className="block break-all font-semibold">
+                {form.email.trim().toLowerCase()}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={cambiarCorreo}
+              disabled={cargando}
+              className="shrink-0 rounded-full bg-white px-4 py-2 text-sm font-semibold text-marca-900 ring-1 ring-[#DCE3EE] transition hover:bg-[#EFF3F9] disabled:opacity-50"
+            >
+              Cambiar correo
+            </button>
+          </div>
           <Aviso tono={aviso?.tono} onCerrar={() => setAviso(null)}>
             {aviso?.texto}
           </Aviso>
@@ -816,7 +910,15 @@ export default function RegistroPage() {
           />
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-sm">
             <span className="text-[#8A93A6]">
-              ¿No te llegó? Revisa tu carpeta de spam.
+              ¿No te llegó? Revisa tu carpeta de spam o{" "}
+              <button
+                type="button"
+                onClick={cambiarCorreo}
+                className="font-semibold text-marca-700 underline underline-offset-4"
+              >
+                corrige tu correo
+              </button>
+              .
             </span>
             <Boton
               type="button"

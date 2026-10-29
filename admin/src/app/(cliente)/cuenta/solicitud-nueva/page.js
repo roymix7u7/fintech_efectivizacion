@@ -384,6 +384,11 @@ export default function SolicitudNuevaPage() {
                   id="comprobante"
                   titulo="Comprobante del pago"
                   ayuda="Que se lean el monto y el número de operación."
+                  consejos={[
+                    "Que se lean el monto, la fecha y el número de operación.",
+                    "Puede ser una captura de la app de tu banco o una foto del voucher.",
+                    "Completo, sin recortes.",
+                  ]}
                   foto={comprobante}
                   onCambio={setComprobante}
                   deshabilitado={enviando}

@@ -73,7 +73,29 @@ function Ingresar() {
         email: email.trim().toLowerCase(),
         password,
       });
-      if (error) return setAviso({ tono: "error", texto: mensajeError(error) });
+      if (error) {
+        // Creó la cuenta pero nunca escribió el código: se le ofrece
+        // terminar el registro en vez de dejarlo sin salida.
+        if (/Email not confirmed/i.test(error.message || "")) {
+          const correo = email.trim().toLowerCase();
+          return setAviso({
+            tono: "atencion",
+            texto: (
+              <>
+                Tu correo aún no está verificado: tu registro quedó a medias.{" "}
+                <Link
+                  href={`/registro?correo=${encodeURIComponent(correo)}`}
+                  className="font-semibold underline"
+                >
+                  Terminar mi registro
+                </Link>{" "}
+                (te enviaremos un código nuevo).
+              </>
+            ),
+          });
+        }
+        return setAviso({ tono: "error", texto: mensajeError(error) });
+      }
 
       const { data: userData, error: userError } = await sb
         .from("users")

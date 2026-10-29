@@ -10,7 +10,7 @@ import {
   cerrarSesionCliente,
 } from "@/lib/cliente";
 import { nombreBanco } from "@/lib/bancos";
-import { prepararFoto } from "./fotos";
+import { prepararFoto, ElegirFoto } from "./fotos";
 import { Encabezado } from "./piezas";
 
 /**
@@ -136,8 +136,9 @@ export function ElegirBanco({
 }
 
 /**
- * Una foto (tarjeta o comprobante): de la cámara del celular, de una
- * captura de pantalla o de un archivo. Se ve entera, sin recortes.
+ * Una foto (tarjeta o comprobante). Al tocarla se abre la guía con
+ * "Tomar foto" o "Elegir de la galería", como en la app. Se ve entera,
+ * sin recortes.
  */
 export function FotoUnica({
   id,
@@ -147,15 +148,17 @@ export function FotoUnica({
   foto,
   onCambio,
   deshabilitado,
+  consejos = [],
 }) {
   const [error, setError] = useState("");
   const [preparando, setPreparando] = useState(false);
+  const [eligiendo, setEligiendo] = useState(false);
 
-  async function elegir(archivo) {
+  async function elegir(fuente) {
     setError("");
     setPreparando(true);
     try {
-      onCambio(await prepararFoto(archivo));
+      onCambio(await prepararFoto(fuente));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -165,16 +168,18 @@ export function FotoUnica({
 
   return (
     <div>
-      <label
-        htmlFor={id}
+      <button
+        id={id}
+        type="button"
+        disabled={deshabilitado || preparando}
+        onClick={() => setEligiendo(true)}
         className={cn(
-          "relative flex min-h-[170px] cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border-2 border-dashed p-4 text-center transition",
+          "relative flex min-h-[170px] w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border-2 border-dashed p-4 text-center transition disabled:opacity-60",
           foto
             ? "border-emerald-400 bg-[#0B1426]"
             : error
               ? "border-red-300 bg-red-50/40"
               : "border-[#CBD5E3] bg-[#F6F8FC] hover:border-marca-600",
-          deshabilitado && "pointer-events-none opacity-60",
         )}
       >
         {foto ? (
@@ -221,27 +226,23 @@ export function FotoUnica({
               </span>
             )}
             <span className="text-chico font-semibold text-marca-700 underline underline-offset-4">
-              Tomar foto o elegir archivo
+              Tomar foto o elegir de la galería
             </span>
           </>
         )}
-        <input
-          id={id}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/heic"
-          className="sr-only"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = "";
-            if (f) elegir(f);
-          }}
-        />
-      </label>
+      </button>
       {error && (
         <p role="alert" className="mt-2 text-chico font-medium text-red-600">
           {error}
         </p>
       )}
+      <ElegirFoto
+        abierto={eligiendo}
+        onCerrar={() => setEligiendo(false)}
+        titulo={titulo}
+        consejos={consejos}
+        onFoto={elegir}
+      />
     </div>
   );
 }
