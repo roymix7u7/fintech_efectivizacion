@@ -1,0 +1,413 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+
+/* Piezas del área de clientes (registro, ingreso, recuperar, Mi cuenta).
+   Mismo lenguaje visual que la web pública: azul noche, azul hielo y
+   dorado como acento. */
+
+/** Barra superior del área de clientes: solo la marca y una acción. */
+export function Encabezado({ derecha }) {
+  return (
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0B1426]/95 backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-5xl items-center gap-3 px-5">
+        <Link
+          href="/"
+          className="flex items-center gap-2.5"
+          aria-label="ALTOQUE PERU WK, ir al inicio"
+        >
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0F1B33] ring-1 ring-white/10">
+            <Image
+              src="/logo.png"
+              alt=""
+              width={24}
+              height={24}
+              className="object-contain"
+            />
+          </span>
+          <span className="whitespace-nowrap font-heading text-[0.9rem] font-bold tracking-[0.06em] text-white">
+            ALTOQUE PERU <span className="text-oro-500">WK</span>
+          </span>
+        </Link>
+        <div className="ml-auto flex items-center gap-2 whitespace-nowrap">
+          {derecha}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/** Tarjeta central de los formularios, con título y pasos. */
+export function Marco({
+  titulo,
+  subtitulo,
+  paso,
+  pasos,
+  children,
+  ancho = "max-w-lg",
+}) {
+  return (
+    <main className="mx-auto w-full px-4 py-10 sm:py-14">
+      <div className={cn("mx-auto", ancho)}>
+        {pasos && (
+          <ol
+            className="mb-6 flex items-center gap-2"
+            aria-label={`Paso ${paso} de ${pasos.length}`}
+          >
+            {pasos.map((p, i) => {
+              const n = i + 1;
+              return (
+                <li key={p} className="flex flex-1 flex-col gap-1.5">
+                  <span
+                    className={cn(
+                      "h-1.5 rounded-full transition-colors",
+                      n <= paso ? "bg-oro-500" : "bg-[#DCE3EE]",
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "text-xs font-semibold",
+                      n === paso ? "text-marca-900" : "text-[#8A93A6]",
+                    )}
+                  >
+                    {n}. {p}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+        <div className="rounded-3xl bg-white p-6 shadow-[0_1px_2px_rgba(15,27,51,0.04),0_30px_60px_-30px_rgba(15,27,51,0.3)] sm:p-9">
+          <h1 className="font-heading text-[1.75rem] font-normal leading-tight tracking-[-0.02em] text-marca-900">
+            {titulo}
+          </h1>
+          {subtitulo && <p className="mt-2 text-[#4F5B74]">{subtitulo}</p>}
+          <div className="mt-7">{children}</div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+/** Campo con etiqueta, ayuda, marca de correcto y error debajo. */
+export function Campo({
+  id,
+  etiqueta,
+  error,
+  ok,
+  ayuda,
+  prefijo,
+  derecha,
+  className,
+  ...props
+}) {
+  return (
+    <div className={cn("min-w-0", className)}>
+      <label
+        htmlFor={id}
+        className="mb-1.5 block text-sm font-semibold text-marca-900"
+      >
+        {etiqueta}
+      </label>
+      <div
+        className={cn(
+          "flex items-center rounded-xl border bg-white transition focus-within:ring-4",
+          error
+            ? "border-red-400 focus-within:ring-red-500/10"
+            : ok
+              ? "border-emerald-500 focus-within:ring-emerald-500/10"
+              : "border-[#DCE3EE] focus-within:border-marca-600 focus-within:ring-marca-600/10",
+        )}
+      >
+        {prefijo && (
+          <span className="pl-3.5 text-md font-semibold text-[#8A93A6]">
+            {prefijo}
+          </span>
+        )}
+        <input
+          id={id}
+          aria-invalid={Boolean(error)}
+          aria-describedby={
+            error ? `${id}-error` : ayuda ? `${id}-ayuda` : undefined
+          }
+          className="h-12 w-full min-w-0 rounded-xl bg-transparent px-3.5 text-md text-marca-900 outline-none placeholder:text-[#AFBCD0]"
+          {...props}
+        />
+        {derecha}
+        {ok && !error && !derecha && (
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="mr-3 h-4 w-4 shrink-0 text-emerald-600"
+            aria-hidden
+          >
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        )}
+      </div>
+      {error ? (
+        <p
+          id={`${id}-error`}
+          role="alert"
+          className="mt-1.5 text-chico font-medium text-red-600"
+        >
+          {error}
+        </p>
+      ) : ayuda ? (
+        <p id={`${id}-ayuda`} className="mt-1.5 text-chico text-[#8A93A6]">
+          {ayuda}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Contraseña con botón para mostrarla u ocultarla. */
+export function CampoClave(props) {
+  const [ver, setVer] = useState(false);
+  return (
+    <Campo
+      {...props}
+      type={ver ? "text" : "password"}
+      derecha={
+        <button
+          type="button"
+          onClick={() => setVer((v) => !v)}
+          aria-label={ver ? "Ocultar contraseña" : "Mostrar contraseña"}
+          className="mr-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#8A93A6] hover:bg-[#EFF3F9] hover:text-marca-900"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            className="h-[18px] w-[18px]"
+            aria-hidden
+          >
+            <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" />
+            <circle cx="12" cy="12" r="3" />
+            {ver && <path d="M3 3l18 18" />}
+          </svg>
+        </button>
+      }
+    />
+  );
+}
+
+/** Las cinco reglas de la contraseña, cada una con su marca. */
+export function ReglasClave({ reglas }) {
+  const lista = [
+    ["length", "8 caracteres o más"],
+    ["upper", "Una mayúscula"],
+    ["lower", "Una minúscula"],
+    ["number", "Un número"],
+    ["special", "Un símbolo (!@#$...)"],
+  ];
+  return (
+    <ul
+      className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-chico"
+      aria-label="Requisitos de la contraseña"
+    >
+      {lista.map(([k, t]) => (
+        <li
+          key={k}
+          className={cn(
+            "flex items-center gap-1.5",
+            reglas[k] ? "text-emerald-700" : "text-[#8A93A6]",
+          )}
+        >
+          <span
+            className={cn(
+              "flex h-4 w-4 items-center justify-center rounded-full",
+              reglas[k] ? "bg-emerald-600 text-white" : "bg-[#E3E9F2]",
+            )}
+          >
+            {reglas[k] && (
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-2.5 w-2.5"
+                aria-hidden
+              >
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+            )}
+          </span>
+          {t}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Código de 6 dígitos del correo. Al completarlo se verifica solo. */
+export function CodigoSeis({ valor, onCambio, deshabilitado, error }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
+  return (
+    <div>
+      <label htmlFor="codigo" className="sr-only">
+        Código de 6 dígitos
+      </label>
+      <div className="relative" onClick={() => ref.current?.focus()}>
+        <input
+          ref={ref}
+          id="codigo"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          value={valor}
+          disabled={deshabilitado}
+          onChange={(e) =>
+            onCambio(e.target.value.replace(/\D/g, "").slice(0, 6))
+          }
+          className="absolute inset-0 h-full w-full cursor-text opacity-0"
+          aria-invalid={Boolean(error)}
+        />
+        <div className="pointer-events-none grid grid-cols-6 gap-2">
+          {Array.from({ length: 6 }).map((_, i) => {
+            const activo = i === Math.min(valor.length, 5);
+            return (
+              <span
+                key={i}
+                className={cn(
+                  "cifras flex h-14 items-center justify-center rounded-xl border-2 bg-white font-heading text-2xl text-marca-900 transition",
+                  error
+                    ? "border-red-400"
+                    : valor[i]
+                      ? "border-marca-900"
+                      : activo
+                        ? "border-oro-500"
+                        : "border-[#DCE3EE]",
+                )}
+              >
+                {valor[i] || ""}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+      {error && (
+        <p role="alert" className="mt-2 text-chico font-medium text-red-600">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function Casilla({ id, marcada, onCambio, error, children }) {
+  return (
+    <label
+      htmlFor={id}
+      className={cn(
+        "flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 text-sm leading-snug transition",
+        error
+          ? "border-red-300 bg-red-50/50"
+          : marcada
+            ? "border-marca-200 bg-[#F6F8FC]"
+            : "border-[#E3E9F2] hover:bg-[#F6F8FC]",
+      )}
+    >
+      <input
+        id={id}
+        type="checkbox"
+        checked={marcada}
+        onChange={(e) => onCambio(e.target.checked)}
+        className="mt-0.5 h-[18px] w-[18px] shrink-0 accent-marca-900"
+      />
+      <span className="text-[#2E3A52]">{children}</span>
+    </label>
+  );
+}
+
+export function Boton({
+  cargando,
+  children,
+  tono = "primario",
+  className,
+  ...props
+}) {
+  return (
+    <button
+      {...props}
+      disabled={cargando || props.disabled}
+      className={cn(
+        "inline-flex h-12 items-center justify-center gap-2 rounded-full px-6 text-md font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
+        tono === "primario" && "bg-marca-900 text-white hover:bg-marca-700",
+        tono === "oro" && "bg-oro-500 text-marca-900 hover:bg-oro-300",
+        tono === "neutro" &&
+          "border border-[#DCE3EE] bg-white text-marca-900 hover:bg-[#F6F8FC]",
+        tono === "enlace" &&
+          "h-auto px-0 text-sm text-marca-700 underline underline-offset-4 hover:text-marca-900",
+        className,
+      )}
+    >
+      {cargando && (
+        <span
+          className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+          aria-hidden
+        />
+      )}
+      {children}
+    </button>
+  );
+}
+
+/** Aviso dentro del formulario: error, atención o listo. */
+export function Aviso({ tono = "error", children, onCerrar }) {
+  if (!children) return null;
+  const estilos = {
+    error: "border-red-200 bg-red-50 text-red-800",
+    atencion: "border-oro-300 bg-oro-50 text-[#6E5300]",
+    exito: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    info: "border-marca-200 bg-[#F6F8FC] text-marca-700",
+  };
+  return (
+    <div
+      role="alert"
+      className={cn(
+        "mb-5 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm",
+        estilos[tono],
+      )}
+    >
+      <span className="min-w-0 flex-1">{children}</span>
+      {onCerrar && (
+        <button
+          onClick={onCerrar}
+          aria-label="Cerrar aviso"
+          className="shrink-0 opacity-60 hover:opacity-100"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Pantalla de espera mientras se confirma la sesión. */
+export function Cargando({ texto = "Cargando..." }) {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center gap-3 text-[#4F5B74]">
+      <span
+        className="h-5 w-5 animate-spin rounded-full border-2 border-marca-200 border-t-marca-900"
+        aria-hidden
+      />
+      {texto}
+    </div>
+  );
+}
