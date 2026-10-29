@@ -27,10 +27,7 @@ import {
   BANCOS_PRINCIPALES,
 } from "@/lib/bancos";
 import { Boton, Aviso, Cargando, Casilla } from "@/components/cliente/piezas";
-import SubidaFotos, {
-  fotosCompletas,
-  Ventana,
-} from "@/components/cliente/fotos";
+import SubidaFotos, { fotosCompletas } from "@/components/cliente/fotos";
 import { WHATSAPP } from "@/components/sitio/datos";
 import { useCuenta } from "@/components/cliente/contexto";
 
@@ -1262,6 +1259,44 @@ function FechaNoticia({ n, className }) {
   );
 }
 
+/**
+ * Afiche de una noticia, completo y sin recortes. Los afiches suelen ser
+ * verticales (1080×1350): se muestran enteros sobre un fondo hecho con la
+ * misma imagen desenfocada, así el marco nunca queda vacío.
+ */
+function Afiche({ src, alt = "", className, zoom }) {
+  return (
+    <span
+      className={cn("relative block overflow-hidden bg-[#0B1426]", className)}
+    >
+      {src ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl"
+          />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt={alt}
+            className={cn(
+              "relative h-full w-full object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.35)] transition duration-500",
+              zoom && "group-hover:scale-[1.03]",
+            )}
+          />
+        </>
+      ) : (
+        <span className="absolute inset-0 flex items-center justify-center text-sm text-white/30">
+          Sin imagen
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** Portada (la más reciente) y las demás en tarjetas, como en la app. */
 function Noticias({ sb, noticias }) {
   const [abierta, setAbierta] = useState(null);
@@ -1274,7 +1309,6 @@ function Noticias({ sb, noticias }) {
       />
     );
   const [portada, ...resto] = noticias;
-  const imgPortada = imagenesDe(sb, portada)[0];
 
   return (
     <div className="space-y-5">
@@ -1282,35 +1316,26 @@ function Noticias({ sb, noticias }) {
         onClick={() => setAbierta(portada.id)}
         className="group block w-full overflow-hidden rounded-3xl bg-white text-left shadow-[0_1px_2px_rgba(15,27,51,0.05)] ring-1 ring-transparent transition hover:ring-[#C9D6EC]"
       >
-        <div className="grid md:grid-cols-[1.2fr_1fr]">
-          <div className="relative aspect-[16/9] bg-[#0B1426] md:aspect-auto md:min-h-[260px]">
-            {imgPortada ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={imgPortada}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]"
-              />
-            ) : (
-              <span className="absolute inset-0 flex items-center justify-center text-white/30">
-                Sin imagen
-              </span>
-            )}
-          </div>
-          <div className="flex flex-col gap-3 p-6">
+        <div className="grid md:grid-cols-[minmax(0,360px)_1fr]">
+          <Afiche
+            src={imagenesDe(sb, portada)[0]}
+            className="aspect-[16/11] md:aspect-[4/5]"
+            zoom
+          />
+          <div className="flex flex-col gap-3 p-6 md:p-8">
             <ChipsNoticia n={portada} />
-            <h2 className="font-heading text-2xl leading-tight">
+            <h2 className="font-heading text-2xl leading-tight md:text-[1.7rem]">
               {portada.titulo}
             </h2>
             {portada.mensaje && (
-              <p className="line-clamp-4 whitespace-pre-line text-[#4F5B74]">
+              <p className="line-clamp-5 whitespace-pre-line leading-relaxed text-[#4F5B74]">
                 {portada.mensaje}
               </p>
             )}
             <span className="mt-auto flex items-center justify-between gap-3 pt-2">
               <FechaNoticia n={portada} className="text-[#8A93A6]" />
-              <span className="text-sm font-semibold text-marca-700 group-hover:underline">
-                Leer más →
+              <span className="rounded-full bg-[#0B1426] px-4 py-2 text-sm font-semibold text-white transition group-hover:bg-marca-700">
+                Ver noticia
               </span>
             </span>
           </div>
@@ -1319,76 +1344,201 @@ function Noticias({ sb, noticias }) {
 
       {resto.length > 0 && (
         <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {resto.map((n) => {
-            const img = imagenesDe(sb, n)[0];
-            return (
-              <li key={n.id}>
-                <button
-                  onClick={() => setAbierta(n.id)}
-                  className="group flex h-full w-full flex-col overflow-hidden rounded-3xl bg-white text-left shadow-[0_1px_2px_rgba(15,27,51,0.05)] ring-1 ring-transparent transition hover:ring-[#C9D6EC]"
-                >
-                  <span className="relative block aspect-[16/9] overflow-hidden bg-[#0B1426]">
-                    {img && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={img}
-                        alt=""
-                        className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
-                      />
-                    )}
-                  </span>
-                  <span className="flex flex-1 flex-col gap-2 p-4">
-                    <ChipsNoticia n={n} />
-                    <span className="font-semibold leading-snug">
-                      {n.titulo}
+          {resto.map((n) => (
+            <li key={n.id}>
+              <button
+                onClick={() => setAbierta(n.id)}
+                className="group flex h-full w-full flex-col overflow-hidden rounded-3xl bg-white text-left shadow-[0_1px_2px_rgba(15,27,51,0.05)] ring-1 ring-transparent transition hover:ring-[#C9D6EC]"
+              >
+                <Afiche
+                  src={imagenesDe(sb, n)[0]}
+                  className="aspect-[16/11]"
+                  zoom
+                />
+                <span className="flex flex-1 flex-col gap-2 p-4">
+                  <ChipsNoticia n={n} />
+                  <span className="font-semibold leading-snug">{n.titulo}</span>
+                  {n.mensaje && (
+                    <span className="line-clamp-2 text-sm text-[#4F5B74]">
+                      {n.mensaje}
                     </span>
-                    {n.mensaje && (
-                      <span className="line-clamp-2 text-sm text-[#4F5B74]">
-                        {n.mensaje}
-                      </span>
-                    )}
-                    <FechaNoticia
-                      n={n}
-                      className="mt-auto pt-1 text-[#8A93A6]"
-                    />
-                  </span>
-                </button>
-              </li>
-            );
-          })}
+                  )}
+                  <FechaNoticia n={n} className="mt-auto pt-1 text-[#8A93A6]" />
+                </span>
+              </button>
+            </li>
+          ))}
         </ul>
       )}
 
-      <Ventana
-        abierto={Boolean(noticia)}
-        onCerrar={() => setAbierta(null)}
-        titulo={noticia?.titulo || ""}
-        ancho="max-w-2xl"
+      {noticia && (
+        <DetalleNoticia
+          sb={sb}
+          noticia={noticia}
+          onCerrar={() => setAbierta(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Una noticia abierta. En la computadora, el afiche completo a la
+ * izquierda y el texto a la derecha; en el celular, el afiche arriba y
+ * el texto debajo. Varias imágenes se pasan con flechas, no se apilan.
+ */
+function DetalleNoticia({ sb, noticia, onCerrar }) {
+  const imagenes = imagenesDe(sb, noticia);
+  const [i, setI] = useState(0);
+  const total = imagenes.length;
+  const mover = useCallback(
+    (d) => setI((x) => (x + d + total) % total),
+    [total],
+  );
+
+  useEffect(() => {
+    const tecla = (e) => {
+      if (e.key === "Escape") onCerrar();
+      if (total > 1 && e.key === "ArrowRight") mover(1);
+      if (total > 1 && e.key === "ArrowLeft") mover(-1);
+    };
+    window.addEventListener("keydown", tecla);
+    const previo = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", tecla);
+      document.body.style.overflow = previo;
+    };
+  }, [onCerrar, mover, total]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-[#0B1426]/75 backdrop-blur-sm sm:items-center sm:p-6"
+      onClick={onCerrar}
+    >
+      <article
+        role="dialog"
+        aria-modal="true"
+        aria-label={noticia.titulo}
+        onClick={(e) => e.stopPropagation()}
+        className={cn(
+          "relative flex max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl md:flex-row",
+          total ? "max-w-5xl" : "max-w-xl",
+        )}
       >
-        {noticia && (
-          <div className="space-y-4">
-            <span className="flex flex-wrap items-center justify-between gap-2">
-              <ChipsNoticia n={noticia} />
-              <FechaNoticia n={noticia} className="text-[#8A93A6]" />
-            </span>
-            {imagenesDe(sb, noticia).map((url, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={url}
-                src={url}
-                alt={`${noticia.titulo} (imagen ${i + 1})`}
-                className="w-full rounded-2xl bg-[#0B1426] object-contain"
+        <button
+          onClick={onCerrar}
+          aria-label="Cerrar"
+          className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-marca-900 shadow-md backdrop-blur transition hover:bg-white"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            className="h-5 w-5"
+            aria-hidden
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+
+        {total > 0 && (
+          <div className="relative shrink-0 md:w-[54%]">
+            <a
+              href={imagenes[i]}
+              target="_blank"
+              rel="noopener"
+              title="Ver en tamaño completo"
+              className="block"
+            >
+              <Afiche
+                src={imagenes[i]}
+                alt={`${noticia.titulo}${total > 1 ? ` (imagen ${i + 1} de ${total})` : ""}`}
+                className="h-[42dvh] md:h-[min(86dvh,760px)]"
               />
-            ))}
-            {noticia.mensaje && (
-              <p className="whitespace-pre-line leading-relaxed text-[#2E3A52]">
-                {noticia.mensaje}
-              </p>
+            </a>
+            {total > 1 && (
+              <>
+                {[
+                  [-1, "left-3", "Imagen anterior", "m15 18-6-6 6-6"],
+                  [1, "right-3", "Imagen siguiente", "m9 18 6-6-6-6"],
+                ].map(([d, lado, etiqueta, ruta]) => (
+                  <button
+                    key={d}
+                    onClick={() => mover(d)}
+                    aria-label={etiqueta}
+                    className={cn(
+                      "absolute top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-marca-900 shadow-md transition hover:bg-white",
+                      lado,
+                    )}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-5 w-5"
+                      aria-hidden
+                    >
+                      <path d={ruta} />
+                    </svg>
+                  </button>
+                ))}
+                <span className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full bg-black/40 px-2.5 py-1.5 backdrop-blur">
+                  {imagenes.map((u, k) => (
+                    <button
+                      key={u}
+                      onClick={() => setI(k)}
+                      aria-label={`Ver imagen ${k + 1}`}
+                      className={cn(
+                        "h-2 rounded-full transition-all",
+                        k === i
+                          ? "w-5 bg-white"
+                          : "w-2 bg-white/50 hover:bg-white/80",
+                      )}
+                    />
+                  ))}
+                </span>
+              </>
             )}
           </div>
         )}
-      </Ventana>
-    </div>
+
+        <div className="scroll-fino flex min-h-0 flex-1 flex-col overflow-y-auto p-6 sm:p-8">
+          <ChipsNoticia n={noticia} />
+          <h2 className="mt-3 pr-10 font-heading text-2xl leading-tight md:text-[1.75rem]">
+            {noticia.titulo}
+          </h2>
+          <FechaNoticia n={noticia} className="mt-2 text-[#8A93A6]" />
+          {noticia.mensaje && (
+            <p className="mt-5 whitespace-pre-line border-t border-[#EEF2F7] pt-5 leading-relaxed text-[#2E3A52]">
+              {noticia.mensaje}
+            </p>
+          )}
+          <div className="mt-auto flex flex-wrap gap-2 pt-8">
+            <a
+              href={`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(`Hola, tengo una consulta sobre: ${noticia.titulo}`)}`}
+              target="_blank"
+              rel="noopener"
+              className="inline-flex h-11 items-center rounded-full bg-oro-500 px-5 text-sm font-bold text-marca-900 transition hover:bg-oro-300"
+            >
+              Consultar por WhatsApp
+            </a>
+            <button
+              onClick={onCerrar}
+              className="inline-flex h-11 items-center rounded-full px-5 text-sm font-semibold text-marca-900 ring-1 ring-[#DCE3EE] transition hover:bg-[#F4F7FB]"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </article>
+    </div>,
+    document.body,
   );
 }
 
@@ -1416,7 +1566,7 @@ function NovedadesResumen({ sb, noticias, irA }) {
                     <img
                       src={img}
                       alt=""
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-contain"
                     />
                   )}
                 </span>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { nombreBanco } from "@/lib/bancos";
+import { nombreBanco, colorBanco } from "@/lib/bancos";
 import { prepararFoto, ElegirFoto } from "./fotos";
 import { Encabezado } from "./piezas";
 import { useCuenta } from "./contexto";
@@ -70,6 +70,7 @@ export function ElegirBanco({
         {bancos.map((b) => {
           const motivo = deshabilitado(b);
           const activo = valor === b;
+          const c = colorBanco(b);
           return (
             <button
               key={b}
@@ -79,20 +80,95 @@ export function ElegirBanco({
               disabled={Boolean(motivo)}
               title={motivo || undefined}
               onClick={() => onCambio(b)}
-              className={cn(
-                "h-12 rounded-xl border px-3 text-sm font-semibold transition",
+              // El elegido se pinta con el color de su banco.
+              style={
                 activo
-                  ? "border-marca-900 bg-marca-900 text-white"
-                  : "border-[#DCE3EE] bg-white hover:bg-[#F6F8FC]",
+                  ? {
+                      background: c.fondo,
+                      borderColor: c.fondo,
+                      color: c.texto,
+                      boxShadow: `0 10px 22px -12px ${c.fondo}`,
+                    }
+                  : undefined
+              }
+              className={cn(
+                "flex h-12 items-center gap-2.5 rounded-xl border px-2.5 text-left text-sm font-semibold transition",
+                !activo &&
+                  "border-[#DCE3EE] bg-white hover:border-[#C3CFE0] hover:bg-[#F6F8FC]",
                 motivo && "cursor-not-allowed opacity-40",
               )}
             >
-              {nombreBanco(b)}
+              <span
+                className={cn(
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[0.6rem] font-bold tracking-wide",
+                  activo && "ring-2 ring-white/40",
+                )}
+                style={{
+                  background: activo ? "rgba(255,255,255,0.18)" : c.fondo,
+                  color: activo ? c.texto : c.texto,
+                }}
+                aria-hidden
+              >
+                {c.sigla}
+              </span>
+              <span className="truncate">{nombreBanco(b)}</span>
             </button>
           );
         })}
       </div>
     </fieldset>
+  );
+}
+
+/**
+ * Vista previa de la tarjeta en el color de su banco: se completa en
+ * vivo con los últimos 4 dígitos y el nombre que escribe el cliente.
+ */
+export function VistaTarjeta({ banco, ultimos4, nombre }) {
+  const c = banco ? colorBanco(banco) : { fondo: "#1B2A4A", texto: "#FFFFFF" };
+  const digitos = (ultimos4 || "").padEnd(4, "•");
+  return (
+    <div
+      className="relative flex aspect-[1.586] w-full max-w-[320px] flex-col justify-between overflow-hidden rounded-2xl p-5 shadow-[0_18px_36px_-18px_rgba(15,27,51,0.55)] transition-colors duration-500"
+      style={{
+        background: `linear-gradient(135deg, ${c.fondo} 0%, ${c.fondo}d9 55%, #0B1426 150%)`,
+        color: c.texto,
+      }}
+      aria-label={
+        banco
+          ? `Vista previa de tu tarjeta ${nombreBanco(banco)}`
+          : "Vista previa de tu tarjeta"
+      }
+    >
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-white/15"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -bottom-16 -left-10 h-40 w-40 rounded-full bg-black/10"
+      />
+      <span className="relative flex items-start justify-between">
+        <span className="text-lg font-bold">
+          {banco ? nombreBanco(banco) : "Elige tu banco"}
+        </span>
+        <span className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] opacity-70">
+          Crédito
+        </span>
+      </span>
+      <span
+        aria-hidden
+        className="relative h-7 w-10 rounded-md bg-gradient-to-br from-[#F5D976] to-[#C49B00]"
+      />
+      <span className="relative">
+        <span className="cifras block text-lg tracking-[0.18em]">
+          •••• •••• •••• {digitos}
+        </span>
+        <span className="mt-1 block truncate text-[0.72rem] font-semibold uppercase tracking-[0.12em] opacity-80">
+          {nombre || "Nombre del titular"}
+        </span>
+      </span>
+    </div>
   );
 }
 
@@ -110,6 +186,7 @@ export function FotoUnica({
   onCambio,
   deshabilitado,
   consejos = [],
+  forma = "documento",
 }) {
   const [error, setError] = useState("");
   const [preparando, setPreparando] = useState(false);
@@ -201,6 +278,7 @@ export function FotoUnica({
         abierto={eligiendo}
         onCerrar={() => setEligiendo(false)}
         titulo={titulo}
+        forma={forma}
         consejos={consejos}
         onFoto={elegir}
       />

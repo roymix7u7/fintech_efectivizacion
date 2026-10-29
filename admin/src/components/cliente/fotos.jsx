@@ -410,8 +410,214 @@ export function SeguridadFotos({ tipo = "identidad" }) {
 
 /* ───────── Guía de cómo debe verse la foto ───────── */
 
+/**
+ * Tarjeta de crédito dibujada para el ejemplo. `bien`: tapada salvo el
+ * nombre y los últimos 4 (marcados en verde). Si no: número completo y
+ * CVV a la vista, lo que no se debe enviar.
+ */
+function TarjetaEjemplo({ bien = true, className = "h-32 w-full" }) {
+  const verde = "#10B981";
+  return (
+    <svg viewBox="0 0 200 126" className={className} aria-hidden>
+      <defs>
+        <linearGradient
+          id={bien ? "ej-bien" : "ej-mal"}
+          x1="0"
+          y1="0"
+          x2="1"
+          y2="1"
+        >
+          <stop offset="0" stopColor="#E67E00" />
+          <stop offset="1" stopColor="#8A4B00" />
+        </linearGradient>
+        <clipPath id={bien ? "ej-bien-borde" : "ej-mal-borde"}>
+          <rect x="6" y="6" width="188" height="114" rx="12" />
+        </clipPath>
+      </defs>
+      <rect
+        x="6"
+        y="6"
+        width="188"
+        height="114"
+        rx="12"
+        fill={`url(#${bien ? "ej-bien" : "ej-mal"})`}
+      />
+      <circle
+        cx="176"
+        cy="18"
+        r="34"
+        fill="#FFFFFF"
+        opacity="0.12"
+        clipPath={`url(#${bien ? "ej-bien-borde" : "ej-mal-borde"})`}
+      />
+      <text
+        x="18"
+        y="28"
+        fill="#0F1B33"
+        fontSize="12"
+        fontWeight="700"
+        fontFamily="Arial, sans-serif"
+      >
+        BCP
+      </text>
+      <rect x="18" y="40" width="26" height="19" rx="4" fill="#F5D976" />
+      {bien ? (
+        <>
+          {/* Número tapado: un papel encima */}
+          <rect x="14" y="66" width="122" height="22" rx="4" fill="#3D4A63" />
+          <text
+            x="22"
+            y="81"
+            fill="#AFBCD0"
+            fontSize="9"
+            fontFamily="Arial, sans-serif"
+          >
+            tapado
+          </text>
+          <rect
+            x="140"
+            y="65"
+            width="46"
+            height="24"
+            rx="5"
+            fill="none"
+            stroke={verde}
+            strokeWidth="2.5"
+          />
+          <text
+            x="146"
+            y="82"
+            fill="#0F1B33"
+            fontSize="13"
+            fontWeight="700"
+            fontFamily="Arial, sans-serif"
+            letterSpacing="1"
+          >
+            4821
+          </text>
+          <rect
+            x="14"
+            y="95"
+            width="104"
+            height="18"
+            rx="4"
+            fill="none"
+            stroke={verde}
+            strokeWidth="2.5"
+          />
+          <text
+            x="20"
+            y="108"
+            fill="#0F1B33"
+            fontSize="9"
+            fontWeight="700"
+            fontFamily="Arial, sans-serif"
+            letterSpacing="0.5"
+          >
+            ANA PRUEBA RIOS
+          </text>
+        </>
+      ) : (
+        <>
+          <text
+            x="18"
+            y="83"
+            fill="#0F1B33"
+            fontSize="13"
+            fontWeight="700"
+            fontFamily="Arial, sans-serif"
+            letterSpacing="1.5"
+          >
+            4557 8812 0093 4821
+          </text>
+          <text
+            x="18"
+            y="107"
+            fill="#0F1B33"
+            fontSize="9"
+            fontWeight="700"
+            fontFamily="Arial, sans-serif"
+          >
+            ANA PRUEBA RIOS
+          </text>
+          <rect
+            x="132"
+            y="93"
+            width="54"
+            height="20"
+            rx="3"
+            fill="#FFFFFF"
+            stroke="#DC2626"
+            strokeWidth="2"
+          />
+          <text
+            x="138"
+            y="107"
+            fill="#DC2626"
+            fontSize="9"
+            fontWeight="700"
+            fontFamily="Arial, sans-serif"
+          >
+            CVV 123
+          </text>
+        </>
+      )}
+    </svg>
+  );
+}
+
+/**
+ * Ejemplo de cómo enviar la foto de la tarjeta, como en la app: así sí
+ * (solo nombre y últimos 4) y así no (número completo y CVV).
+ */
+export function EjemploFotoTarjeta() {
+  return (
+    <div className="rounded-2xl bg-[#F4F7FB] p-4 ring-1 ring-[#E3E9F2]">
+      <p className="mb-3 text-sm font-semibold">Así debe verse tu foto</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <figure className="rounded-xl bg-white p-3 ring-2 ring-emerald-400">
+          <TarjetaEjemplo bien />
+          <figcaption className="mt-2 flex items-start gap-2 text-chico text-[#2E3A52]">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+              <Icono d={I.check} className="h-3 w-3" />
+            </span>
+            <span>
+              <strong className="text-emerald-700">Así sí:</strong> se leen tu
+              nombre y los últimos 4 dígitos. El resto del número va tapado con
+              un papel o el dedo.
+            </span>
+          </figcaption>
+        </figure>
+        <figure className="rounded-xl bg-white p-3 ring-2 ring-red-300">
+          <TarjetaEjemplo bien={false} />
+          <figcaption className="mt-2 flex items-start gap-2 text-chico text-[#2E3A52]">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-600 text-white">
+              <Icono d={I.cerrar} className="h-3 w-3" />
+            </span>
+            <span>
+              <strong className="text-red-700">Así no:</strong> con el número
+              completo a la vista o mostrando el código de seguridad (CVV).
+            </span>
+          </figcaption>
+        </figure>
+      </div>
+      <p className="mt-3 text-chico text-[#6B7690]">
+        También sirve una captura de la app de tu banco donde se vean tu nombre
+        y los últimos 4 dígitos.
+      </p>
+    </div>
+  );
+}
+
 /** Dibujo de referencia: documento o tarjeta apaisado, o rostro con documento. */
 function Ilustracion({ forma }) {
+  if (forma === "tarjeta") {
+    return (
+      <div className="rounded-2xl bg-[#0B1426] px-10 py-4">
+        <TarjetaEjemplo bien className="mx-auto h-32 w-auto" />
+      </div>
+    );
+  }
   if (forma === "selfie") {
     return (
       <svg viewBox="0 0 200 130" className="h-32 w-full" aria-hidden>

@@ -10,7 +10,7 @@ import {
 } from "@/lib/cliente";
 import { ORDEN_BANCOS, nombreBanco } from "@/lib/bancos";
 import { validarUltimos4 } from "@/lib/validacionesCliente";
-import { SeguridadFotos } from "@/components/cliente/fotos";
+import { SeguridadFotos, EjemploFotoTarjeta } from "@/components/cliente/fotos";
 import {
   Marco,
   Campo,
@@ -22,6 +22,7 @@ import {
   useClienteActivo,
   PantallaCuenta,
   ElegirBanco,
+  VistaTarjeta,
   FotoUnica,
 } from "@/components/cliente/sesion";
 
@@ -172,41 +173,47 @@ function TarjetaNueva() {
             valor={banco}
             onCambio={setBanco}
           />
-          <div className="grid gap-4 sm:grid-cols-[180px_1fr]">
-            <Campo
-              id="ultimos4"
-              etiqueta="Últimos 4 dígitos"
-              inputMode="numeric"
-              maxLength={4}
-              placeholder="0000"
-              value={ultimos4}
-              onChange={(e) =>
-                setUltimos4(e.target.value.replace(/\D/g, "").slice(0, 4))
-              }
-              error={errorUltimos}
-              ok={ultimos4.length === 4 && !errorUltimos}
-            />
-            <Campo
-              id="nombre"
-              etiqueta="Nombre impreso en la tarjeta"
-              autoComplete="cc-name"
-              value={nombre}
-              maxLength={60}
-              onChange={(e) => setNombre(e.target.value.toUpperCase())}
-              error={
-                intento && !nombreOk
-                  ? "Escribe el nombre como aparece en la tarjeta."
-                  : null
-              }
-              ok={nombreOk}
-            />
+          <div className="grid items-center gap-5 sm:grid-cols-[280px_1fr]">
+            <VistaTarjeta banco={banco} ultimos4={ultimos4} nombre={nombre} />
+            <div className="space-y-4">
+              <Campo
+                id="ultimos4"
+                etiqueta="Últimos 4 dígitos"
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="0000"
+                value={ultimos4}
+                onChange={(e) =>
+                  setUltimos4(e.target.value.replace(/\D/g, "").slice(0, 4))
+                }
+                error={errorUltimos}
+                ok={ultimos4.length === 4 && !errorUltimos}
+              />
+              <Campo
+                id="nombre"
+                etiqueta="Nombre impreso en la tarjeta"
+                autoComplete="cc-name"
+                value={nombre}
+                maxLength={60}
+                onChange={(e) => setNombre(e.target.value.toUpperCase())}
+                error={
+                  intento && !nombreOk
+                    ? "Escribe el nombre como aparece en la tarjeta."
+                    : null
+                }
+                ok={nombreOk}
+              />
+            </div>
           </div>
 
           <SeguridadFotos tipo="tarjeta" />
 
+          <EjemploFotoTarjeta />
+
           <div className="grid gap-4 sm:grid-cols-2">
             <FotoUnica
               id="foto-frente"
+              forma="tarjeta"
               titulo="Foto de la tarjeta"
               ayuda="Frente o captura de la app del banco."
               consejos={[
@@ -221,6 +228,7 @@ function TarjetaNueva() {
             />
             <FotoUnica
               id="foto-reverso"
+              forma="tarjeta"
               titulo="Segunda foto"
               opcional
               ayuda="Reverso u otra captura, si ayuda."
