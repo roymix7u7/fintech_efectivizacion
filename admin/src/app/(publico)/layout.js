@@ -28,15 +28,17 @@ const ENLACES = [
 export default function LayoutPublico({ children }) {
   return (
     <div className="flex min-h-screen flex-col bg-[#EFF3F9] text-marca-700">
-      <header className="sticky top-0 z-40 bg-[#0B1426]/95 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-[#E3E9F2] bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex h-[68px] max-w-4xl items-center gap-3 px-5">
           <Link href="/" className="flex items-center gap-2.5" aria-label="AlToque Perú WK, ir al inicio">
-            <Image src="/logo.png" alt="" width={38} height={38} className="object-contain" />
-            <span className="hidden font-heading text-[0.95rem] font-bold tracking-[0.12em] text-oro-500 sm:block">ALTOQUE PERÚ WK</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-marca-900">
+              <Image src="/logo.png" alt="" width={26} height={26} className="object-contain" />
+            </span>
+            <span className="hidden font-heading text-[0.95rem] font-semibold tracking-tight text-marca-900 sm:block">AlToque Perú</span>
           </Link>
           <Link
             href="/"
-            className="ml-auto inline-flex items-center gap-2 rounded-full border border-white/20 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10"
+            className="ml-auto inline-flex items-center gap-2 rounded-full bg-marca-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-marca-700"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
               <path d="M19 12H5M11 18l-6-6 6-6" />

@@ -16,7 +16,8 @@ const manrope = Manrope({
 });
 const sora = Sora({
   subsets: ["latin", "latin-ext"],
-  weight: ["500", "600", "700"],
+  // 300 y 400 para los títulos grandes y livianos de la web pública.
+  weight: ["300", "400", "500", "600", "700"],
   variable: "--font-titulo",
   display: "swap",
 });

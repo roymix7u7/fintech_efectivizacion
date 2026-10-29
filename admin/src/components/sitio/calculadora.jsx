@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { TARIFAS, comisionDe, enlaceWhatsapp } from "./datos";
+import { TARIFAS, comisionDe } from "./datos";
 
 const soles = (n) => `S/ ${Number(n).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const pctTexto = (p) => `${p.toLocaleString("es-PE")} %`;
 
 /**
  * Cuánto recibe el cliente, con las comisiones estándar de la hoja
@@ -19,54 +18,44 @@ export default function Calculadora() {
   const tarifa = TARIFAS.find((t) => t.nombre === banco) || TARIFAS[0];
   const monto = Number(texto);
   const comision = Number.isFinite(monto) ? comisionDe(tarifa, monto) : 0;
-  const aplicaMinimo = Number.isFinite(monto) && monto < tarifa.limite && comision === tarifa.minimo && monto * tarifa.pct < tarifa.minimo * 100;
+  const esMinimo = Number.isFinite(monto) && monto < tarifa.limite && (monto * tarifa.pct) / 100 < tarifa.minimo;
 
   const error = !texto
-    ? "Escribe cuánto vas a efectivizar."
+    ? "Escribe un monto."
     : !Number.isFinite(monto) || monto <= 0
-      ? "Escribe un monto válido, por ejemplo 1500 o 1500.50."
+      ? "Escribe un monto válido."
       : comision >= monto
-        ? `Con este monto la comisión mínima (${soles(tarifa.minimo)}) supera lo que efectivizas.`
+        ? `La comisión mínima es ${soles(tarifa.minimo)}.`
         : null;
 
   return (
-    <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-white p-6 text-marca-700 shadow-[0_40px_80px_-30px_rgba(11,20,38,0.45)] sm:p-8">
-      <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-oro-500/15 blur-3xl" />
+    <div className="rounded-2xl border border-[#E3E9F2] bg-white p-6 shadow-[0_1px_2px_rgba(15,27,51,0.04),0_24px_48px_-24px_rgba(15,27,51,0.18)] sm:p-8">
+      <p id="banco-calc" className="text-sm font-medium text-[#626D82]">
+        Tarjeta
+      </p>
+      <div role="radiogroup" aria-labelledby="banco-calc" className="mt-3 flex flex-wrap gap-2">
+        {TARIFAS.map((b) => (
+          <button
+            key={b.nombre}
+            type="button"
+            role="radio"
+            aria-checked={banco === b.nombre}
+            onClick={() => setBanco(b.nombre)}
+            className={cn(
+              "rounded-full border px-3.5 py-1.5 text-sm font-medium transition",
+              banco === b.nombre ? "border-marca-900 bg-marca-900 text-white" : "border-[#E3E9F2] text-[#4F5B74] hover:border-[#C3CEE2]",
+            )}
+          >
+            {b.nombre}
+          </button>
+        ))}
+      </div>
 
-      <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-oro-700">Calculadora</p>
-      <h3 className="mt-1 font-heading text-2xl font-semibold">¿Cuánto recibes?</h3>
-
-      <fieldset className="mt-6">
-        <legend className="mb-2 text-sm font-bold text-[#4F5B74]">Tarjeta</legend>
-        <div className="flex flex-wrap gap-2">
-          {TARIFAS.map((b) => (
-            <button
-              key={b.nombre}
-              type="button"
-              onClick={() => setBanco(b.nombre)}
-              aria-pressed={banco === b.nombre}
-              className={cn(
-                "rounded-full border px-3.5 py-2 text-sm font-bold transition",
-                banco === b.nombre ? "border-marca-700 bg-marca-700 text-white shadow-md" : "border-[#DCE3EE] bg-white text-[#4F5B74] hover:border-marca-300",
-              )}
-            >
-              <span className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" style={{ background: b.color }} />
-              {b.nombre}
-            </button>
-          ))}
-        </div>
-      </fieldset>
-
-      <label htmlFor="monto" className="mt-6 block text-sm font-bold text-[#4F5B74]">
-        Monto que efectivizas
+      <label htmlFor="monto" className="mt-8 block text-sm font-medium text-[#626D82]">
+        Monto
       </label>
-      <div
-        className={cn(
-          "mt-2 flex items-center rounded-2xl border-2 bg-[#F6F8FC] px-4 transition focus-within:bg-white",
-          error && texto ? "border-red-300 focus-within:border-red-400" : "border-[#DCE3EE] focus-within:border-marca-500",
-        )}
-      >
-        <span className="font-heading text-2xl font-semibold text-[#8A93A6]">S/</span>
+      <div className={cn("mt-2 flex items-baseline gap-2 border-b-2 pb-2 transition", error ? "border-red-300" : "border-[#E3E9F2] focus-within:border-marca-900")}>
+        <span className="font-heading text-3xl font-light text-[#8A93A6]">S/</span>
         <input
           id="monto"
           inputMode="decimal"
@@ -79,39 +68,26 @@ export default function Calculadora() {
             setTexto(resto.length ? `${entero.slice(0, 7)}.${resto.join("").slice(0, 2)}` : entero.slice(0, 7));
           }}
           aria-invalid={Boolean(error)}
-          aria-describedby="monto-ayuda"
-          className="cifras w-full bg-transparent px-2 py-4 font-heading text-3xl font-semibold text-marca-700 outline-none"
+          aria-describedby="monto-error"
+          className="cifras w-full bg-transparent font-heading text-5xl font-light tracking-tight text-marca-900 outline-none"
         />
       </div>
-      <p id="monto-ayuda" role={error ? "alert" : undefined} className="mt-1.5 min-h-[1.25rem] text-chico font-semibold text-red-600">
+      <p id="monto-error" role={error ? "alert" : undefined} className="mt-2 min-h-[1.25rem] text-chico font-medium text-red-600">
         {error}
       </p>
 
-      <div className="mt-4 rounded-2xl bg-marca-900 p-5 text-white">
-        <div className="flex items-center justify-between gap-3 text-sm text-white/65">
-          <span>{aplicaMinimo ? "Comisión mínima" : `Comisión (${pctTexto(tarifa.pct)})`}</span>
-          <span className="cifras font-semibold text-white/90">{error ? "—" : `− ${soles(comision)}`}</span>
+      <dl className="mt-4 space-y-3 text-md">
+        <div className="flex justify-between text-[#626D82]">
+          <dt>{esMinimo ? "Comisión mínima" : `Comisión ${tarifa.pct.toLocaleString("es-PE")} %`}</dt>
+          <dd className="cifras">{error ? "—" : `− ${soles(comision)}`}</dd>
         </div>
-        <div className="mt-3 flex items-end justify-between gap-3 border-t border-white/10 pt-3">
-          <span className="text-sm font-bold text-white/80">Recibes en tu cuenta</span>
-          <span className="cifras font-heading text-3xl font-semibold text-oro-500" aria-live="polite">
+        <div className="flex items-baseline justify-between border-t border-[#E3E9F2] pt-4">
+          <dt className="font-medium text-marca-900">Recibes</dt>
+          <dd className="cifras font-heading text-4xl font-normal tracking-tight text-marca-900" aria-live="polite">
             {error ? "S/ —" : soles(monto - comision)}
-          </span>
+          </dd>
         </div>
-      </div>
-
-      <a
-        href={enlaceWhatsapp("Hola, quiero consultar la tasa preferencial para efectivizar mi tarjeta.")}
-        target="_blank"
-        rel="noopener"
-        className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-oro-300 bg-oro-50 px-4 py-3 transition hover:bg-oro-100"
-      >
-        <span>
-          <span className="block text-sm font-extrabold text-oro-700">¿Operas seguido?</span>
-          <span className="block text-chico text-[#6E5300]">Pide tu tasa preferencial por WhatsApp.</span>
-        </span>
-        <span aria-hidden className="text-xl text-oro-700">→</span>
-      </a>
+      </dl>
     </div>
   );
 }
