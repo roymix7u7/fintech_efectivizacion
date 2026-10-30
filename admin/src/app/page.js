@@ -4,19 +4,23 @@ import Menu from "@/components/sitio/menu";
 import Calculadora from "@/components/sitio/calculadora";
 import { Animaciones, Contador } from "@/components/sitio/efectos";
 import {
+  TarjetasLados,
+  TarjetasAbanico,
+  Inclinable,
+  Objetos3D,
+} from "@/components/sitio/tarjetas3d";
+import MapaLocales from "@/components/sitio/locales3d";
+import {
   EMPRESA,
   BANCOS,
   HORARIO,
-  LOCALES,
   OPINIONES,
   PREGUNTAS,
   REDES,
-  TARIFAS,
   GRUPOS_TARIFA,
   WHATSAPP_TEXTO,
   LLAMADAS_TEXTO,
   enlaceWhatsapp,
-  enlaceMapa,
 } from "@/components/sitio/datos";
 
 export const metadata = {
@@ -48,9 +52,10 @@ export default function Inicio() {
       <Animaciones />
 
       {/* ═════════════ Portada (azul noche) ═════════════ */}
-      <section className="relative isolate overflow-hidden bg-[#0B1426] pb-40 pt-40 text-white sm:pt-48">
+      <section className="relative isolate overflow-hidden bg-[#0B1426] pb-20 pt-40 text-white sm:pt-48 xl:pb-32">
         <Brillos />
-        <div className="mx-auto max-w-4xl px-5 text-center">
+        <TarjetasLados />
+        <div className="relative z-10 mx-auto max-w-4xl px-5 text-center">
           <h1 className="text-balance font-heading text-[2.6rem] font-normal leading-[1.05] tracking-[-0.03em] sm:text-6xl lg:text-[4.75rem]">
             El efectivo que necesitas, con la{" "}
             <span className="text-oro-500">confianza</span> que mereces.
@@ -74,16 +79,12 @@ export default function Inicio() {
               <Flecha className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </Link>
           </div>
+          <TarjetasAbanico />
         </div>
       </section>
 
-      {/* Ejemplo de operación, montado sobre el borde de la portada */}
-      <div className="relative z-10 mx-auto -mt-28 max-w-4xl px-5" data-revelar>
-        <Operacion />
-      </div>
-
       {/* ═════════════ Tarjetas y servicio (azul hielo) ═════════════ */}
-      <section className="pb-28 pt-16" aria-labelledby="titulo-tarjetas">
+      <section className="pb-28 pt-14" aria-labelledby="titulo-tarjetas">
         <div className="mx-auto max-w-6xl px-5 text-center">
           <p
             id="titulo-tarjetas"
@@ -115,11 +116,31 @@ export default function Inicio() {
           id="servicio"
           className="mx-auto mt-28 max-w-6xl scroll-mt-28 px-5"
         >
-          <div className="max-w-3xl" data-revelar>
-            <Etiqueta>Servicio</Etiqueta>
-            <h2 className="mt-4 text-balance font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
-              Simple, transparente y atendido por personas.
-            </h2>
+          <div className="grid items-center gap-12 lg:grid-cols-[1fr_1.1fr]">
+            <div data-revelar>
+              <Etiqueta>Servicio</Etiqueta>
+              <h2 className="mt-4 text-balance font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
+                Simple, transparente y atendido por personas.
+              </h2>
+              <p className="mt-6 max-w-lg text-lg leading-relaxed text-[#4F5B74]">
+                Detrás de cada operación hay alguien de nuestro equipo que la
+                revisa, responde tus dudas y te atiende cara a cara en
+                nuestros locales.
+              </p>
+            </div>
+            <div data-revelar style={{ "--retraso": "120ms" }}>
+              <Foto
+                src="/sitio/atencion-asesora.webp"
+                ancho={1800}
+                alto={1344}
+                alt="Asesora de AlToque revisando documentos con un cliente en uno de nuestros locales"
+                proporcion="aspect-[16/10]"
+              >
+                <Sello icono={<Persona />}>
+                  Revisamos cada operación antes de depositar
+                </Sello>
+              </Foto>
+            </div>
           </div>
           <div className="mt-14 grid gap-5 md:grid-cols-3">
             {[
@@ -214,8 +235,16 @@ export default function Inicio() {
           <div
             data-revelar
             style={{ "--retraso": "120ms" }}
-            className="lg:sticky lg:top-28"
+            className="relative lg:sticky lg:top-28"
           >
+            <Objetos3D
+              className="absolute -top-24 right-0 z-10 h-28 w-32 sm:-right-12 sm:-top-36 sm:h-40 sm:w-44"
+              objetos={[MONEDAS]}
+              chispas={[
+                { x: "0%", y: "20%", t: 14 },
+                { x: "88%", y: "70%", t: 18, retraso: 1.2 },
+              ]}
+            />
             <Calculadora />
           </div>
         </div>
@@ -301,18 +330,38 @@ export default function Inicio() {
           className="pointer-events-none absolute bottom-[-30%] left-[-10%] -z-10 h-[600px] w-[700px] rounded-full bg-[radial-gradient(closest-side,rgba(47,86,176,0.35),transparent)]"
         />
         <div className="mx-auto max-w-6xl px-5">
-          <div className="grid items-end gap-10 lg:grid-cols-2" data-revelar>
-            <div>
+          <div className="grid items-center gap-10 lg:grid-cols-2">
+            <div data-revelar>
               <Etiqueta oscura>Seguridad</Etiqueta>
               <h2 className="mt-4 font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
                 Tu dinero y tus datos,{" "}
                 <span className="text-oro-500">protegidos</span>.
               </h2>
+              <p className="mt-6 max-w-lg text-lg leading-relaxed text-white/60">
+                Cada operación pasa por controles para que solo tú puedas usar
+                tu tarjeta y recibir tu dinero.
+              </p>
             </div>
-            <p className="max-w-lg text-lg leading-relaxed text-white/60">
-              Cada operación pasa por controles para que solo tú puedas usar tu
-              tarjeta y recibir tu dinero.
-            </p>
+            <div
+              className="relative"
+              data-revelar
+              style={{ "--retraso": "120ms" }}
+            >
+              <div
+                aria-hidden
+                className="pointer-events-none absolute left-1/2 top-1/2 h-[380px] w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(232,184,0,0.22),transparent)]"
+              />
+              <Objetos3D
+                className="relative mx-auto h-[250px] w-full max-w-[520px] sm:h-[340px]"
+                objetos={SEGURIDAD_3D}
+                chispas={[
+                  { x: "6%", y: "6%", t: 16 },
+                  { x: "62%", y: "0%", t: 12, retraso: 0.8 },
+                  { x: "92%", y: "22%", t: 18, retraso: 1.6 },
+                  { x: "30%", y: "88%", t: 14, retraso: 2.2 },
+                ]}
+              />
+            </div>
           </div>
 
           <div className="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -404,34 +453,8 @@ export default function Inicio() {
               </dl>
             </div>
 
-            <div
-              className="space-y-4"
-              data-revelar
-              style={{ "--retraso": "120ms" }}
-            >
-              {LOCALES.map((l) => (
-                <a
-                  key={l.distrito}
-                  href={enlaceMapa(l)}
-                  target="_blank"
-                  rel="noopener"
-                  className="group flex items-center gap-5 rounded-2xl bg-white p-6 shadow-[0_1px_2px_rgba(15,27,51,0.04),0_20px_40px_-24px_rgba(15,27,51,0.2)] transition hover:-translate-y-0.5"
-                >
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-oro-100 text-oro-700">
-                    <Ubicacion />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-heading text-xl font-normal">
-                      {l.distrito}
-                    </span>
-                    <span className="block text-[#4F5B74]">{l.direccion}</span>
-                    <span className="block text-sm text-[#8A93A6]">
-                      {l.referencia}
-                    </span>
-                  </span>
-                  <Flecha className="h-5 w-5 shrink-0 text-[#8A93A6] transition group-hover:translate-x-0.5 group-hover:text-marca-900" />
-                </a>
-              ))}
+            <div data-revelar style={{ "--retraso": "120ms" }}>
+              <MapaLocales />
             </div>
           </div>
         </div>
@@ -445,13 +468,15 @@ export default function Inicio() {
         />
         <div className="mx-auto max-w-6xl px-5">
           <figure className="mx-auto max-w-4xl text-center" data-revelar>
-            <span
-              aria-hidden
-              className="font-heading text-7xl leading-none text-oro-500"
-            >
-              “
-            </span>
-            <blockquote className="mt-2 text-balance font-heading text-3xl font-normal leading-snug tracking-[-0.01em] sm:text-4xl">
+            <Objetos3D
+              className="relative mx-auto h-28 w-32 sm:h-32 sm:w-36"
+              objetos={[BURBUJA]}
+              chispas={[
+                { x: "-12%", y: "10%", t: 14 },
+                { x: "100%", y: "55%", t: 16, retraso: 1.1 },
+              ]}
+            />
+            <blockquote className="mt-6 text-balance font-heading text-3xl font-normal leading-snug tracking-[-0.01em] sm:text-4xl">
               {OPINIONES[0].texto}
             </blockquote>
             <figcaption className="mt-8 text-white/55">
@@ -481,7 +506,19 @@ export default function Inicio() {
       {/* ═════════════ Preguntas (azul hielo) ═════════════ */}
       <section id="preguntas" className="py-28">
         <div className="mx-auto grid max-w-6xl gap-12 px-5 lg:grid-cols-[0.8fr_1.2fr]">
-          <div data-revelar className="lg:sticky lg:top-28 lg:self-start">
+          <div
+            data-revelar
+            className="relative pr-24 lg:sticky lg:top-28 lg:flex lg:flex-col lg:items-start lg:self-start lg:pr-0"
+          >
+            <Objetos3D
+              className="objetos-claros absolute -top-4 right-0 h-32 w-20 lg:relative lg:right-auto lg:top-auto lg:order-last lg:mt-12 lg:h-72 lg:w-56"
+              objetos={[PREGUNTA]}
+              chispas={[
+                { x: "-10%", y: "30%", t: 14 },
+                { x: "85%", y: "5%", t: 18, retraso: 0.9 },
+                { x: "80%", y: "80%", t: 12, retraso: 1.8 },
+              ]}
+            />
             <Etiqueta>Ayuda</Etiqueta>
             <h2 className="mt-4 font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em]">
               Preguntas frecuentes
@@ -701,87 +738,123 @@ function Brillos() {
   );
 }
 
+/* ── Objetos 3D de las secciones (posición y profundidad) ── */
+
+const objeto = (src, ancho, alto, estilo) => ({
+  img: { src, ancho, alto },
+  estilo: {
+    "--rx": "0deg",
+    "--ry": "0deg",
+    "--rz": "0deg",
+    "--prof": 16,
+    "--ritmo": "7s",
+    "--fase": "0s",
+    ...estilo,
+  },
+});
+
+const MONEDAS = objeto("/sitio/monedas.webp", 800, 728, {
+  "--w": "100%",
+  left: 0,
+  top: 0,
+  "--rz": "-4deg",
+  "--prof": 18,
+  "--ritmo": "6s",
+});
+
+const SEGURIDAD_3D = [
+  objeto("/sitio/identidad.webp", 800, 638, {
+    "--w": "50%",
+    left: "0%",
+    top: "18%",
+    "--rx": "6deg",
+    "--ry": "14deg",
+    "--rz": "-6deg",
+    "--prof": 14,
+    "--ritmo": "7.5s",
+    "--fase": "-1s",
+  }),
+  objeto("/sitio/escudo.webp", 565, 737, {
+    "--w": "38%",
+    left: "31%",
+    top: "2%",
+    zIndex: 2,
+    "--rx": "4deg",
+    "--ry": "-6deg",
+    "--prof": 28,
+    "--ritmo": "6.5s",
+  }),
+  objeto("/sitio/candado.webp", 514, 729, {
+    "--w": "25%",
+    left: "72%",
+    top: "34%",
+    zIndex: 1,
+    "--ry": "-14deg",
+    "--rz": "8deg",
+    "--prof": 20,
+    "--ritmo": "7s",
+    "--fase": "-3s",
+  }),
+];
+
+const BURBUJA = objeto("/sitio/burbuja.webp", 700, 661, {
+  "--w": "100%",
+  left: 0,
+  top: 0,
+  "--rz": "-6deg",
+  "--ritmo": "5.5s",
+});
+
+const PREGUNTA = objeto("/sitio/pregunta.webp", 476, 745, {
+  "--w": "72%",
+  left: "14%",
+  top: 0,
+  "--rz": "8deg",
+  "--ry": "-10deg",
+  "--prof": 22,
+  "--ritmo": "6s",
+  "--fase": "-2s",
+});
+
 /* ── Piezas ── */
 
-/** Ejemplo de operación: lo que pasa con el dinero del cliente, paso a paso. */
-function Operacion() {
-  const tarifa = TARIFAS.find((t) => t.nombre === "BCP");
-  const monto = 1500;
-  const comision = (monto * tarifa.pct) / 100;
+/** Foto de la empresa: se inclina con el puntero y se acerca un poco. */
+function Foto({ src, ancho, alto, alt, proporcion, children }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#E3E9F2] bg-white shadow-[0_2px_4px_rgba(15,27,51,0.04),0_40px_80px_-30px_rgba(15,27,51,0.35)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E3E9F2] px-6 py-4">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-medium uppercase tracking-[0.14em] text-[#8A93A6]">
-            Ejemplo de operación
-          </span>
-        </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-          <Check className="h-3.5 w-3.5" />
-          Depósito enviado
-        </span>
-      </div>
-      <div className="grid gap-8 p-6 sm:p-8 md:grid-cols-[1.2fr_1fr]">
-        <ol className="space-y-5">
-          {[
-            {
-              h: "10:02",
-              t: "Comprobante recibido",
-              d: "Tarjeta BCP ···· 4821",
-            },
-            {
-              h: "10:15",
-              t: "Verificado por nuestro equipo",
-              d: "Identidad y tarjeta del titular",
-            },
-            {
-              h: "10:41",
-              t: "Depósito enviado",
-              d: "Cuenta de ahorros a nombre del titular",
-            },
-          ].map((p, i) => (
-            <li key={p.t} className="flex gap-4">
-              <span className="relative flex flex-col items-center">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-marca-900 text-white">
-                  <Check className="h-3.5 w-3.5" />
-                </span>
-                {i < 2 && <span className="mt-1 w-px flex-1 bg-[#DCE3EE]" />}
-              </span>
-              <span className="pb-1">
-                <span className="block font-medium">{p.t}</span>
-                <span className="block text-sm text-[#8A93A6]">
-                  <span className="cifras">{p.h}</span> · {p.d}
-                </span>
-              </span>
-            </li>
-          ))}
-        </ol>
-        <dl className="space-y-3 rounded-xl bg-[#F6F8FC] p-6">
-          <div className="flex justify-between text-[#626D82]">
-            <dt>Monto</dt>
-            <dd className="cifras">
-              S/ {monto.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
-            </dd>
-          </div>
-          <div className="flex justify-between text-[#626D82]">
-            <dt>Comisión {tarifa.pct} %</dt>
-            <dd className="cifras">
-              − S/{" "}
-              {comision.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
-            </dd>
-          </div>
-          <div className="flex items-baseline justify-between border-t border-[#DCE3EE] pt-3">
-            <dt className="font-medium">Recibes</dt>
-            <dd className="cifras font-heading text-3xl font-normal tracking-tight">
-              S/{" "}
-              {(monto - comision).toLocaleString("es-PE", {
-                minimumFractionDigits: 2,
-              })}
-            </dd>
-          </div>
-        </dl>
-      </div>
-    </div>
+    <Inclinable max={5}>
+      <figure
+        className={`group relative overflow-hidden rounded-3xl bg-marca-900 shadow-[0_2px_4px_rgba(15,27,51,0.06),0_40px_70px_-30px_rgba(15,27,51,0.45)] ${proporcion}`}
+      >
+        <Image
+          src={src}
+          alt={alt}
+          width={ancho}
+          height={alto}
+          sizes="(min-width: 1024px) 600px, 100vw"
+          quality={90}
+          className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-[1.04]"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0B1426]/70 via-transparent to-transparent"
+        />
+        <figcaption className="absolute inset-x-4 bottom-4 sm:inset-x-5 sm:bottom-5">
+          {children}
+        </figcaption>
+      </figure>
+    </Inclinable>
+  );
+}
+
+/** Etiqueta de vidrio sobre una foto. */
+function Sello({ icono, children }) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-3 rounded-2xl bg-white/90 py-2.5 pl-2.5 pr-4 text-sm font-semibold text-marca-900 shadow-lg backdrop-blur">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-marca-900 text-oro-500 [&_svg]:h-5 [&_svg]:w-5">
+        {icono}
+      </span>
+      <span className="min-w-0">{children}</span>
+    </span>
   );
 }
 
@@ -844,11 +917,6 @@ const Flecha = (p) => (
     <path d="M5 12h14M13 6l6 6-6 6" />
   </svg>
 );
-const Check = (p) => (
-  <svg {...trazo({ strokeWidth: 2.4, ...p })}>
-    <path d="M20 6 9 17l-5-5" />
-  </svg>
-);
 const Mas = (p) => (
   <svg {...trazo({ strokeWidth: 1.6, ...p })}>
     <path d="M12 5v14M5 12h14" />
@@ -895,12 +963,6 @@ const Lista = (p) => (
   <svg {...trazo(p)}>
     <path d="M9 6h11M9 12h11M9 18h11" />
     <path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2" />
-  </svg>
-);
-const Ubicacion = (p) => (
-  <svg {...trazo({ className: "h-6 w-6", ...p })}>
-    <path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z" />
-    <circle cx="12" cy="9.5" r="2.5" />
   </svg>
 );
 const Libro = (p) => (

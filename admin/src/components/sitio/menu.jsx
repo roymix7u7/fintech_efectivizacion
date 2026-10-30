@@ -36,7 +36,7 @@ export default function Menu() {
       <nav
         aria-label="Principal"
         className={cn(
-          "mx-auto flex h-14 max-w-5xl items-center gap-2 rounded-full pl-2 pr-2 ring-1 backdrop-blur-xl transition-all duration-300",
+          "mx-auto flex h-14 max-w-5xl items-center gap-1.5 rounded-full pl-1.5 pr-1.5 ring-1 sm:gap-2 sm:pl-2 sm:pr-2 backdrop-blur-xl transition-all duration-300",
           bajo || abierto
             ? "bg-[#0B1426]/90 shadow-[0_12px_40px_-8px_rgba(11,20,38,0.55)] ring-white/10"
             : "bg-[#0B1426]/60 shadow-[0_8px_30px_-10px_rgba(11,20,38,0.4)] ring-white/15",
@@ -44,10 +44,10 @@ export default function Menu() {
       >
         <Link
           href="/"
-          className="flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-3"
+          className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1 pr-1 sm:pr-3"
           aria-label="AlToque Perú WK, inicio"
         >
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0F1B33] ring-1 ring-white/10">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0F1B33] ring-1 ring-white/10 sm:h-10 sm:w-10">
             <Image
               src="/logo.png"
               alt=""
@@ -57,7 +57,7 @@ export default function Menu() {
               className="object-contain"
             />
           </span>
-          <span className="whitespace-nowrap font-heading text-[0.9rem] font-bold tracking-[0.06em] text-white">
+          <span className="truncate whitespace-nowrap font-heading text-[0.8rem] font-bold tracking-[0.03em] text-white sm:text-[0.9rem] sm:tracking-[0.06em]">
             ALTOQUE PERU <span className="text-oro-500">WK</span>
           </span>
         </Link>
@@ -107,7 +107,7 @@ export default function Menu() {
         {/* En el celular el acceso queda a la vista, no escondido en el menú. */}
         <Link
           href={conSesion ? "/cuenta" : "/ingresar"}
-          className="ml-auto whitespace-nowrap rounded-full bg-oro-500 px-3.5 py-2 text-sm font-bold text-marca-900 lg:hidden"
+          className="ml-auto shrink-0 whitespace-nowrap rounded-full bg-oro-500 px-3 py-2 text-[0.8rem] font-bold text-marca-900 sm:px-3.5 sm:text-sm lg:hidden"
         >
           {conSesion ? "Mi cuenta" : "Ingresar"}
         </Link>
@@ -117,7 +117,7 @@ export default function Menu() {
           aria-expanded={abierto}
           aria-controls="menu-movil"
           aria-label={abierto ? "Cerrar menú" : "Abrir menú"}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition hover:bg-white/10 lg:hidden"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-white ring-1 ring-white/10 transition hover:bg-white/10 lg:hidden"
         >
           <svg
             viewBox="0 0 24 24"

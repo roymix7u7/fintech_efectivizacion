@@ -434,3 +434,189 @@ html:has(.sitio-publico) {
   scroll-behavior: smooth;
   scroll-padding-top: 84px;
 }
+
+/* Tarjetas 3D de la portada. --nx y --ny (de -1 a 1) siguen al puntero
+   y --sy al scroll; los pone useParallax en la sección. La perspectiva va
+   en cada transform, así un filtro u opacidad no aplana el 3D. */
+.escena-3d {
+  perspective: 1400px;
+}
+.tarjeta-3d {
+  animation: tarjeta-entra 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--retraso, 0ms);
+}
+.tarjeta-3d__flota {
+  animation: tarjeta-flota var(--ritmo, 7s) ease-in-out infinite;
+  animation-delay: var(--fase, 0s);
+}
+.tarjeta-3d__giro {
+  position: relative;
+  transform: perspective(1100px)
+    translate3d(
+      calc(var(--nx, 0) * var(--prof, 20) * 1px),
+      calc(var(--ny, 0) * var(--prof, 20) * 1px - var(--sy, 0) * var(--prof, 20) * 0.012px),
+      0
+    )
+    rotateX(calc(var(--rx, 0deg) + var(--ny, 0) * -10deg))
+    rotateY(calc(var(--ry, 0deg) + var(--nx, 0) * 14deg))
+    rotateZ(var(--rz, 0deg));
+  transition:
+    transform 900ms cubic-bezier(0.22, 1, 0.36, 1),
+    scale 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.tarjeta-3d__giro img {
+  filter: drop-shadow(0 30px 34px rgba(3, 8, 20, 0.55));
+}
+.tarjeta-3d--lejana img {
+  opacity: 0.8;
+  filter: blur(1.5px) saturate(0.85) drop-shadow(0 20px 24px rgba(3, 8, 20, 0.45));
+}
+/* Reflejo que cruza la tarjeta; la máscara es la misma imagen, así no
+   sale de su silueta. */
+.tarjeta-3d__brillo {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  -webkit-mask: var(--mascara) center / contain no-repeat;
+  mask: var(--mascara) center / contain no-repeat;
+  background: linear-gradient(
+    115deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 62%
+  );
+  background-size: 260% 100%;
+  mix-blend-mode: overlay;
+  animation: tarjeta-brillo 7s ease-in-out infinite;
+  animation-delay: var(--fase, 0s);
+}
+
+@keyframes tarjeta-entra {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--desde, 0px), 70px, -320px) rotateY(var(--desde-giro, 0deg));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes tarjeta-flota {
+  0%, 100% { transform: translateY(0) rotateZ(0deg); }
+  50% { transform: translateY(-18px) rotateZ(1.6deg); }
+}
+@keyframes tarjeta-brillo {
+  0%, 55% { background-position: 130% 0; }
+  100% { background-position: -30% 0; }
+}
+
+/* Lámina que se inclina hacia el puntero (fotos de la landing). */
+.inclinable {
+  perspective: 1200px;
+}
+.inclinable > * {
+  transform: rotateX(var(--iy, 0deg)) rotateY(var(--ix, 0deg));
+  transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform-style: preserve-3d;
+}
+
+/* Mapa de locales: plano inclinado y pin en 3D. --px y --py (de -0,5 a
+   0,5) siguen al puntero dentro del panel. */
+.mapa-3d__plano {
+  position: absolute;
+  left: -30%;
+  right: -30%;
+  top: 28%;
+  height: 130%;
+  transform: perspective(520px) rotateX(60deg);
+  transform-origin: top center;
+  background-image:
+    linear-gradient(rgba(232, 184, 0, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 184, 0, 0.16) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 96px 96px, 96px 96px, 24px 24px, 24px 24px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 30%);
+  mask-image: linear-gradient(to bottom, transparent, #000 30%);
+  pointer-events: none;
+}
+.mapa-3d__mover {
+  transition:
+    left 900ms cubic-bezier(0.65, 0, 0.35, 1),
+    top 900ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+.mapa-3d__escala {
+  transform: translate(-50%, -100%) scale(var(--escala, 1));
+  transform-origin: bottom center;
+  transition: transform 900ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+.mapa-3d__salto {
+  transform-origin: bottom center;
+  animation: pin-salto 900ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+.mapa-3d__flota {
+  animation: pin-flota 3.6s ease-in-out infinite;
+}
+.mapa-3d__giro {
+  transform: perspective(700px) rotateY(calc(var(--px, 0) * 40deg))
+    rotateX(calc(var(--py, 0) * -16deg));
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mapa-3d__giro img {
+  filter: drop-shadow(0 18px 24px rgba(3, 8, 20, 0.5));
+}
+.mapa-3d__sombra {
+  width: 84px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.6), transparent);
+  transform: translate(-50%, -50%) scale(var(--escala, 1));
+  animation: pin-sombra 3.6s ease-in-out infinite;
+}
+.mapa-3d__onda {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 12px;
+  margin: -6px 0 0 -14px;
+  border-radius: 50%;
+  border: 2px solid rgba(232, 184, 0, 0.8);
+  animation: pin-onda 1.8s ease-out infinite;
+}
+.mapa-3d__ficha {
+  animation: aparecer 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes pin-salto {
+  0% { transform: translateY(0) scale(1, 1); }
+  35% { transform: translateY(-80px) scale(0.96, 1.05); }
+  72% { transform: translateY(0) scale(1.08, 0.9); }
+  86% { transform: translateY(-8px) scale(0.98, 1.02); }
+  100% { transform: none; }
+}
+@keyframes pin-flota {
+  0%, 100% { transform: translateY(0) rotateY(-14deg); }
+  50% { transform: translateY(-16px) rotateY(14deg); }
+}
+@keyframes pin-sombra {
+  0%, 100% { opacity: 0.9; scale: 1; }
+  50% { opacity: 0.5; scale: 0.72; }
+}
+@keyframes pin-onda {
+  from { transform: scale(0.6); opacity: 0.9; }
+  to { transform: scale(3.2); opacity: 0; }
+}
+
+.chispa {
+  animation: chispa 2.8s ease-in-out infinite;
+}
+@keyframes chispa {
+  0%, 100% { opacity: 0.25; transform: scale(0.6) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1) rotate(45deg); }
+}
+/* Sobre fondo claro la sombra oscura parece una mancha. */
+.objetos-claros .tarjeta-3d__giro img {
+  filter: drop-shadow(0 18px 20px rgba(15, 27, 51, 0.16));
+}
