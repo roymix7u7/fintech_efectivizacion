@@ -18,6 +18,10 @@ import {
   Boton,
   Aviso,
 } from "@/components/cliente/piezas";
+import {
+  ESCENA_RECUPERAR,
+  ESCENA_RECUPERADA,
+} from "@/components/cliente/escenas";
 
 /**
  * Recuperar la contraseña, igual que la app (app/app/recuperar.js):
@@ -147,6 +151,7 @@ export default function RecuperarPage() {
       <>
         <Encabezado derecha={derecha} />
         <Marco
+          escena={ESCENA_RECUPERADA}
           titulo="Contraseña actualizada"
           subtitulo="Ya puedes ingresar con tu contraseña nueva, aquí o en la app."
         >
@@ -170,6 +175,7 @@ export default function RecuperarPage() {
           subtitulo="Te enviaremos un código a tu correo."
           paso={1}
           pasos={PASOS}
+          escena={ESCENA_RECUPERAR}
         >
           <form onSubmit={enviarCodigo} noValidate className="space-y-5">
             <Aviso tono={aviso?.tono} onCerrar={() => setAviso(null)}>
@@ -199,6 +205,7 @@ export default function RecuperarPage() {
           subtitulo={`Si ${correo} tiene una cuenta, te llegó un código de 6 dígitos.`}
           paso={2}
           pasos={PASOS}
+          escena={ESCENA_RECUPERAR}
         >
           <Aviso tono={aviso?.tono} onCerrar={() => setAviso(null)}>
             {aviso?.texto}
@@ -235,6 +242,7 @@ export default function RecuperarPage() {
           subtitulo="Crea una que no hayas usado antes."
           paso={3}
           pasos={PASOS}
+          escena={ESCENA_RECUPERAR}
         >
           <form onSubmit={guardar} noValidate className="space-y-5">
             <Aviso tono={aviso?.tono} onCerrar={() => setAviso(null)}>

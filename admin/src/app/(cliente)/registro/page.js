@@ -36,7 +36,16 @@ import {
   Aviso,
   Cargando,
 } from "@/components/cliente/piezas";
-import SubidaFotos, { fotosCompletas } from "@/components/cliente/fotos";
+import Desplegable from "@/components/desplegable";
+import {
+  ESCENA_REGISTRO_DATOS,
+  ESCENA_REGISTRO_CORREO,
+  ESCENA_REGISTRO_IDENTIDAD,
+} from "@/components/cliente/escenas";
+import SubidaFotos, {
+  fotosCompletas,
+  BotonPorQueFotos,
+} from "@/components/cliente/fotos";
 
 /**
  * Registro de clientes desde la web. Los mismos tres pasos y las mismas
@@ -499,6 +508,7 @@ export default function RegistroPage() {
           }
           paso={1}
           pasos={PASOS}
+          escena={ESCENA_REGISTRO_DATOS}
           ancho="max-w-2xl"
         >
           {aviso && (
@@ -865,6 +875,7 @@ export default function RegistroPage() {
           subtitulo="Te enviamos un código de 6 dígitos. Escríbelo aquí para verificar tu correo."
           paso={2}
           pasos={PASOS}
+          escena={ESCENA_REGISTRO_CORREO}
         >
           <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl bg-[#F4F7FB] px-4 py-3 ring-1 ring-[#E3E9F2]">
             <svg
@@ -941,6 +952,17 @@ export default function RegistroPage() {
           subtitulo="La revisa una persona de nuestro equipo, no un algoritmo."
           paso={3}
           pasos={PASOS}
+          escena={{
+            ...ESCENA_REGISTRO_IDENTIDAD,
+            ayuda: (
+              <BotonPorQueFotos
+                soloCuidado
+                className="text-oro-500 hover:text-oro-300"
+              >
+                Ver el detalle de cómo cuidamos tus fotos
+              </BotonPorQueFotos>
+            ),
+          }}
         >
           <Aviso tono={aviso?.tono} onCerrar={() => setAviso(null)}>
             {aviso?.texto}
@@ -961,10 +983,6 @@ export default function RegistroPage() {
           >
             {cargando ? "Enviando documentos..." : "Enviar a revisión"}
           </Boton>
-          <p className="mt-3 text-center text-chico text-[#8A93A6]">
-            Tus fotos se guardan cifradas y solo las ve el equipo de
-            verificación.
-          </p>
         </Marco>
       )}
     </>
@@ -985,28 +1003,14 @@ function Selector({
       <label htmlFor={id} className="mb-1.5 block text-sm font-semibold">
         {etiqueta}
       </label>
-      <select
+      <Desplegable
         id={id}
-        value={valor}
-        disabled={deshabilitado}
-        onChange={(e) => onCambio(e.target.value)}
-        aria-invalid={error}
-        className={cn(
-          "h-12 w-full rounded-xl border bg-white px-3 text-md outline-none transition focus:ring-4 disabled:bg-[#F6F8FC] disabled:text-[#AFBCD0]",
-          error
-            ? "border-red-400 focus:ring-red-500/10"
-            : valor
-              ? "border-emerald-500 focus:ring-emerald-500/10"
-              : "border-[#DCE3EE] focus:border-marca-600 focus:ring-marca-600/10",
-        )}
-      >
-        <option value="">Elige...</option>
-        {opciones.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
+        valor={valor}
+        opciones={opciones}
+        onCambio={onCambio}
+        deshabilitado={deshabilitado}
+        error={error}
+      />
     </div>
   );
 }

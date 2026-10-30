@@ -32,6 +32,7 @@ import {
   EditorCupon,
   textoDuracion,
 } from "@/components/cupones";
+import Desplegable from "@/components/desplegable";
 
 /**
  * Comisiones.
@@ -616,20 +617,14 @@ export default function ComisionesPage() {
                     }
                     className="campo cifras w-24"
                   />
-                  <select
-                    value={ficha.unidad}
-                    onChange={(e) =>
-                      setFicha({ ...ficha, unidad: e.target.value })
-                    }
-                    className="campo flex-1"
+                  <Desplegable
+                    variante="panel"
+                    className="flex-1"
                     aria-label="Unidad"
-                  >
-                    {UNIDADES.map((u) => (
-                      <option key={u.k} value={u.k}>
-                        {u.t}
-                      </option>
-                    ))}
-                  </select>
+                    valor={ficha.unidad}
+                    onCambio={(v) => setFicha({ ...ficha, unidad: v })}
+                    opciones={UNIDADES.map((u) => ({ valor: u.k, texto: u.t }))}
+                  />
                 </div>
               </Campo>
             )}
@@ -656,21 +651,25 @@ export default function ComisionesPage() {
                 htmlFor="baseCupon"
                 ayuda="Se copian y luego las ajustas."
               >
-                <select
+                <Desplegable
                   id="baseCupon"
-                  value={ficha.base}
-                  onChange={(e) => setFicha({ ...ficha, base: e.target.value })}
-                  className="campo"
-                >
-                  {cupones
-                    .filter((c) => c.activo)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.es_default ? "Tarifa estándar" : c.nombre}
-                      </option>
-                    ))}
-                  <option value="">En blanco (todo a tarifa estándar)</option>
-                </select>
+                  variante="panel"
+                  valor={ficha.base}
+                  onCambio={(v) => setFicha({ ...ficha, base: v })}
+                  opciones={[
+                    ...cupones
+                      .filter((c) => c.activo)
+                      .map((c) => ({
+                        valor: c.id,
+                        texto: c.es_default ? "Tarifa estándar" : c.nombre,
+                      })),
+                    {
+                      valor: "",
+                      texto: "En blanco",
+                      detalle: "Todo a tarifa estándar",
+                    },
+                  ]}
+                />
               </Campo>
             )}
             <button type="submit" className="hidden" />

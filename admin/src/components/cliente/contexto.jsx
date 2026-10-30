@@ -18,6 +18,8 @@ import {
 } from "@/lib/cliente";
 import { Encabezado, Aviso, Boton, Cargando } from "./piezas";
 import MarcoCuenta from "./barra";
+import MisAvisos from "./avisos";
+import MenuUsuario from "./usuario";
 
 /**
  * Sesión de Mi cuenta, compartida por /cuenta y sus pantallas (nueva
@@ -52,6 +54,8 @@ export function ProveedorCuenta({ children }) {
   const [vista, setVista] = useState("resumen");
   const [enCurso, setEnCurso] = useState(0);
   const [noticiasNuevas, setNoticiasNuevas] = useState(0);
+  // Mis avisos (notificaciones personales): la campana del encabezado.
+  const [avisos, setAvisos] = useState([]);
   const estadoPrevio = useRef(null);
   const cache = useRef(null);
 
@@ -155,6 +159,40 @@ export function ProveedorCuenta({ children }) {
     };
   }, [sb, usuario, enEspera, recargar]);
 
+  // Los avisos se leen aquí para que la campana funcione en todas las
+  // pantallas; Mi cuenta los vuelve a poner al día con cada novedad.
+  useEffect(() => {
+    if (!usuario || !estado || estado === "bloqueado") return;
+    const leer = () =>
+      sb
+        .from("notificaciones")
+        .select("id, tipo, titulo, cuerpo, leida, created_at")
+        .eq("user_id", usuario.id)
+        .order("created_at", { ascending: false })
+        .limit(50)
+        .then(({ data }) => data && setAvisos(data));
+    leer();
+    const canal = sb
+      .channel(`mis-avisos-${usuario.id}-${Date.now()}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notificaciones",
+          filter: `user_id=eq.${usuario.id}`,
+        },
+        () => leer(),
+      )
+      .subscribe();
+    const alVolver = () => document.visibilityState === "visible" && leer();
+    document.addEventListener("visibilitychange", alVolver);
+    return () => {
+      sb.removeChannel(canal);
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+  }, [sb, usuario, estado]);
+
   useEffect(() => {
     if (
       estado === "activo" &&
@@ -187,13 +225,18 @@ export function ProveedorCuenta({ children }) {
     [ruta, router],
   );
 
-  const derecha = estado && estado !== "bloqueado" && (
-    <button
-      onClick={() => salir()}
-      className="rounded-full px-4 py-2 text-sm font-semibold text-white/80 ring-1 ring-white/15 transition hover:bg-white/10 hover:text-white lg:hidden"
-    >
-      Cerrar sesión
-    </button>
+  // Arriba a la derecha: la campana de avisos y el menú con el nombre
+  // y "Cerrar sesión", en todas las vistas.
+  const derecha = estado && estado !== "bloqueado" && perfil && (
+    <div className="flex items-center gap-2 sm:gap-3">
+      <MisAvisos sb={sb} avisos={avisos} />
+      <MenuUsuario
+        nombre={`${perfil.nombres} ${perfil.apellidos}`}
+        correo={usuario?.email}
+        onPerfil={estado === "activo" ? () => irA("perfil") : null}
+        onSalir={() => salir()}
+      />
+    </div>
   );
 
   const valor = {
@@ -211,6 +254,7 @@ export function ProveedorCuenta({ children }) {
     irA,
     setEnCurso,
     setNoticiasNuevas,
+    setAvisos,
     cache,
   };
 
@@ -230,8 +274,6 @@ export function ProveedorCuenta({ children }) {
         onIr={irA}
         enCurso={enCurso}
         noticiasNuevas={noticiasNuevas}
-        nombre={perfil ? `${perfil.nombres} ${perfil.apellidos}` : null}
-        onSalir={() => salir()}
       >
         {children}
       </MarcoCuenta>

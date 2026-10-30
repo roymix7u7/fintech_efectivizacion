@@ -13,6 +13,7 @@ import { EsqueletoFilas, BotonAccion, CargaPantalla } from "@/components/carga";
 import { Segmentos, Buscador, Barra, Leyenda, Campo, Dialogo, Tostada, Copiar, Avatar, useConfirmar, IconoCheck } from "@/components/piezas";
 import Pista from "@/components/pista";
 import { BANCOS_TARJETA } from "@/lib/bancos";
+import Desplegable from "@/components/desplegable";
 
 const ROLES = [
   {
@@ -336,21 +337,19 @@ export default function EquipoPage() {
         />
         <Buscador valor={busqueda} onCambio={setBusqueda} placeholder="Correo o sede" className="w-full sm:w-64" />
         {esAdmin && (
-          <select
+          <Desplegable
             id="filtroSede"
+            variante="panel"
+            className="h-10 sm:w-52"
             aria-label="Filtrar por sede"
-            value={filtroSede}
-            onChange={(e) => setFiltroSede(e.target.value)}
-            className="campo h-10 w-auto"
-          >
-            <option value="">Todas las sedes</option>
-            {sedes.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.nombre}
-              </option>
-            ))}
-            <option value="sin">Sin sede</option>
-          </select>
+            valor={filtroSede}
+            onCambio={setFiltroSede}
+            opciones={[
+              { valor: "", texto: "Todas las sedes" },
+              ...sedes.map((s) => ({ valor: s.id, texto: s.nombre })),
+              { valor: "sin", texto: "Sin sede" },
+            ]}
+          />
         )}
       </Barra>
 
@@ -433,21 +432,19 @@ export default function EquipoPage() {
                       </td>
                       <td className="px-4 py-3">
                         {esAdmin ? (
-                          <select
+                          <Desplegable
+                            variante="panel"
+                            className="h-9 w-40 py-1 text-sm"
                             aria-label={`Rol de ${p.email}`}
-                            value={p.rol}
-                            onChange={(e) => cambiarRol(p, e.target.value)}
-                            disabled={guardando === p.id || yo}
+                            valor={p.rol}
+                            onCambio={(v) => cambiarRol(p, v)}
+                            deshabilitado={guardando === p.id || yo}
                             title={yo ? "No puedes cambiarte el rol a ti mismo" : undefined}
-                            className="campo h-9 w-40 py-1 text-sm"
-                          >
-                            {p.rol === "cliente" && <option value="cliente">Sin rol asignado</option>}
-                            {ROLES.map((r) => (
-                              <option key={r.clave} value={r.clave}>
-                                {r.etiqueta}
-                              </option>
-                            ))}
-                          </select>
+                            opciones={[
+                              ...(p.rol === "cliente" ? [{ valor: "cliente", texto: "Sin rol asignado" }] : []),
+                              ...ROLES.map((r) => ({ valor: r.clave, texto: r.etiqueta, detalle: r.detalle })),
+                            ]}
+                          />
                         ) : (
                           <Pista texto={rolDe(p.rol)?.detalle || "Cambiar roles es del administrador"}>
                             <span className="cursor-help rounded-full bg-muted px-2.5 py-1 text-chico font-bold text-muted-foreground">
@@ -458,21 +455,19 @@ export default function EquipoPage() {
                       </td>
                       <td className="px-4 py-3">
                         {esAdmin ? (
-                          <select
+                          <Desplegable
+                            variante="panel"
+                            className="h-9 w-44 py-1 text-sm"
                             aria-label={`Sede de ${p.email}`}
-                            value={p.sede_id || ""}
-                            onChange={(e) => cambiarSede(p, e.target.value)}
-                            disabled={guardando === p.id || p.rol === "admin"}
+                            valor={p.sede_id || ""}
+                            onCambio={(v) => cambiarSede(p, v)}
+                            deshabilitado={guardando === p.id || p.rol === "admin"}
                             title={p.rol === "admin" ? "El administrador no pertenece a una sede" : undefined}
-                            className="campo h-9 w-44 py-1 text-sm"
-                          >
-                            <option value="">Sin sede</option>
-                            {sedes.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.nombre}
-                              </option>
-                            ))}
-                          </select>
+                            opciones={[
+                              { valor: "", texto: "Sin sede" },
+                              ...sedes.map((s) => ({ valor: s.id, texto: s.nombre })),
+                            ]}
+                          />
                         ) : (
                           <span className="text-muted-foreground">{p.sede || "Sin sede"}</span>
                         )}
@@ -581,37 +576,33 @@ export default function EquipoPage() {
           </Campo>
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Rol" htmlFor="rolNuevo" ayuda={!esAdmin ? "Un supervisor solo crea gestores." : undefined}>
-              <select
+              <Desplegable
                 id="rolNuevo"
-                value={nuevo.rol}
-                onChange={(e) => setNuevo({ ...nuevo, rol: e.target.value })}
-                disabled={!esAdmin}
-                className="campo"
-              >
-                {ROLES.filter((r) => esAdmin || r.clave === "gestor").map((r) => (
-                  <option key={r.clave} value={r.clave}>
-                    {r.etiqueta}
-                  </option>
-                ))}
-              </select>
+                variante="panel"
+                valor={nuevo.rol}
+                onCambio={(v) => setNuevo({ ...nuevo, rol: v })}
+                deshabilitado={!esAdmin}
+                opciones={ROLES.filter((r) => esAdmin || r.clave === "gestor").map((r) => ({
+                  valor: r.clave,
+                  texto: r.etiqueta,
+                  detalle: r.detalle,
+                }))}
+              />
             </Campo>
             <Campo etiqueta="Sede" htmlFor="sedeNueva" ayuda={!esAdmin ? "Un supervisor solo crea para su sede." : undefined}>
-              <select
+              <Desplegable
                 id="sedeNueva"
-                value={nuevo.sede_id}
-                onChange={(e) => setNuevo({ ...nuevo, sede_id: e.target.value })}
-                disabled={!esAdmin || nuevo.rol === "admin"}
-                className="campo"
-              >
-                {esAdmin && <option value="">Sin sede</option>}
-                {sedes
-                  .filter((s) => (esAdmin ? s.activa !== false : s.id === miSede))
-                  .map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nombre}
-                    </option>
-                  ))}
-              </select>
+                variante="panel"
+                valor={nuevo.sede_id}
+                onCambio={(v) => setNuevo({ ...nuevo, sede_id: v })}
+                deshabilitado={!esAdmin || nuevo.rol === "admin"}
+                opciones={[
+                  ...(esAdmin ? [{ valor: "", texto: "Sin sede" }] : []),
+                  ...sedes
+                    .filter((s) => (esAdmin ? s.activa !== false : s.id === miSede))
+                    .map((s) => ({ valor: s.id, texto: s.nombre })),
+                ]}
+              />
             </Campo>
           </div>
           <p className="rounded-lg bg-muted px-3 py-2.5 text-sm text-muted-foreground">

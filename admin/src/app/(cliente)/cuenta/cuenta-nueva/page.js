@@ -20,9 +20,12 @@ import {
 } from "@/components/cliente/sesion";
 
 /**
- * Agregar una cuenta para recibir depósitos, igual que la app
+ * Agregar o editar una cuenta para recibir depósitos, igual que la app
  * (app/app/cuenta-nueva.js). Por banco: una cuenta de ahorros (la que
  * recibe) y, opcional, su CCI. La base no deja repetir banco y tipo.
+ *
+ * Con ?editar=<id> solo se corrige el número: banco y tipo quedan fijos,
+ * porque cambiarlos sería otra cuenta (la base también lo impide).
  */
 export default function CuentaNuevaPage() {
   return (
@@ -36,6 +39,7 @@ function CuentaNueva() {
   const sesion = useClienteActivo();
   const router = useRouter();
   const params = useSearchParams();
+  const editarId = params.get("editar");
   const [cuentas, setCuentas] = useState(null);
   const [banco, setBanco] = useState(
     BANCOS_PRINCIPALES.includes(params.get("banco"))
@@ -60,6 +64,14 @@ function CuentaNueva() {
       .then(({ data }) => {
         const lista = data || [];
         setCuentas(lista);
+        if (editarId) {
+          const actual = lista.find((x) => x.id === editarId);
+          if (!actual) return router.replace("/cuenta#bancos");
+          setBanco(actual.banco);
+          setTipo(actual.tipo);
+          setNumero(actual.numero_cuenta.replace(/\D/g, ""));
+          return;
+        }
         // Si el tipo pedido ya existe en ese banco, se abre en el otro.
         const tiene = (t) =>
           lista.some((x) => x.banco === banco && x.tipo === t);
@@ -75,7 +87,9 @@ function CuentaNueva() {
 
   if (!sesion || !cuentas) return <Cargando />;
 
-  const tomado = (b, t) => cuentas.some((c) => c.banco === b && c.tipo === t);
+  const tomado = (b, t) =>
+    cuentas.some((c) => c.banco === b && c.tipo === t && c.id !== editarId);
+  const actual = editarId ? cuentas.find((c) => c.id === editarId) : null;
   const lleno = (b) => tomado(b, "ahorros") && tomado(b, "interbancaria");
   const cci = tipo === "interbancaria";
   const error = validarCuenta(numero, tipo, banco);
@@ -98,7 +112,14 @@ function CuentaNueva() {
         texto: `Ya tienes una cuenta ${cci ? "CCI" : "de ahorros"} ${banco}.`,
       });
     if (error) return;
-    if (cuentas.some((c) => c.numero_cuenta.replace(/\D/g, "") === numero)) {
+    if (actual && actual.numero_cuenta.replace(/\D/g, "") === numero)
+      return router.replace("/cuenta#bancos");
+    if (
+      cuentas.some(
+        (c) =>
+          c.numero_cuenta.replace(/\D/g, "") === numero && c.id !== editarId,
+      )
+    ) {
       return setAviso({
         tono: "atencion",
         texto: "Ese número de cuenta ya está registrado.",
@@ -106,15 +127,18 @@ function CuentaNueva() {
     }
     setGuardando(true);
     try {
-      const { error: e2 } = await supabaseCliente()
-        .from("cuentas_bancarias")
-        .insert({
-          cliente_id: sesion.perfil.id,
-          banco,
-          numero_cuenta: numero,
-          tipo,
-          activa: true,
-        });
+      const { error: e2 } = editarId
+        ? await supabaseCliente()
+            .from("cuentas_bancarias")
+            .update({ numero_cuenta: numero })
+            .eq("id", editarId)
+        : await supabaseCliente().from("cuentas_bancarias").insert({
+            cliente_id: sesion.perfil.id,
+            banco,
+            numero_cuenta: numero,
+            tipo,
+            activa: true,
+          });
       if (e2) {
         if (e2.code === "23505")
           return setAviso({
@@ -123,7 +147,9 @@ function CuentaNueva() {
           });
         throw e2;
       }
-      router.replace("/cuenta?aviso=cuenta");
+      router.replace(
+        editarId ? "/cuenta?aviso=cuenta-editada" : "/cuenta?aviso=cuenta",
+      );
     } catch (err) {
       setAviso({ tono: "error", texto: mensajeError(err) });
     } finally {
@@ -141,9 +167,17 @@ function CuentaNueva() {
     <PantallaCuenta activa="cuenta" sesion={sesion}>
       <MarcoFormulario
         ilustracion={<IlustracionBanco />}
-        mensaje="Agrega tu cuenta bancaria de forma"
+        mensaje={
+          editarId
+            ? "Corrige tu cuenta bancaria de forma"
+            : "Agrega tu cuenta bancaria de forma"
+        }
         resaltado="segura"
-        texto="Aquí registras la cuenta donde depositaremos el dinero. Debe estar a tu nombre."
+        texto={
+          editarId
+            ? "Revisa bien el número: ahí depositaremos tu dinero. Debe seguir siendo una cuenta a tu nombre."
+            : "Aquí registras la cuenta donde depositaremos el dinero. Debe estar a tu nombre."
+        }
         condiciones={[
           {
             tono: "si",
@@ -170,8 +204,12 @@ function CuentaNueva() {
             detalle: "Con CMR, iO u otro banco, te depositamos en cualquiera.",
           },
         ]}
-        titulo="Agregar cuenta"
-        subtitulo="Aquí te depositamos. Debe estar a tu nombre."
+        titulo={editarId ? "Editar cuenta" : "Agregar cuenta"}
+        subtitulo={
+          editarId
+            ? "Corrige el número. El banco y el tipo no cambian."
+            : "Aquí te depositamos. Debe estar a tu nombre."
+        }
       >
         <form onSubmit={guardar} noValidate className="space-y-6">
           {aviso && (
@@ -180,56 +218,74 @@ function CuentaNueva() {
             </Aviso>
           )}
 
-          <ElegirBanco
-            bancos={BANCOS_PRINCIPALES}
-            valor={banco}
-            onCambio={elegirBanco}
-            deshabilitado={(b) =>
-              lleno(b) ? `Ya tienes cuenta de ahorros y CCI en ${b}` : null
-            }
-          />
-
-          <fieldset>
-            <legend className="mb-2.5 text-sm font-semibold text-marca-900">
-              Tipo
-            </legend>
-            <div
-              className="grid grid-cols-2 gap-2.5"
-              role="radiogroup"
-              aria-label="Tipo de cuenta"
-            >
-              <Opcion
-                activa={tipo === "ahorros"}
-                deshabilitada={tomado(banco, "ahorros")}
-                onClick={() => {
-                  setTipo("ahorros");
-                  setIntento(false);
-                }}
-                icono={<IconoAlcancia />}
-                titulo="Cuenta de ahorros"
-                detalle={
-                  tomado(banco, "ahorros")
-                    ? "Ya registrada"
-                    : "Recibe los depósitos"
-                }
-              />
-              <Opcion
-                activa={tipo === "interbancaria"}
-                deshabilitada={tomado(banco, "interbancaria")}
-                onClick={() => {
-                  setTipo("interbancaria");
-                  setIntento(false);
-                }}
-                icono={<IconoTarjeta />}
-                titulo="CCI"
-                detalle={
-                  tomado(banco, "interbancaria")
-                    ? "Ya registrado"
-                    : "Código interbancario, opcional"
-                }
-              />
+          {actual ? (
+            <div className="flex items-center gap-3 rounded-2xl bg-[#F4F7FB] p-4 ring-1 ring-[#E3E9F2]">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0B1426] text-oro-500">
+                {cci ? <IconoTarjeta /> : <IconoAlcancia />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold text-marca-900">
+                  {cci ? "CCI" : "Cuenta de ahorros"} {banco}
+                </span>
+                <span className="block text-chico text-[#6B7690]">
+                  Para otro banco o tipo, agrega una cuenta nueva.
+                </span>
+              </span>
             </div>
-          </fieldset>
+          ) : (
+            <>
+              <ElegirBanco
+                bancos={BANCOS_PRINCIPALES}
+                valor={banco}
+                onCambio={elegirBanco}
+                deshabilitado={(b) =>
+                  lleno(b) ? `Ya tienes cuenta de ahorros y CCI en ${b}` : null
+                }
+              />
+
+              <fieldset>
+                <legend className="mb-2.5 text-sm font-semibold text-marca-900">
+                  Tipo
+                </legend>
+                <div
+                  className="grid grid-cols-2 gap-2.5"
+                  role="radiogroup"
+                  aria-label="Tipo de cuenta"
+                >
+                  <Opcion
+                    activa={tipo === "ahorros"}
+                    deshabilitada={tomado(banco, "ahorros")}
+                    onClick={() => {
+                      setTipo("ahorros");
+                      setIntento(false);
+                    }}
+                    icono={<IconoAlcancia />}
+                    titulo="Cuenta de ahorros"
+                    detalle={
+                      tomado(banco, "ahorros")
+                        ? "Ya registrada"
+                        : "Recibe los depósitos"
+                    }
+                  />
+                  <Opcion
+                    activa={tipo === "interbancaria"}
+                    deshabilitada={tomado(banco, "interbancaria")}
+                    onClick={() => {
+                      setTipo("interbancaria");
+                      setIntento(false);
+                    }}
+                    icono={<IconoTarjeta />}
+                    titulo="CCI"
+                    detalle={
+                      tomado(banco, "interbancaria")
+                        ? "Ya registrado"
+                        : "Código interbancario, opcional"
+                    }
+                  />
+                </div>
+              </fieldset>
+            </>
+          )}
 
           <div>
             <Campo
@@ -269,7 +325,9 @@ function CuentaNueva() {
             </Pista>
           </div>
 
-          <BotonEnviar cargando={guardando}>Guardar cuenta</BotonEnviar>
+          <BotonEnviar cargando={guardando}>
+            {editarId ? "Guardar cambios" : "Guardar cuenta"}
+          </BotonEnviar>
         </form>
       </MarcoFormulario>
     </PantallaCuenta>

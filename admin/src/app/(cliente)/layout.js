@@ -10,7 +10,13 @@ export const metadata = {
 
 export default function LayoutCliente({ children }) {
   return (
-    <div className="area-cliente min-h-screen bg-[#E6ECF4] font-sans text-marca-900">
+    <div className="area-cliente isolate min-h-screen bg-[#E7EAF1] font-sans text-marca-900">
+      {/* Fondo con tarjetas y líneas suaves. Va en una capa fija y no con
+          background-attachment: fixed, que el celular no respeta. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 -z-10 bg-[url('/sitio/fondo-cliente.webp')] bg-cover bg-center"
+      />
       {children}
     </div>
   );

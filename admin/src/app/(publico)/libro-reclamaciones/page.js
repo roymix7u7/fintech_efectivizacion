@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { clientePublico, EMPRESA } from "@/lib/supabasePublico";
+import Desplegable from "@/components/desplegable";
 
 /**
  * Libro de Reclamaciones virtual (Indecopi), abierto a cualquiera, con
@@ -174,11 +175,17 @@ export default function LibroPage() {
         <div className="grid gap-4 sm:grid-cols-[160px_minmax(0,1fr)]">
           <div className="space-y-1.5">
             <Etiqueta htmlFor="tipo_documento">Documento</Etiqueta>
-            <select id="tipo_documento" className={campo} value={h.tipo_documento} onChange={(e) => poner("tipo_documento", e.target.value)}>
-              <option value="dni">DNI</option>
-              <option value="ce">Carnet de extranjería</option>
-              <option value="pasaporte">Pasaporte</option>
-            </select>
+            <Desplegable
+              id="tipo_documento"
+              claseBoton={campo}
+              valor={h.tipo_documento}
+              onCambio={(v) => poner("tipo_documento", v)}
+              opciones={[
+                { valor: "dni", texto: "DNI" },
+                { valor: "ce", texto: "Carnet de extranjería" },
+                { valor: "pasaporte", texto: "Pasaporte" },
+              ]}
+            />
           </div>
           <div className="space-y-1.5">
             <Etiqueta htmlFor="numero_documento">Número</Etiqueta>

@@ -20,6 +20,7 @@ import {
   Aviso,
   Cargando,
 } from "@/components/cliente/piezas";
+import { ESCENA_INGRESAR } from "@/components/cliente/escenas";
 
 /**
  * Ingreso de clientes. Las mismas comprobaciones que la app
@@ -171,6 +172,7 @@ function Ingresar() {
         }
       />
       <Marco
+        escena={ESCENA_INGRESAR}
         titulo="Hola de nuevo."
         subtitulo="Ingresa con el correo y la contraseña de tu cuenta. Es la misma de la app."
       >

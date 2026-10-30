@@ -19,6 +19,7 @@ import {
   BANCOS_PRINCIPALES,
 } from "@/lib/bancos";
 import { Boton, Aviso, Cargando } from "@/components/cliente/piezas";
+import VisorImagen from "@/components/cliente/visor";
 import MarcoFormulario, {
   IlustracionSolicitud,
 } from "@/components/cliente/formulario";
@@ -364,38 +365,7 @@ export default function SolicitudNuevaPage() {
                 {guia === undefined ? (
                   <p className="text-sm text-[#8A93A6]">Cargando la guía...</p>
                 ) : guia?.length ? (
-                  <ol className="space-y-4">
-                    {guia.map((p) => (
-                      <li key={p.orden} className="flex gap-3">
-                        <span className="cifras flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EFF3F9] text-sm font-bold">
-                          {p.orden}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="font-semibold">{p.titulo}</p>
-                          {p.descripcion && (
-                            <p className="text-sm text-[#4F5B74]">
-                              {p.descripcion}
-                            </p>
-                          )}
-                          {p.imagen_url && (
-                            <a
-                              href={p.imagen_url}
-                              target="_blank"
-                              rel="noopener"
-                              className="mt-2 block w-fit"
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={p.imagen_url}
-                                alt={`Captura del paso ${p.orden}`}
-                                className="max-h-56 rounded-lg border border-[#E3E9F2]"
-                              />
-                            </a>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
+                  <GuiaPago guia={guia} banco={nombreBanco(bancoTarjeta)} />
                 ) : (
                   <p className="text-sm text-[#4F5B74]">
                     Aún no publicamos la guía de este banco. Escríbenos por
@@ -517,6 +487,77 @@ export default function SolicitudNuevaPage() {
         </div>
       )}
     </PantallaCuenta>
+  );
+}
+
+/**
+ * Cómo pagar desde la app del banco. Va dentro del paso 2, así que sus
+ * partes no llevan número (antes "1" dentro del paso 2 confundía): una
+ * línea con puntos y, si hay captura, una miniatura que se amplía aquí
+ * mismo, sin abrir otra página.
+ */
+function GuiaPago({ guia, banco }) {
+  const [viendo, setViendo] = useState(null);
+  return (
+    <div className="rounded-2xl bg-[#F4F7FB] p-4 ring-1 ring-[#E3E9F2] sm:p-5">
+      <p className="text-sm text-[#4F5B74]">
+        Sigue esta guía en la app de {banco}:
+      </p>
+      <ul className="mt-3 space-y-4">
+        {guia.map((p) => (
+          <li key={p.orden} className="flex gap-3">
+            {guia.length > 1 && (
+              <span
+                className="mt-2 h-2 w-2 shrink-0 rounded-full bg-oro-500"
+                aria-hidden
+              />
+            )}
+            <div className="min-w-0 flex-1">
+              {p.titulo && <p className="font-semibold">{p.titulo}</p>}
+              {p.descripcion && (
+                <p className="text-sm text-[#4F5B74]">{p.descripcion}</p>
+              )}
+              {p.imagen_url && (
+                <button
+                  type="button"
+                  onClick={() => setViendo(p)}
+                  className="group relative mt-2 block w-fit overflow-hidden rounded-xl ring-1 ring-[#DCE3EE] transition hover:ring-marca-600"
+                  aria-label={`Ampliar ${p.titulo || "la guía"}`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.imagen_url}
+                    alt=""
+                    className="max-h-64 transition duration-300 group-hover:scale-[1.02]"
+                  />
+                  <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-[#0B1426]/85 to-transparent pb-2 pt-6 text-xs font-semibold text-white">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      className="h-4 w-4"
+                      aria-hidden
+                    >
+                      <circle cx="11" cy="11" r="7" />
+                      <path d="m20 20-3.5-3.5M11 8v6M8 11h6" />
+                    </svg>
+                    Toca para ampliar
+                  </span>
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <VisorImagen
+        src={viendo?.imagen_url}
+        alt={viendo?.titulo || `Guía ${banco}`}
+        abierto={Boolean(viendo)}
+        onCerrar={() => setViendo(null)}
+      />
+    </div>
   );
 }
 

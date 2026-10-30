@@ -35,6 +35,7 @@ import {
   fechaCorta,
   fallaPorcentaje,
 } from "@/components/cupones";
+import Desplegable from "@/components/desplegable";
 
 /**
  * Clientes registrados. No se carga la lista completa: se muestran los
@@ -571,36 +572,34 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
           <div className="mt-4 space-y-3 rounded-lg bg-muted/50 p-3">
             <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
               <Campo etiqueta="Cupón" htmlFor="cuponAsignar">
-                <select
+                <Desplegable
                   id="cuponAsignar"
-                  value={asignar.cupon}
-                  onChange={(e) => {
-                    const c = cupones.find((x) => x.id === e.target.value);
+                  variante="panel"
+                  valor={asignar.cupon}
+                  onCambio={(v) => {
+                    const c = cupones.find((x) => x.id === v);
                     setAsignar({
-                      cupon: e.target.value,
+                      cupon: v,
                       dias: String(c?.duracion_dias || 365),
                     });
                   }}
-                  className="campo"
-                >
-                  {asignables
-                    .filter((c) => !c.es_default)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre}
-                        {textoDuracion(c.duracion_dias)
-                          ? ` · ${textoDuracion(c.duracion_dias)}`
-                          : ""}
-                      </option>
-                    ))}
-                  {asignables
-                    .filter((c) => c.es_default)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        Quitar cupón (tarifa estándar)
-                      </option>
-                    ))}
-                </select>
+                  opciones={[
+                    ...asignables
+                      .filter((c) => !c.es_default)
+                      .map((c) => ({
+                        valor: c.id,
+                        texto: c.nombre,
+                        detalle: textoDuracion(c.duracion_dias) || undefined,
+                      })),
+                    ...asignables
+                      .filter((c) => c.es_default)
+                      .map((c) => ({
+                        valor: c.id,
+                        texto: "Quitar cupón",
+                        detalle: "Vuelve a la tarifa estándar",
+                      })),
+                  ]}
+                />
               </Campo>
               {cuponElegido && !cuponElegido.es_default && (
                 <Campo
@@ -741,20 +740,16 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
             <div className="mt-3 space-y-3">
               <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
                 <Campo etiqueta="Banco" htmlFor="bancoEsp">
-                  <select
+                  <Desplegable
                     id="bancoEsp"
-                    value={especial.banco}
-                    onChange={(e) =>
-                      setEspecial({ ...especial, banco: e.target.value })
-                    }
-                    className="campo"
-                  >
-                    {BANCOS_TARJETA.map((b) => (
-                      <option key={b} value={b}>
-                        {nombreBanco(b)}
-                      </option>
-                    ))}
-                  </select>
+                    variante="panel"
+                    valor={especial.banco}
+                    onCambio={(v) => setEspecial({ ...especial, banco: v })}
+                    opciones={BANCOS_TARJETA.map((b) => ({
+                      valor: b,
+                      texto: nombreBanco(b),
+                    }))}
+                  />
                 </Campo>
                 <Campo
                   etiqueta="Porcentaje"

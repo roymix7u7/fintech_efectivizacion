@@ -28,8 +28,11 @@ import {
 } from "@/lib/bancos";
 import { Boton, Aviso, Cargando, Casilla } from "@/components/cliente/piezas";
 import SubidaFotos, { fotosCompletas } from "@/components/cliente/fotos";
-import { WHATSAPP } from "@/components/sitio/datos";
+import { WHATSAPP, HORARIO } from "@/components/sitio/datos";
+import { Objetos3D } from "@/components/sitio/tarjetas3d";
+import { ESCENA_REGISTRO_IDENTIDAD } from "@/components/cliente/escenas";
 import { useCuenta } from "@/components/cliente/contexto";
+import { VISTAS } from "@/components/cliente/barra";
 
 /**
  * Mi cuenta: lo que ve el cliente con la sesión abierta. Solo sus
@@ -121,6 +124,7 @@ function Cuenta() {
   const guardado = {
     tarjeta: "Tarjeta enviada a verificación. Te avisaremos cuando esté lista.",
     cuenta: "Cuenta agregada.",
+    "cuenta-editada": "Cuenta actualizada.",
   }[params.get("aviso")];
 
   if (estado === "bloqueado")
@@ -284,20 +288,35 @@ function EnRevision({ sb, estado, perfil, usuario, bienvenida, onEnviado }) {
   return (
     <>
       <Franja>
-        <p className="text-sm text-white/60">Hola, {perfil.nombres}</p>
-        <h1 className="mt-1 font-heading text-[2rem] font-normal leading-tight tracking-[-0.02em]">
-          {observado
-            ? "Necesitamos una corrección"
-            : bienvenida
-              ? "¡Listo! Recibimos tus documentos."
-              : "Estamos verificando tu identidad"}
-        </h1>
-        <ol className="mt-8 grid gap-3 sm:grid-cols-4">
+        <div className="flex items-center gap-6">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-white/60">Hola, {perfil.nombres}</p>
+            <h1 className="mt-1 font-heading text-[1.75rem] font-normal leading-tight tracking-[-0.02em] sm:text-[2rem]">
+              {observado
+                ? "Necesitamos una corrección"
+                : bienvenida
+                  ? "¡Listo! Recibimos tus documentos."
+                  : "Estamos verificando tu identidad"}
+            </h1>
+            {!observado && (
+              <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/10 py-1.5 pl-3 pr-4 text-sm text-white/85 ring-1 ring-white/15">
+                <Latido />
+                En revisión · esta página cambia sola al aprobarse
+              </p>
+            )}
+          </div>
+          <Objetos3D
+            className="relative hidden h-32 w-48 shrink-0 sm:block lg:h-36 lg:w-56"
+            objetos={ESCENA_REGISTRO_IDENTIDAD.objetos}
+            conScroll={false}
+          />
+        </div>
+        <ol className="mt-8 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
           {pasos.map((p, i) => (
             <li
               key={p.t}
               className={cn(
-                "flex items-center gap-3 rounded-2xl px-4 py-3 ring-1",
+                "flex items-center gap-3 rounded-2xl px-3 py-3 ring-1 sm:px-4",
                 p.actual
                   ? p.alerta
                     ? "bg-oro-500/15 ring-oro-500/50"
@@ -311,7 +330,7 @@ function EnRevision({ sb, estado, perfil, usuario, bienvenida, onEnviado }) {
                   p.hecho
                     ? "bg-emerald-500 text-white"
                     : p.actual
-                      ? "bg-oro-500 text-marca-900"
+                      ? "pulso-paso bg-oro-500 text-marca-900"
                       : "bg-white/10 text-white/50",
                 )}
               >
@@ -330,65 +349,293 @@ function EnRevision({ sb, estado, perfil, usuario, bienvenida, onEnviado }) {
         </ol>
       </Franja>
 
-      <main className="mx-auto grid max-w-5xl items-start gap-6 px-4 py-8 sm:px-5 lg:grid-cols-[1fr_340px]">
-        <section className="rounded-3xl bg-white p-6 shadow-[0_1px_2px_rgba(15,27,51,0.05)] sm:p-8">
-          {observado ? (
-            <>
-              <h2 className="font-heading text-xl">Vuelve a subir tus fotos</h2>
-              {perfil.motivo_observacion && (
-                <p className="mt-3 rounded-xl bg-[#FCEFC7] px-4 py-3 text-sm text-[#6E5300]">
-                  <strong>Motivo:</strong> {perfil.motivo_observacion}
-                </p>
+      <main className="mx-auto grid max-w-5xl items-start gap-6 px-4 py-8 sm:px-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+        {observado ? (
+          <section className="rounded-3xl bg-white p-6 shadow-[0_1px_2px_rgba(15,27,51,0.05)] sm:p-8">
+            <h2 className="font-heading text-xl">Vuelve a subir tus fotos</h2>
+            {perfil.motivo_observacion && (
+              <p className="mt-3 rounded-xl bg-[#FCEFC7] px-4 py-3 text-sm text-[#6E5300]">
+                <strong>Motivo:</strong> {perfil.motivo_observacion}
+              </p>
+            )}
+            <div className="mt-6">
+              {aviso && (
+                <Aviso tono={aviso.tono} onCerrar={() => setAviso(null)}>
+                  {aviso.texto}
+                </Aviso>
               )}
-              <div className="mt-6">
-                {aviso && (
-                  <Aviso tono={aviso.tono} onCerrar={() => setAviso(null)}>
-                    {aviso.texto}
-                  </Aviso>
-                )}
-                <SubidaFotos
-                  fotos={fotos}
-                  onCambio={setFotos}
-                  tipoDocumento={perfil.tipo_documento}
-                  deshabilitado={enviando}
-                />
-                <Boton
-                  tono="oro"
-                  className="mt-6 w-full"
-                  cargando={enviando}
-                  disabled={!fotosCompletas(fotos)}
-                  onClick={reenviar}
-                >
-                  Enviar a revisión
-                </Boton>
-              </div>
-            </>
-          ) : (
-            <>
-              <h2 className="font-heading text-xl">¿Qué sigue?</h2>
-              <p className="mt-3 max-w-prose text-[#4F5B74]">
-                Una persona de nuestro equipo revisa tus datos y tus fotos,
-                normalmente en unas horas dentro del horario de atención. Cuando
-                tu cuenta esté aprobada podrás registrar tus tarjetas y cuentas
-                y enviar solicitudes, aquí o en la app.
-              </p>
-              {aviso && <Aviso tono={aviso.tono}>{aviso.texto}</Aviso>}
-              <p className="mt-5 flex items-center gap-2 text-sm text-[#4F5B74]">
-                <span className="relative flex h-2.5 w-2.5" aria-hidden>
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:hidden" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                </span>
-                Esta página se actualiza sola apenas el equipo responda.
-              </p>
-              <Boton tono="neutro" className="mt-4" onClick={onEnviado}>
-                Ver si ya está lista
+              <SubidaFotos
+                fotos={fotos}
+                onCambio={setFotos}
+                tipoDocumento={perfil.tipo_documento}
+                deshabilitado={enviando}
+              />
+              <Boton
+                tono="oro"
+                className="mt-6 w-full"
+                cargando={enviando}
+                disabled={!fotosCompletas(fotos)}
+                onClick={reenviar}
+              >
+                Enviar a revisión
               </Boton>
-            </>
-          )}
-        </section>
+            </div>
+          </section>
+        ) : (
+          <div className="min-w-0 space-y-6">
+            <EstadoRevision perfil={perfil} onRevisar={onEnviado} />
+            <MientrasTanto />
+          </div>
+        )}
         <MisDatos perfil={perfil} usuario={usuario} />
       </main>
     </>
+  );
+}
+
+/** Punto verde que late: algo está en curso. */
+function Latido() {
+  return (
+    <span className="relative flex h-2.5 w-2.5" aria-hidden>
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:hidden" />
+      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+    </span>
+  );
+}
+
+/**
+ * En qué va la verificación, como línea de tiempo. La página escucha la
+ * aprobación en vivo (contexto.jsx), así que "Actualizar" es solo un
+ * respaldo y va discreto.
+ */
+function EstadoRevision({ perfil, onRevisar }) {
+  const [revisando, setRevisando] = useState(false);
+  const linea = [
+    {
+      t: "Recibimos tus datos y tus fotos",
+      d: fecha(perfil.created_at, true),
+      estado: "hecho",
+    },
+    {
+      t: "Una persona de nuestro equipo las revisa",
+      d: `Normalmente en unas horas, de ${HORARIO.dias.toLowerCase()} de ${HORARIO.horas}`,
+      estado: "actual",
+    },
+    {
+      t: "Tu cuenta queda aprobada",
+      d: "Esta página cambia sola. Ya podrás registrar tus tarjetas y enviar solicitudes.",
+      estado: "pendiente",
+    },
+  ];
+  return (
+    <section className="rounded-3xl bg-white p-6 shadow-[0_1px_2px_rgba(15,27,51,0.05)] sm:p-8">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h2 className="font-heading text-xl">Tu verificación</h2>
+        <button
+          type="button"
+          disabled={revisando}
+          onClick={async () => {
+            setRevisando(true);
+            try {
+              await onRevisar();
+            } finally {
+              setRevisando(false);
+            }
+          }}
+          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-marca-700 ring-1 ring-[#DCE3EE] transition hover:bg-[#F4F7FB] disabled:opacity-60"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={cn("h-4 w-4", revisando && "animate-spin")}
+            aria-hidden
+          >
+            <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+            <path d="M21 3v5h-5" />
+          </svg>
+          {revisando ? "Revisando..." : "Actualizar"}
+        </button>
+      </div>
+
+      <ol className="mt-6">
+        {linea.map((x, i) => (
+          <li key={x.t} className="relative flex gap-4 pb-6 last:pb-0">
+            {i < linea.length - 1 && (
+              <span
+                aria-hidden
+                className={cn(
+                  "absolute left-[15px] top-9 h-[calc(100%-2.25rem)] w-0.5 rounded-full",
+                  x.estado === "hecho" ? "bg-emerald-400" : "bg-[#E3E9F2]",
+                )}
+              />
+            )}
+            <span
+              className={cn(
+                "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                x.estado === "hecho" && "bg-emerald-500 text-white",
+                x.estado === "actual" && "bg-oro-500 text-marca-900",
+                x.estado === "pendiente" && "bg-[#EFF3F9] text-[#AFBCD0]",
+              )}
+            >
+              {x.estado === "actual" && (
+                <span className="absolute inset-0 animate-ping rounded-full bg-oro-500/40 motion-reduce:hidden" />
+              )}
+              {x.estado === "hecho" ? (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-4 w-4"
+                  aria-hidden
+                >
+                  <path d="m5 12 5 5L20 7" />
+                </svg>
+              ) : x.estado === "actual" ? (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="relative h-4 w-4"
+                  aria-hidden
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3 2" />
+                </svg>
+              ) : (
+                <span className="h-2 w-2 rounded-full bg-current" />
+              )}
+            </span>
+            <div className="min-w-0 pt-1">
+              <p
+                className={cn(
+                  "font-semibold",
+                  x.estado === "pendiente"
+                    ? "text-[#8A93A6]"
+                    : "text-marca-900",
+                )}
+              >
+                {x.t}
+                {x.estado === "actual" && (
+                  <span className="ml-2 inline-flex rounded-full bg-oro-100 px-2 py-0.5 align-middle text-[0.7rem] font-bold uppercase tracking-wide text-oro-700">
+                    En curso
+                  </span>
+                )}
+              </p>
+              <p className="mt-0.5 text-sm leading-relaxed text-[#6B7690]">
+                {x.d}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/** Qué tener listo mientras se aprueba la cuenta. */
+function MientrasTanto() {
+  const items = [
+    {
+      t: "Tu tarjeta de crédito",
+      d: "A tu nombre. Registrarás el banco, los últimos 4 dígitos y una foto.",
+      icono: ["M3 6h18v12H3z", "M3 10h18", "M7 15h4"],
+    },
+    {
+      t: "Tu cuenta de ahorros",
+      d: "También a tu nombre: ahí te depositamos.",
+      icono: ["M3 10 12 4l9 6", "M5 10v8M9 10v8M15 10v8M19 10v8", "M3 20h18"],
+    },
+    {
+      t: "Nuestras comisiones",
+      d: "Desde 1 %, según tu tarjeta. Sabrás cuánto recibes antes de confirmar.",
+      icono: [
+        "M19 5 5 19",
+        "M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
+        "M16.5 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
+      ],
+      href: "/#comisiones",
+    },
+  ];
+  return (
+    <section className="rounded-3xl bg-white p-6 shadow-[0_1px_2px_rgba(15,27,51,0.05)] sm:p-8">
+      <h2 className="font-heading text-xl">Mientras tanto, ten a mano</h2>
+      <ul className="mt-5 grid gap-3 sm:grid-cols-3">
+        {items.map((x, i) => {
+          const contenido = (
+            <>
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0B1426] text-oro-500">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                  aria-hidden
+                >
+                  {x.icono.map((d) => (
+                    <path key={d} d={d} />
+                  ))}
+                </svg>
+              </span>
+              <span className="mt-3 block font-semibold text-marca-900">
+                {x.t}
+              </span>
+              <span className="mt-1 block text-sm leading-relaxed text-[#6B7690]">
+                {x.d}
+              </span>
+              {x.href && (
+                <span className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-marca-700">
+                  Ver tarifas <span aria-hidden>→</span>
+                </span>
+              )}
+            </>
+          );
+          return (
+            <li
+              key={x.t}
+              className="entra"
+              style={{ "--retraso": `${i * 90}ms` }}
+            >
+              {x.href ? (
+                <Link
+                  href={x.href}
+                  className="block h-full rounded-2xl bg-[#F4F7FB] p-4 ring-1 ring-[#E3E9F2] transition hover:-translate-y-0.5 hover:bg-[#EFF3F9]"
+                >
+                  {contenido}
+                </Link>
+              ) : (
+                <div className="h-full rounded-2xl bg-[#F4F7FB] p-4 ring-1 ring-[#E3E9F2]">
+                  {contenido}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[#4F5B74]">
+        ¿Tienes dudas mientras esperas?
+        <a
+          href={`https://wa.me/${WHATSAPP}`}
+          target="_blank"
+          rel="noopener"
+          className="font-semibold text-marca-900 underline underline-offset-4"
+        >
+          Escríbenos por WhatsApp
+        </a>
+      </p>
+    </section>
   );
 }
 
@@ -447,6 +694,7 @@ function Activo({ sb, perfil, usuario, guardado, onSalir }) {
     irA,
     setEnCurso,
     setNoticiasNuevas,
+    setAvisos,
     cache,
   } = useCuenta();
   // Lo último cargado se muestra al instante y se actualiza detrás.
@@ -511,11 +759,12 @@ function Activo({ sb, perfil, usuario, guardado, onSalir }) {
       previo.current = nuevos;
       cache.current = nuevos;
       setDatos(nuevos);
+      setAvisos(nuevos.avisos);
       setError("");
     } catch (e) {
       setError(mensajeError(e));
     }
-  }, [sb, perfil.id, usuario.id, cache]);
+  }, [sb, perfil.id, usuario.id, cache, setAvisos]);
 
   // En vivo: lo que el equipo decide en el panel (verificar una tarjeta,
   // aprobar o pagar una solicitud, publicar una alerta) llega solo. Como
@@ -579,44 +828,52 @@ function Activo({ sb, perfil, usuario, guardado, onSalir }) {
 
   return (
     <>
-      <Franja enMarco>
-        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-sm text-white/60">Hola,</p>
-            <h1 className="font-heading text-[2rem] font-normal leading-tight tracking-[-0.02em]">
-              {perfil.nombres} {perfil.apellidos}
-            </h1>
-          </div>
-          <div className="flex items-center gap-3 self-start md:self-auto">
-            <MisAvisos sb={sb} avisos={datos?.avisos || []} />
-            <Link
-              href="/cuenta/solicitud-nueva"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-oro-500 px-6 font-bold text-marca-900 shadow-[0_12px_30px_-10px_rgba(232,184,0,0.7)] transition hover:bg-oro-300"
-            >
-              <span className="text-lg leading-none">+</span> Nueva solicitud
-            </Link>
-          </div>
-        </div>
-        <dl className="mt-8 grid grid-cols-3 gap-3">
-          {[
-            ["En curso", enCurso, "text-oro-500"],
-            ["Pagadas", pagadas, "text-emerald-400"],
-            ["Bancos listos", listos, "text-[#8FB2FF]"],
-          ].map(([k, v, color]) => (
-            <div
-              key={k}
-              className="rounded-2xl bg-white/[0.06] px-4 py-3.5 ring-1 ring-white/10"
-            >
-              <dt className="text-chico text-white/60">{k}</dt>
-              <dd className={cn("cifras mt-0.5 font-heading text-3xl", color)}>
-                {datos ? v : "–"}
-              </dd>
+      {pestana === "resumen" && (
+        <Franja enMarco>
+          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-sm text-white/60">Hola,</p>
+              <h1 className="font-heading text-[2rem] font-normal leading-tight tracking-[-0.02em]">
+                {perfil.nombres} {perfil.apellidos}
+              </h1>
             </div>
-          ))}
-        </dl>
-      </Franja>
+            <div className="flex items-center gap-3 self-start md:self-auto">
+              <Link
+                href="/cuenta/solicitud-nueva"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-oro-500 px-6 font-bold text-marca-900 shadow-[0_12px_30px_-10px_rgba(232,184,0,0.7)] transition hover:bg-oro-300"
+              >
+                <span className="text-lg leading-none">+</span> Nueva solicitud
+              </Link>
+            </div>
+          </div>
+          <dl className="mt-8 grid grid-cols-3 gap-3">
+            {[
+              ["En curso", enCurso, "text-oro-500"],
+              ["Pagadas", pagadas, "text-emerald-400"],
+              ["Bancos listos", listos, "text-[#8FB2FF]"],
+            ].map(([k, v, color]) => (
+              <div
+                key={k}
+                className="rounded-2xl bg-white/[0.06] px-4 py-3.5 ring-1 ring-white/10"
+              >
+                <dt className="text-chico text-white/60">{k}</dt>
+                <dd
+                  className={cn("cifras mt-0.5 font-heading text-3xl", color)}
+                >
+                  {datos ? v : "–"}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </Franja>
+      )}
 
-      <main className="py-6">
+      <main className={pestana === "resumen" ? "py-6" : "pb-6"}>
+        {pestana !== "resumen" && (
+          <h1 className="mb-5 font-heading text-2xl font-normal tracking-[-0.02em] text-marca-900 sm:text-[1.75rem]">
+            {VISTAS.find((v) => v.k === pestana)?.t}
+          </h1>
+        )}
         {guardado && <Aviso tono="exito">{guardado}</Aviso>}
         {novedades.map((n, i) => (
           <Aviso
@@ -627,7 +884,7 @@ function Activo({ sb, perfil, usuario, guardado, onSalir }) {
             {n.texto}
           </Aviso>
         ))}
-        {datos?.alertas?.length > 0 && (
+        {pestana === "resumen" && datos?.alertas?.length > 0 && (
           <AlertasServicio alertas={datos.alertas} userId={usuario.id} />
         )}
         {error && (
@@ -803,281 +1060,63 @@ function FilaSolicitud({ x, abierta, onAbrir, children }) {
   );
 }
 
-/* ── Mis avisos (notificaciones personales) ── */
-
-/** Color e ícono del aviso, con la misma regla que la app (notificaciones.js). */
-function estiloAviso(a) {
-  const t = `${a.titulo || ""} ${a.cuerpo || ""}`.toLowerCase();
-  if (/rechaz|observ|bloque/.test(t))
-    return {
-      icono: "M18 6 6 18M6 6l12 12",
-      clase: "bg-[#FBDADA] text-red-700",
-    };
-  if (/pag|deposit/.test(t))
-    return {
-      icono: "M22 2 11 13M22 2l-7 20-4-9-9-4z",
-      clase: "bg-[#D5F2E3] text-emerald-700",
-    };
-  if (/aprob|verificad|activ/.test(t))
-    return { icono: "M20 6 9 17l-5-5", clase: "bg-[#FCEFC7] text-[#6E5300]" };
-  return {
-    icono: "M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
-    clase: "bg-[#DCE6F7] text-[#1E3A8A]",
-  };
-}
-
-const haceCuanto = (iso) => {
-  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (min < 1) return "Ahora";
-  if (min < 60) return `Hace ${min} min`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `Hace ${h} h`;
-  if (h < 48) return "Ayer";
-  return fecha(iso);
-};
-
-/**
- * Campana con lo que el equipo le respondió al cliente (identidad,
- * tarjetas, solicitudes, pagos). Cada aviso se marca como leído al
- * abrirlo, como en la app: abrir la lista no basta para decir que se
- * leyó todo.
- */
-function MisAvisos({ sb, avisos }) {
-  const [abierto, setAbierto] = useState(false);
-  const [expandido, setExpandido] = useState(null);
-  const [leidos, setLeidos] = useState([]);
-  const lista = avisos.map((a) =>
-    leidos.includes(a.id) ? { ...a, leida: true } : a,
-  );
-  const sinLeer = lista.filter((a) => !a.leida).length;
-
-  useEffect(() => {
-    if (!abierto) return;
-    const cerrar = (e) => e.key === "Escape" && setAbierto(false);
-    window.addEventListener("keydown", cerrar);
-    return () => window.removeEventListener("keydown", cerrar);
-  }, [abierto]);
-
-  async function leer(a) {
-    setExpandido(expandido === a.id ? null : a.id);
-    if (a.leida) return;
-    setLeidos((l) => [...l, a.id]);
-    await sb.from("notificaciones").update({ leida: true }).eq("id", a.id);
-  }
-
-  async function leerTodos() {
-    const ids = lista.filter((a) => !a.leida).map((a) => a.id);
-    if (!ids.length) return;
-    setLeidos((l) => [...l, ...ids]);
-    await sb.from("notificaciones").update({ leida: true }).in("id", ids);
-  }
-
-  return (
-    <>
-      <button
-        onClick={() => setAbierto(true)}
-        aria-label={sinLeer ? `Mis avisos, ${sinLeer} sin leer` : "Mis avisos"}
-        className="relative flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/15 transition hover:bg-white/15"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-5 w-5"
-          aria-hidden
-        >
-          <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-        </svg>
-        {sinLeer > 0 && (
-          <span className="cifras absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[0.7rem] font-bold text-white ring-2 ring-[#0B1426]">
-            {sinLeer > 9 ? "9+" : sinLeer}
-          </span>
-        )}
-      </button>
-
-      {abierto &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[75] flex justify-end bg-[#0B1426]/60"
-            onClick={() => setAbierto(false)}
-          >
-            <aside
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="avisos-titulo"
-              onClick={(e) => e.stopPropagation()}
-              className="flex h-full w-full max-w-md flex-col bg-[#EEF2F8] text-marca-900 shadow-2xl"
-            >
-              <header className="flex items-center gap-3 bg-[#0B1426] px-5 py-4 text-white">
-                <h2 id="avisos-titulo" className="font-heading text-lg">
-                  Mis avisos
-                </h2>
-                {sinLeer > 0 && (
-                  <span className="cifras rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold">
-                    {sinLeer} sin leer
-                  </span>
-                )}
-                <button
-                  onClick={() => setAbierto(false)}
-                  aria-label="Cerrar"
-                  className="ml-auto flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    className="h-5 w-5"
-                    aria-hidden
-                  >
-                    <path d="M18 6 6 18M6 6l12 12" />
-                  </svg>
-                </button>
-              </header>
-              {sinLeer > 0 && (
-                <div className="flex justify-end px-5 pt-3">
-                  <BotonChico onClick={leerTodos}>
-                    Marcar todo como leído
-                  </BotonChico>
-                </div>
-              )}
-              <div className="scroll-fino flex-1 overflow-y-auto px-4 py-3">
-                {lista.length === 0 ? (
-                  <Vacio
-                    titulo="Sin avisos por ahora"
-                    texto="Aquí te contamos cuando revisemos tu identidad, tus tarjetas o tus solicitudes."
-                  />
-                ) : (
-                  <ul className="space-y-2">
-                    {lista.map((a) => {
-                      const e = estiloAviso(a);
-                      return (
-                        <li key={a.id}>
-                          <button
-                            onClick={() => leer(a)}
-                            aria-expanded={expandido === a.id}
-                            className={cn(
-                              "flex w-full gap-3 rounded-2xl p-3 text-left ring-1 transition",
-                              a.leida
-                                ? "bg-white/60 ring-[#E3E9F2]"
-                                : "bg-white ring-[#C9D6EC]",
-                            )}
-                          >
-                            <span
-                              className={cn(
-                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
-                                e.clase,
-                              )}
-                            >
-                              <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="h-4 w-4"
-                                aria-hidden
-                              >
-                                <path d={e.icono} />
-                              </svg>
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="flex items-start gap-2">
-                                <span
-                                  className={cn(
-                                    "flex-1 text-sm",
-                                    a.leida
-                                      ? "font-medium text-[#3D4A63]"
-                                      : "font-bold",
-                                  )}
-                                >
-                                  {a.titulo}
-                                </span>
-                                {!a.leida && (
-                                  <span
-                                    className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-red-600"
-                                    aria-label="Sin leer"
-                                  />
-                                )}
-                              </span>
-                              {a.cuerpo && (
-                                <span
-                                  className={cn(
-                                    "mt-0.5 block text-sm text-[#4F5B74]",
-                                    expandido !== a.id && "line-clamp-2",
-                                  )}
-                                >
-                                  {a.cuerpo}
-                                </span>
-                              )}
-                              <span className="mt-1 block text-chico text-[#8A93A6]">
-                                {haceCuanto(a.created_at)}
-                              </span>
-                            </span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            </aside>
-          </div>,
-          // Fuera de la franja: dentro de ella el encabezado lo tapaba.
-          document.body,
-        )}
-    </>
-  );
-}
-
 /* ── Alertas del servicio ── */
 
 const TONO_ALERTA = {
   critico: {
     etiqueta: "Urgente",
-    caja: "bg-[#FDE4E4] ring-[#F5B5B5]",
-    barra: "bg-red-600",
-    chip: "bg-red-600 text-white",
-    texto: "text-[#7F1D1D]",
+    icono: [
+      "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z",
+      "M12 9v4",
+      "M12 17h.01",
+    ],
+    circulo: "bg-red-600 text-white",
+    chip: "bg-red-50 text-red-700 ring-red-200",
+    fila: "bg-[#FFF5F5]",
   },
   advertencia: {
     etiqueta: "Atención",
-    caja: "bg-[#FDF1CF] ring-[#F0D78A]",
-    barra: "bg-oro-500",
-    chip: "bg-oro-500 text-marca-900",
-    texto: "text-[#5C4600]",
+    icono: ["M12 7v5l3 2", "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"],
+    circulo: "bg-oro-500 text-marca-900",
+    chip: "bg-oro-50 text-oro-700 ring-oro-200",
+    fila: "bg-white",
   },
   info: {
     etiqueta: "Aviso",
-    caja: "bg-[#E0E9FA] ring-[#B9CBF0]",
-    barra: "bg-[#3B6FD8]",
-    chip: "bg-[#3B6FD8] text-white",
-    texto: "text-[#1E3A8A]",
+    icono: ["M12 16v-4", "M12 8h.01", "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"],
+    circulo: "bg-[#3B6FD8] text-white",
+    chip: "bg-[#EEF3FD] text-[#1E3A8A] ring-[#C9D7F5]",
+    fila: "bg-white",
   },
+};
+const ORDEN_ALERTA = { critico: 0, advertencia: 1, info: 2 };
+
+/** Vigente ahora: ya empezó y no terminó. */
+const vigente = (a) => {
+  const ahora = Date.now();
+  return (
+    (!a.fecha_inicio || new Date(a.fecha_inicio).getTime() <= ahora) &&
+    (!a.fecha_fin || new Date(a.fecha_fin).getTime() > ahora)
+  );
 };
 
 /**
- * Avisos del equipo sobre el servicio ("el BCP no procesa hoy"). Las
- * nuevas se ven completas arriba de todo; las ya vistas quedan plegadas
- * pero a mano, como en la app. "Entendido" las marca como vistas en la
- * base, así la app tampoco las vuelve a resaltar.
+ * Estado del servicio ("el BCP no procesa hoy"), solo en el Resumen: una
+ * tarjeta con las alertas vigentes, de la más urgente a la menos. Las
+ * nuevas se ven completas; "Entendido" las marca como vistas en la base
+ * (así la app tampoco las vuelve a resaltar) y quedan plegadas, a mano.
  */
 function AlertasServicio({ alertas, userId }) {
   const [vistas, setVistas] = useState(
     () => new Set(alertas.filter((a) => a.vista).map((a) => a.id)),
   );
   const [verVistas, setVerVistas] = useState(false);
-  const orden = { critico: 0, advertencia: 1, info: 2 };
-  const lista = [...alertas].sort(
-    (a, b) => (orden[a.tipo] ?? 3) - (orden[b.tipo] ?? 3),
-  );
+  const lista = alertas
+    .filter(vigente)
+    .sort((a, b) => (ORDEN_ALERTA[a.tipo] ?? 3) - (ORDEN_ALERTA[b.tipo] ?? 3));
   const nuevas = lista.filter((a) => !vistas.has(a.id));
   const leidas = lista.filter((a) => vistas.has(a.id));
+  if (lista.length === 0) return null;
 
   function entendido() {
     const ids = nuevas.map((a) => a.id);
@@ -1085,45 +1124,97 @@ function AlertasServicio({ alertas, userId }) {
     marcarAlertasVistas(userId, ids);
   }
 
-  return (
-    <section aria-label="Alertas del servicio" className="mb-6 space-y-2">
-      {nuevas.length > 0 && (
-        <>
-          <ul className="space-y-2" role="alert">
-            {nuevas.map((a) => (
+  const urgente = lista.some((a) => a.tipo === "critico");
+
+  // Todo visto: una sola línea que se despliega.
+  if (nuevas.length === 0)
+    return (
+      <section aria-label="Estado del servicio" className="mb-6">
+        <button
+          onClick={() => setVerVistas((v) => !v)}
+          aria-expanded={verVistas}
+          className="flex w-full items-center gap-3 rounded-2xl bg-white px-4 py-3 text-left shadow-[0_1px_2px_rgba(15,27,51,0.05)] transition hover:bg-[#FAFBFD]"
+        >
+          <span
+            className={cn(
+              "h-2.5 w-2.5 shrink-0 rounded-full",
+              urgente ? "bg-red-600" : "bg-oro-500",
+            )}
+            aria-hidden
+          />
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-marca-900">
+            {lista.length === 1
+              ? `Estado del servicio: ${lista[0].titulo}`
+              : `Estado del servicio: ${lista.length} avisos activos`}
+          </span>
+          <span className="shrink-0 text-chico font-semibold text-marca-700">
+            {verVistas ? "Ocultar" : "Ver"}
+          </span>
+        </button>
+        {verVistas && (
+          <ul className="mt-2 divide-y divide-[#EEF2F7] overflow-hidden rounded-2xl bg-white shadow-[0_1px_2px_rgba(15,27,51,0.05)]">
+            {lista.map((a) => (
               <FilaAlerta key={a.id} a={a} />
             ))}
           </ul>
-          <div className="flex justify-end">
-            <BotonChico onClick={entendido}>Entendido</BotonChico>
-          </div>
-        </>
-      )}
+        )}
+      </section>
+    );
+
+  return (
+    <section
+      aria-label="Estado del servicio"
+      className="mb-6 overflow-hidden rounded-3xl bg-white shadow-[0_1px_2px_rgba(15,27,51,0.05),0_20px_40px_-30px_rgba(15,27,51,0.35)]"
+    >
+      <header className="flex items-center gap-3 border-b border-[#EEF2F7] px-5 py-4">
+        <span className="relative flex h-2.5 w-2.5" aria-hidden>
+          <span
+            className={cn(
+              "absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 motion-reduce:hidden",
+              urgente ? "bg-red-500" : "bg-oro-500",
+            )}
+          />
+          <span
+            className={cn(
+              "relative inline-flex h-2.5 w-2.5 rounded-full",
+              urgente ? "bg-red-600" : "bg-oro-500",
+            )}
+          />
+        </span>
+        <h2 className="min-w-0 truncate font-heading text-lg">
+          Estado del servicio
+        </h2>
+        <span className="cifras hidden shrink-0 rounded-full bg-[#EFF3F9] px-2 py-0.5 text-xs font-bold text-[#3D4A63] sm:inline">
+          {nuevas.length} {nuevas.length === 1 ? "nuevo" : "nuevos"}
+        </span>
+        <button
+          onClick={entendido}
+          className="ml-auto shrink-0 rounded-full bg-marca-900 px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-marca-700 sm:px-4"
+        >
+          Entendido
+        </button>
+      </header>
+      <ul className="divide-y divide-[#EEF2F7]" role="alert">
+        {nuevas.map((a) => (
+          <FilaAlerta key={a.id} a={a} />
+        ))}
+      </ul>
       {leidas.length > 0 && (
-        <div>
+        <div className="border-t border-[#EEF2F7]">
           <button
             onClick={() => setVerVistas((v) => !v)}
             aria-expanded={verVistas}
-            className="flex w-full items-center gap-2 rounded-2xl bg-white/70 px-4 py-2.5 text-left text-sm font-semibold text-[#3D4A63] ring-1 ring-[#D8E0EC] transition hover:bg-white"
+            className="flex w-full items-center px-5 py-3 text-left text-sm font-semibold text-[#4F5B74] transition hover:bg-[#FAFBFD]"
           >
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                leidas.some((a) => a.tipo === "critico")
-                  ? "bg-red-600"
-                  : "bg-oro-500",
-              )}
-              aria-hidden
-            />
             {leidas.length === 1
-              ? "1 alerta del servicio activa"
-              : `${leidas.length} alertas del servicio activas`}
-            <span className="ml-auto text-chico font-normal text-[#6B7690]">
+              ? "1 aviso que ya viste"
+              : `${leidas.length} avisos que ya viste`}
+            <span className="ml-auto text-chico text-marca-700">
               {verVistas ? "Ocultar" : "Ver"}
             </span>
           </button>
           {verVistas && (
-            <ul className="mt-2 space-y-2">
+            <ul className="divide-y divide-[#EEF2F7] border-t border-[#EEF2F7]">
               {leidas.map((a) => (
                 <FilaAlerta key={a.id} a={a} />
               ))}
@@ -1138,21 +1229,49 @@ function AlertasServicio({ alertas, userId }) {
 function FilaAlerta({ a }) {
   const t = TONO_ALERTA[a.tipo] || TONO_ALERTA.info;
   return (
-    <li className={cn("flex overflow-hidden rounded-2xl ring-1", t.caja)}>
-      <span className={cn("w-1.5 shrink-0", t.barra)} aria-hidden />
-      <div className="min-w-0 flex-1 px-4 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Chip clase={t.chip}>{t.etiqueta}</Chip>
-          <p className={cn("font-semibold", t.texto)}>{a.titulo}</p>
+    <li className={cn("flex gap-4 px-5 py-4", t.fila)}>
+      <span
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+          t.circulo,
+        )}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-5 w-5"
+          aria-hidden
+        >
+          {t.icono.map((d) => (
+            <path key={d} d={d} />
+          ))}
+        </svg>
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <p className="font-semibold text-marca-900">{a.titulo}</p>
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 text-[0.68rem] font-bold uppercase tracking-wide ring-1",
+              t.chip,
+            )}
+          >
+            {t.etiqueta}
+          </span>
         </div>
         {a.mensaje && (
-          <p className={cn("mt-1 whitespace-pre-line text-sm", t.texto)}>
+          <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-[#4F5B74]">
             {a.mensaje}
           </p>
         )}
-        <p className={cn("mt-1 text-chico opacity-70", t.texto)}>
-          Desde {fecha(a.fecha_inicio, true)}
-          {a.fecha_fin && ` · hasta ${fecha(a.fecha_fin, true)}`}
+        <p className="mt-1.5 text-chico text-[#8A93A6]">
+          {a.fecha_fin
+            ? `Hasta ${fecha(a.fecha_fin, true)}`
+            : `Desde ${fecha(a.fecha_inicio, true)}`}
         </p>
       </div>
     </li>
@@ -1950,7 +2069,7 @@ function TarjetasYCuentas({ tarjetas, cuentas }) {
                     <dt className="text-chico text-[#8A93A6]">Ahorros</dt>
                     <dd className="cifras font-medium">
                       {ahorros ? (
-                        ocultar(ahorros.numero_cuenta)
+                        <NumeroEditable cuenta={ahorros} />
                       ) : (
                         <Link
                           href={`/cuenta/cuenta-nueva?banco=${banco}&tipo=ahorros`}
@@ -1965,7 +2084,7 @@ function TarjetasYCuentas({ tarjetas, cuentas }) {
                     <dt className="text-chico text-[#8A93A6]">CCI</dt>
                     <dd className="cifras font-medium">
                       {cci ? (
-                        ocultar(cci.numero_cuenta)
+                        <NumeroEditable cuenta={cci} />
                       ) : (
                         <Link
                           href={`/cuenta/cuenta-nueva?banco=${banco}&tipo=interbancaria`}
@@ -1983,6 +2102,35 @@ function TarjetasYCuentas({ tarjetas, cuentas }) {
         )}
       </Panel>
     </div>
+  );
+}
+
+/** Número de cuenta oculto, con su enlace para corregirlo. */
+function NumeroEditable({ cuenta }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      {ocultar(cuenta.numero_cuenta)}
+      <Link
+        href={`/cuenta/cuenta-nueva?editar=${cuenta.id}`}
+        aria-label={`Editar ${cuenta.tipo === "interbancaria" ? "CCI" : "cuenta de ahorros"} ${cuenta.banco}`}
+        className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-sans text-chico font-semibold text-marca-700 ring-1 ring-[#DCE3EE] transition hover:bg-[#EFF3F9] hover:text-marca-900"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3 w-3"
+          aria-hidden
+        >
+          <path d="M4 20h4L19 9l-4-4L4 16z" />
+          <path d="m13.5 6.5 4 4" />
+        </svg>
+        Editar
+      </Link>
+    </span>
   );
 }
 
@@ -2174,10 +2322,10 @@ function MisDatos({ perfil, usuario }) {
         {filas.map(([k, v]) => (
           <div
             key={k}
-            className="grid grid-cols-[130px_1fr] gap-3 py-2.5 text-sm"
+            className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 py-2.5 text-sm"
           >
             <dt className="text-[#6B7690]">{k}</dt>
-            <dd className="break-words font-medium">{v || "—"}</dd>
+            <dd className="font-medium [overflow-wrap:anywhere]">{v || "—"}</dd>
           </div>
         ))}
       </dl>

@@ -325,26 +325,43 @@ const POR_QUE = {
   },
 };
 
-export function PorQueFotos({ tipo = "identidad", abierto, onCerrar }) {
+export function PorQueFotos({
+  tipo = "identidad",
+  abierto,
+  onCerrar,
+  soloCuidado = false,
+}) {
   const c = POR_QUE[tipo];
   return (
-    <Ventana abierto={abierto} onCerrar={onCerrar} titulo={c.titulo}>
+    <Ventana
+      abierto={abierto}
+      onCerrar={onCerrar}
+      titulo={soloCuidado ? "Cómo cuidamos tu información" : c.titulo}
+    >
       <div className="space-y-6">
-        <p className="leading-relaxed">{c.intro}</p>
-        <section>
-          <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-[#8A93A6]">
-            Para qué las usamos
-          </h3>
-          <ul className="space-y-4">
-            {c.paraQue.map((f) => (
-              <Fila key={f.titulo} {...f} />
-            ))}
-          </ul>
-        </section>
+        <p className="leading-relaxed">
+          {soloCuidado
+            ? "Tus fotos solo sirven para verificar tu identidad. Así las protegemos:"
+            : c.intro}
+        </p>
+        {!soloCuidado && (
+          <section>
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-[#8A93A6]">
+              Para qué las usamos
+            </h3>
+            <ul className="space-y-4">
+              {c.paraQue.map((f) => (
+                <Fila key={f.titulo} {...f} />
+              ))}
+            </ul>
+          </section>
+        )}
         <section className="rounded-2xl bg-[#F4F7FB] p-4">
-          <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-[#8A93A6]">
-            Cómo las cuidamos
-          </h3>
+          {!soloCuidado && (
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-[#8A93A6]">
+              Cómo las cuidamos
+            </h3>
+          )}
           <ul className="space-y-3">
             {c.cuidado.map((f) => (
               <Fila key={f.texto} {...f} tono="oro" />
@@ -363,6 +380,40 @@ export function PorQueFotos({ tipo = "identidad", abierto, onCerrar }) {
         </Boton>
       </div>
     </Ventana>
+  );
+}
+
+/**
+ * Enlace que abre "¿Por qué te pedimos estas fotos?". Va en el panel
+ * lateral del registro y junto a las fotos, sin ocupar espacio.
+ */
+export function BotonPorQueFotos({
+  tipo = "identidad",
+  className,
+  soloCuidado = false,
+  children = "¿Por qué te las pedimos?",
+}) {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        className={cn(
+          "inline-flex items-center gap-1 font-semibold transition",
+          className,
+        )}
+      >
+        {children}
+        <Icono d={I.flecha} className="h-4 w-4" />
+      </button>
+      <PorQueFotos
+        tipo={tipo}
+        abierto={abierto}
+        soloCuidado={soloCuidado}
+        onCerrar={() => setAbierto(false)}
+      />
+    </>
   );
 }
 
@@ -975,7 +1026,20 @@ export default function SubidaFotos({
 
   return (
     <div className="space-y-4">
-      <SeguridadFotos tipo="identidad" />
+      <div className="flex items-center gap-3 rounded-xl bg-[#F4F7FB] px-3 py-2.5 ring-1 ring-[#E3E9F2]">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#0B1426] text-oro-500">
+          <Icono d={I.candado} className="h-4 w-4" />
+        </span>
+        <p className="min-w-0 flex-1 text-chico leading-snug text-[#3D4A63]">
+          Se guardan cifradas y solo las ve quien verifica tu identidad.
+        </p>
+        <BotonPorQueFotos
+          soloCuidado
+          className="shrink-0 text-sm text-marca-700 hover:text-marca-900"
+        >
+          Ver cómo
+        </BotonPorQueFotos>
+      </div>
       <div className="flex items-center justify-between text-sm">
         <span className="font-semibold text-marca-900">3 fotos</span>
         <span
@@ -1005,13 +1069,13 @@ export default function SubidaFotos({
                 disabled={deshabilitado}
                 onClick={() => setEligiendo(d.key)}
                 className={cn(
-                  "flex w-full items-center gap-4 rounded-2xl border p-3 text-left transition disabled:opacity-50",
+                  "flex w-full items-center gap-3 rounded-2xl border p-3 sm:gap-4 text-left transition disabled:opacity-50",
                   foto
                     ? "border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50"
                     : "border-[#E3E9F2] hover:border-marca-600 hover:bg-[#F6F8FC]",
                 )}
               >
-                <span className="flex h-16 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#EFF3F9] text-[#8A93A6]">
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#EFF3F9] text-[#8A93A6] sm:h-16 sm:w-20">
                   {foto ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -1043,7 +1107,7 @@ export default function SubidaFotos({
                 </span>
                 <span
                   className={cn(
-                    "flex h-10 shrink-0 items-center rounded-full px-4 text-sm font-semibold",
+                    "flex h-10 shrink-0 items-center rounded-full px-3 text-sm font-semibold sm:px-4",
                     foto
                       ? "bg-white text-marca-900 ring-1 ring-[#DCE3EE]"
                       : "bg-marca-900 text-white",

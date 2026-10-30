@@ -44,7 +44,6 @@ const I = {
     "M12 17h.01",
   ],
   legal: ["M6 3h9l3 3v15H6z", "M9 9h6M9 13h6M9 17h3"],
-  salir: ["M15 4h4v16h-4", "M10 8l-4 4 4 4", "M6 12h10"],
   noticias: [
     "M4 10v4h3l6 4V6l-6 4z",
     "M17 9a4 4 0 0 1 0 6",
@@ -113,8 +112,6 @@ export default function MarcoCuenta({
   onIr,
   enCurso = 0,
   noticiasNuevas = 0,
-  nombre,
-  onSalir,
   children,
 }) {
   return (
@@ -214,19 +211,6 @@ export default function MarcoCuenta({
             Términos y privacidad
           </a>
         </nav>
-
-        <div className="mt-auto rounded-2xl bg-white/[0.06] p-3">
-          {nombre && <p className="truncate text-sm font-semibold">{nombre}</p>}
-          {onSalir && (
-            <button
-              onClick={onSalir}
-              className="mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-white/70 transition hover:bg-white/10 hover:text-white"
-            >
-              <Icono d={I.salir} className="h-4 w-4" />
-              Cerrar sesión
-            </button>
-          )}
-        </div>
       </aside>
 
       {/* ── Contenido ── */}

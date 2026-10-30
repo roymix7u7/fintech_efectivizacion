@@ -620,3 +620,28 @@ html:has(.sitio-publico) {
 .objetos-claros .tarjeta-3d__giro img {
   filter: drop-shadow(0 18px 20px rgba(15, 27, 51, 0.16));
 }
+
+/* Ingresar, registro y recuperar: la tarjeta entra en cada paso y el
+   paso actual late suave. */
+.entra-tarjeta {
+  animation: pantalla 550ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.pulso-paso {
+  animation: pulso-oro 2.2s ease-in-out infinite;
+}
+
+/* Lista de los desplegables (components/desplegable.jsx). */
+.desplegable[data-state="open"] {
+  animation: desplegable-abre 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.desplegable[data-state="open"][data-side="top"] {
+  animation-name: desplegable-abre-arriba;
+}
+@keyframes desplegable-abre {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes desplegable-abre-arriba {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}

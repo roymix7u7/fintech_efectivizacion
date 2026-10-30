@@ -149,7 +149,7 @@ function Tarjeta({ img, estilo, lejana, prioridad, entrada = true }) {
  * portada el scroll cuenta desde arriba; en las demás secciones, desde que
  * la sección está centrada en la pantalla, y con menos recorrido.
  */
-function useParallax(ref, portada = true) {
+function useParallax(ref, portada = true, conScroll = true) {
   useEffect(() => {
     const seccion = ref.current?.closest("section");
     if (!seccion) return;
@@ -162,8 +162,10 @@ function useParallax(ref, portada = true) {
       marco = 0;
       seccion.style.setProperty("--nx", nx.toFixed(3));
       seccion.style.setProperty("--ny", ny.toFixed(3));
-      let sy;
-      if (portada) {
+      let sy = 0;
+      if (!conScroll) {
+        // Panel fijo (sticky): moverlo con el scroll lo descuadra.
+      } else if (portada) {
         sy = Math.min(window.scrollY, seccion.offsetHeight);
       } else {
         const r = seccion.getBoundingClientRect();
@@ -200,7 +202,7 @@ function useParallax(ref, portada = true) {
       seccion.removeEventListener("pointerleave", salir);
       window.removeEventListener("scroll", pedir);
     };
-  }, [ref, portada]);
+  }, [ref, portada, conScroll]);
 }
 
 /** Tarjetas a los lados del titular, solo en pantallas anchas. */
@@ -240,9 +242,14 @@ export function TarjetasAbanico() {
  * (data-revelar), no al cargar la página. Cada objeto lleva su posición
  * y profundidad en `estilo`, igual que LADOS.
  */
-export function Objetos3D({ objetos, chispas = [], className = "relative" }) {
+export function Objetos3D({
+  objetos,
+  chispas = [],
+  className = "relative",
+  conScroll = true,
+}) {
   const ref = useRef(null);
-  useParallax(ref, false);
+  useParallax(ref, false, conScroll);
   return (
     <div
       ref={ref}
