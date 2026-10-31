@@ -74,9 +74,9 @@ export default function SolicitudesScreen() {
 
       const { data, error: e2 } = await supabase
         .from("solicitudes")
-        .select(
-          "id, codigo, banco, estado, nota_cliente, motivo_rechazo, comprobante_url, created_at, fecha_revision, pagado_en, tarjetas(banco, ultimos_4)",
-        )
+        // Todas las columnas: así llegan también cuándo se deposita y a
+        // qué cuenta se pagó (migración 065), sin romper si aún no está.
+        .select("*, tarjetas(banco, ultimos_4)")
         .eq("cliente_id", perfilData.id)
         .order("created_at", { ascending: false });
       if (e2) throw e2;

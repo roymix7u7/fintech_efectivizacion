@@ -36,6 +36,8 @@ import {
   fallaPorcentaje,
 } from "@/components/cupones";
 import Desplegable from "@/components/desplegable";
+import VisorImagen from "@/components/cliente/visor";
+import Seguimiento, { ETAPAS, RESULTADOS } from "@/components/seguimiento";
 
 /**
  * Clientes registrados. No se carga la lista completa: se muestran los
@@ -45,8 +47,12 @@ import Desplegable from "@/components/desplegable";
  *
  * La ven administrador, supervisor y pagos. El administrador asigna o
  * renueva cupones; administrador y supervisor dan comisiones especiales.
- * Las fotos de identidad se cargan solo al pedirlas y queda registrado
- * quién las vio.
+ * Las fotos de identidad y de las tarjetas se cargan solo al pedirlas y
+ * queda registrado quién las vio; se amplían aquí mismo, sin otra pestaña.
+ *
+ * "Seguimiento" es la vista de posventa: los clientes por etapa (sin
+ * tarjeta, sin operar, inactivos...) para llamarlos o mandarles un
+ * recordatorio.
  */
 const ROLES = ["admin", "supervisor", "pagos"];
 const ESTADOS = {
@@ -74,6 +80,7 @@ const hoyLima = () =>
 
 export default function ClientesPage() {
   const [session, setSession] = useState(sesionEnCache);
+  const [vista, setVista] = useState("buscar");
   const [busqueda, setBusqueda] = useState("");
   const termino = useRetraso(busqueda);
   const [desde, setDesde] = useState("");
@@ -142,162 +149,196 @@ export default function ClientesPage() {
     <Shell
       session={session}
       titulo="Clientes"
-      descripcion="Busca un cliente para ver sus datos y su cupón"
-      ayuda="Se muestran los 10 últimos registrados. Busca por nombre, apellido o DNI, o por fecha de registro, para encontrar a cualquier otro."
+      descripcion={
+        vista === "seguimiento"
+          ? "Quién no opera todavía y a quién llamar"
+          : "Busca un cliente para ver sus datos y su cupón"
+      }
+      ayuda="Buscar: los 10 últimos registrados, o busca por nombre, DNI o fecha. Seguimiento: los clientes por etapa, para llamarlos o mandarles un recordatorio."
     >
-      {error && (
-        <Aviso
-          className="mb-4"
-          titulo="Revisa esto"
-          onCerrar={() => setError("")}
-        >
-          {error}
-        </Aviso>
-      )}
-
-      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-3 shadow-panel">
-        <Buscador
-          valor={busqueda}
-          onCambio={setBusqueda}
-          pendiente={busqueda !== termino}
-          placeholder="Nombre, apellido o DNI"
-          className="w-full sm:w-80"
-          autoFocus
+      <div className="mb-4">
+        <Segmentos
+          valor={vista}
+          onCambio={setVista}
+          opciones={[
+            { clave: "buscar", etiqueta: "Buscar clientes" },
+            {
+              clave: "seguimiento",
+              etiqueta: "Seguimiento",
+              pista: "Posventa: clientes sin tarjeta, sin operar o inactivos",
+            },
+          ]}
         />
-        <label className="flex flex-col text-chico font-semibold text-muted-foreground">
-          Registrado desde
-          <input
-            type="date"
-            value={desde}
-            max={hasta || hoyLima()}
-            onChange={(e) => setDesde(e.target.value)}
-            className="campo mt-1 h-10 w-40 py-1 text-sm"
-          />
-        </label>
-        <label className="flex flex-col text-chico font-semibold text-muted-foreground">
-          hasta
-          <input
-            type="date"
-            value={hasta}
-            min={desde || undefined}
-            max={hoyLima()}
-            onChange={(e) => setHasta(e.target.value)}
-            className="campo mt-1 h-10 w-40 py-1 text-sm"
-          />
-        </label>
-        {(busqueda || desde || hasta) && (
-          <BotonAccion
-            tono="neutro"
-            tamano="chico"
-            onClick={() => {
-              setBusqueda("");
-              setDesde("");
-              setHasta("");
-            }}
-          >
-            Limpiar
-          </BotonAccion>
-        )}
-        {fechasMal && (
-          <p className="w-full text-chico font-semibold text-red-600">
-            La fecha “desde” no puede ser posterior a “hasta”.
-          </p>
-        )}
       </div>
 
-      <Barra>
-        <Segmentos valor={filtro} onCambio={setFiltro} opciones={FILTROS} />
-        <p className="cifras text-chico text-muted-foreground">
-          {cargando
-            ? "Buscando..."
-            : buscando
-              ? `${resultado.total} resultado${resultado.total === 1 ? "" : "s"}${resultado.total > clientes.length ? ` · se muestran ${clientes.length}, afina la búsqueda` : ""}`
-              : `Los ${clientes.length} últimos registrados de ${resultado.total}`}
-        </p>
-      </Barra>
-
-      {cargando && clientes.length === 0 ? (
-        <EsqueletoFilas filas={6} />
-      ) : clientes.length === 0 ? (
-        <Vacio
-          icono={<Persona />}
-          titulo="Sin resultados"
-          detalle="Prueba con otro nombre, DNI o rango de fechas."
+      {vista === "seguimiento" ? (
+        <Seguimiento
+          onAviso={setOk}
+          onVerFicha={(dni) => {
+            setVista("buscar");
+            setBusqueda(dni);
+          }}
         />
       ) : (
-        <div
-          className={cn(
-            "overflow-hidden rounded-xl border border-border bg-card shadow-panel transition",
-            cargando && "opacity-60",
+        <>
+          {error && (
+            <Aviso
+              className="mb-4"
+              titulo="Revisa esto"
+              onCerrar={() => setError("")}
+            >
+              {error}
+            </Aviso>
           )}
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/50 text-left">
-                  <th className="px-4 py-2.5 t-etiqueta">Cliente</th>
-                  <th className="px-3 py-2.5 t-etiqueta">Celular</th>
-                  <th className="px-3 py-2.5 t-etiqueta">Estado</th>
-                  <th className="w-[260px] px-3 py-2.5 t-etiqueta">Tarifa</th>
-                  <th className="px-3 py-2.5 t-etiqueta">Registro</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {clientes.map((c) => {
-                  const e = ESTADOS[c.usuario?.estado] || {
-                    t: c.usuario?.estado || "—",
-                    c: "bg-muted text-muted-foreground",
-                  };
-                  return (
-                    <tr
-                      key={c.id}
-                      onClick={() => setAbierto(c.id)}
-                      className="cursor-pointer hover:bg-muted/30"
-                    >
-                      <td className="px-4 py-2.5">
-                        <button
-                          className="text-left"
-                          onClick={() => setAbierto(c.id)}
-                        >
-                          <span className="block font-semibold text-foreground">
-                            {c.nombres} {c.apellidos}
-                          </span>
-                          <span className="cifras block text-chico text-muted-foreground">
-                            {c.tipo_documento === "ce" ? "CE" : "DNI"} {c.dni}
-                          </span>
-                        </button>
-                      </td>
-                      <td className="cifras whitespace-nowrap px-3 py-2.5 text-muted-foreground">
-                        {c.telefono || "—"}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span
-                          className={cn(
-                            "rounded-full px-2.5 py-1 text-xs font-semibold",
-                            e.c,
-                          )}
-                        >
-                          {e.t}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <VigenciaCupon
-                          cupon={c.cupon}
-                          desde={c.cupon_desde}
-                          hasta={c.cupon_hasta}
-                          compacto
-                        />
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
-                        {fechaCorta(c.created_at)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+
+          <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-3 shadow-panel">
+            <Buscador
+              valor={busqueda}
+              onCambio={setBusqueda}
+              pendiente={busqueda !== termino}
+              placeholder="Nombre, apellido o DNI"
+              className="w-full sm:w-80"
+              autoFocus
+            />
+            <label className="flex flex-col text-chico font-semibold text-muted-foreground">
+              Registrado desde
+              <input
+                type="date"
+                value={desde}
+                max={hasta || hoyLima()}
+                onChange={(e) => setDesde(e.target.value)}
+                className="campo mt-1 h-10 w-40 py-1 text-sm"
+              />
+            </label>
+            <label className="flex flex-col text-chico font-semibold text-muted-foreground">
+              hasta
+              <input
+                type="date"
+                value={hasta}
+                min={desde || undefined}
+                max={hoyLima()}
+                onChange={(e) => setHasta(e.target.value)}
+                className="campo mt-1 h-10 w-40 py-1 text-sm"
+              />
+            </label>
+            {(busqueda || desde || hasta) && (
+              <BotonAccion
+                tono="neutro"
+                tamano="chico"
+                onClick={() => {
+                  setBusqueda("");
+                  setDesde("");
+                  setHasta("");
+                }}
+              >
+                Limpiar
+              </BotonAccion>
+            )}
+            {fechasMal && (
+              <p className="w-full text-chico font-semibold text-red-600">
+                La fecha “desde” no puede ser posterior a “hasta”.
+              </p>
+            )}
           </div>
-        </div>
+
+          <Barra>
+            <Segmentos valor={filtro} onCambio={setFiltro} opciones={FILTROS} />
+            <p className="cifras text-chico text-muted-foreground">
+              {cargando
+                ? "Buscando..."
+                : buscando
+                  ? `${resultado.total} resultado${resultado.total === 1 ? "" : "s"}${resultado.total > clientes.length ? ` · se muestran ${clientes.length}, afina la búsqueda` : ""}`
+                  : `Los ${clientes.length} últimos registrados de ${resultado.total}`}
+            </p>
+          </Barra>
+
+          {cargando && clientes.length === 0 ? (
+            <EsqueletoFilas filas={6} />
+          ) : clientes.length === 0 ? (
+            <Vacio
+              icono={<Persona />}
+              titulo="Sin resultados"
+              detalle="Prueba con otro nombre, DNI o rango de fechas."
+            />
+          ) : (
+            <div
+              className={cn(
+                "overflow-hidden rounded-xl border border-border bg-card shadow-panel transition",
+                cargando && "opacity-60",
+              )}
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/50 text-left">
+                      <th className="px-4 py-2.5 t-etiqueta">Cliente</th>
+                      <th className="px-3 py-2.5 t-etiqueta">Celular</th>
+                      <th className="px-3 py-2.5 t-etiqueta">Estado</th>
+                      <th className="w-[260px] px-3 py-2.5 t-etiqueta">
+                        Tarifa
+                      </th>
+                      <th className="px-3 py-2.5 t-etiqueta">Registro</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {clientes.map((c) => {
+                      const e = ESTADOS[c.usuario?.estado] || {
+                        t: c.usuario?.estado || "—",
+                        c: "bg-muted text-muted-foreground",
+                      };
+                      return (
+                        <tr
+                          key={c.id}
+                          onClick={() => setAbierto(c.id)}
+                          className="cursor-pointer hover:bg-muted/30"
+                        >
+                          <td className="px-4 py-2.5">
+                            <button
+                              className="text-left"
+                              onClick={() => setAbierto(c.id)}
+                            >
+                              <span className="block font-semibold text-foreground">
+                                {c.nombres} {c.apellidos}
+                              </span>
+                              <span className="cifras block text-chico text-muted-foreground">
+                                {c.tipo_documento === "ce" ? "CE" : "DNI"}{" "}
+                                {c.dni}
+                              </span>
+                            </button>
+                          </td>
+                          <td className="cifras whitespace-nowrap px-3 py-2.5 text-muted-foreground">
+                            {c.telefono || "—"}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span
+                              className={cn(
+                                "rounded-full px-2.5 py-1 text-xs font-semibold",
+                                e.c,
+                              )}
+                            >
+                              {e.t}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <VigenciaCupon
+                              cupon={c.cupon}
+                              desde={c.cupon_desde}
+                              hasta={c.cupon_hasta}
+                              compacto
+                            />
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
+                            {fechaCorta(c.created_at)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <Dialogo
@@ -342,6 +383,12 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
   const [cuentas, setCuentas] = useState(null);
   const [especiales, setEspeciales] = useState([]);
   const [fotos, setFotos] = useState(null); // null | "cargando" | { urls, fallos }
+  // Fotos de cada tarjeta, al pedirlas: { [id]: "cargando" | { urls } }.
+  const [fotosTarjeta, setFotosTarjeta] = useState({});
+  const [seguimientos, setSeguimientos] = useState([]);
+  const [etapa, setEtapa] = useState(null);
+  // Imagen ampliada aquí mismo: { src, titulo }.
+  const [viendo, setViendo] = useState(null);
   const [asignar, setAsignar] = useState(null); // { cupon, dias }
   const [especial, setEspecial] = useState(null); // { banco, valor, motivo }
   const [tocado, setTocado] = useState(false);
@@ -359,6 +406,8 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
         setTarjetas(data?.tarjetas || []);
         setCuentas(data?.cuentas || []);
         setEspeciales(data?.especiales || []);
+        setSeguimientos(data?.seguimientos || []);
+        setEtapa(data?.etapa || null);
       });
   }, [cliente.id]);
 
@@ -382,6 +431,23 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
       300,
     );
     setFotos(r);
+  }
+
+  async function verFotosTarjeta(t) {
+    setFotosTarjeta((f) => ({ ...f, [t.id]: "cargando" }));
+    const { error: e } = await supabase.rpc("registrar_vista_fotos", {
+      p_cliente: cliente.id,
+    });
+    if (e && e.code !== "PGRST202") {
+      setFotosTarjeta((f) => ({ ...f, [t.id]: undefined }));
+      return setError(explicarError(e, "No se pudieron abrir las fotos."));
+    }
+    const r = await urlsFirmadas(
+      "tarjetas-fotos",
+      [t.foto_tarjeta, t.foto_reverso].filter(Boolean),
+      300,
+    );
+    setFotosTarjeta((f) => ({ ...f, [t.id]: r }));
   }
 
   // ── Asignar o renovar cupón ──
@@ -663,25 +729,83 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
           ) : (
             <ul className="space-y-1.5">
               {tarjetas.map((t) => (
-                <li key={t.id} className="flex items-center gap-2 text-sm">
-                  <SiglaBanco banco={t.banco} chica />
-                  <span className="cifras flex-1">•••• {t.ultimos_4}</span>
-                  <span
-                    className={cn(
-                      "text-chico font-semibold",
-                      t.estado === "aprobado"
-                        ? "text-emerald-700"
+                <li key={t.id} className="text-sm">
+                  <span className="flex items-center gap-2">
+                    <SiglaBanco banco={t.banco} chica />
+                    <span className="cifras flex-1">•••• {t.ultimos_4}</span>
+                    <span
+                      className={cn(
+                        "text-chico font-semibold",
+                        t.estado === "aprobado"
+                          ? "text-emerald-700"
+                          : t.estado === "rechazado"
+                            ? "text-red-700"
+                            : "text-marca-700",
+                      )}
+                    >
+                      {t.estado === "aprobado"
+                        ? "Verificada"
                         : t.estado === "rechazado"
-                          ? "text-red-700"
-                          : "text-marca-700",
+                          ? "Rechazada"
+                          : "En revisión"}
+                    </span>
+                    {t.foto_tarjeta && !fotosTarjeta[t.id] && (
+                      <button
+                        type="button"
+                        onClick={() => verFotosTarjeta(t)}
+                        className="inline-flex items-center gap-1 rounded-md bg-marca-50 px-1.5 py-0.5 text-xs font-bold text-marca-700 hover:bg-marca-100"
+                      >
+                        <Ojo className="h-3 w-3" /> Fotos
+                      </button>
                     )}
-                  >
-                    {t.estado === "aprobado"
-                      ? "Verificada"
-                      : t.estado === "rechazado"
-                        ? "Rechazada"
-                        : "En revisión"}
                   </span>
+                  {fotosTarjeta[t.id] === "cargando" && (
+                    <span className="mt-1.5 flex items-center gap-1.5 text-chico text-muted-foreground">
+                      <Rueda className="h-3 w-3" /> Abriendo...
+                    </span>
+                  )}
+                  {fotosTarjeta[t.id] && fotosTarjeta[t.id] !== "cargando" && (
+                    <span className="mt-1.5 grid grid-cols-2 gap-1.5">
+                      {[
+                        ["Foto de la tarjeta", t.foto_tarjeta],
+                        ["Segunda foto", t.foto_reverso],
+                      ]
+                        .filter(([, path]) => path)
+                        .map(([titulo, path]) => {
+                          const url =
+                            fotosTarjeta[t.id].urls[
+                              extraerPath("tarjetas-fotos", path)
+                            ];
+                          return url ? (
+                            <button
+                              key={titulo}
+                              type="button"
+                              onClick={() =>
+                                setViendo({
+                                  src: url,
+                                  titulo: `${titulo} · ${nombreBanco(t.banco)} •••• ${t.ultimos_4}`,
+                                })
+                              }
+                              className="overflow-hidden rounded-md bg-marca-950 ring-1 ring-border transition hover:ring-marca-500"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={url}
+                                alt={titulo}
+                                className="h-20 w-full object-contain"
+                              />
+                            </button>
+                          ) : (
+                            <span
+                              key={titulo}
+                              className="flex h-20 items-center justify-center rounded-md bg-muted text-chico text-muted-foreground"
+                            >
+                              No se pudo abrir
+                            </span>
+                          );
+                        })}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -850,11 +974,10 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
                     {titulo}
                   </p>
                   {url ? (
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noopener"
-                      className="block overflow-hidden rounded-lg bg-marca-950 ring-1 ring-border"
+                    <button
+                      type="button"
+                      onClick={() => setViendo({ src: url, titulo })}
+                      className="block w-full overflow-hidden rounded-lg bg-marca-950 ring-1 ring-border transition hover:ring-marca-500"
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -862,7 +985,7 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
                         alt={titulo}
                         className="h-36 w-full object-contain"
                       />
-                    </a>
+                    </button>
                   ) : (
                     <p className="flex h-36 items-center justify-center rounded-lg bg-muted text-chico text-muted-foreground">
                       {path ? "No se pudo abrir" : "No subió esta foto"}
@@ -874,6 +997,65 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
           </ul>
         )}
       </section>
+
+      {/* Etapa y contactos de posventa */}
+      <section className="rounded-xl border border-border p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="flex-1 font-heading text-md font-semibold">
+            Seguimiento
+          </h3>
+          {etapa && ETAPAS[etapa] && (
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-xs font-semibold ring-1",
+                ETAPAS[etapa].c,
+              )}
+            >
+              {ETAPAS[etapa].t}
+            </span>
+          )}
+        </div>
+        {seguimientos.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Sin contactos ni recordatorios todavía.
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {seguimientos.map((g, i) => (
+              <li key={i} className="flex gap-3 text-sm">
+                <span
+                  className={cn(
+                    "mt-0.5 h-fit shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
+                    RESULTADOS[g.resultado]?.c,
+                  )}
+                >
+                  {RESULTADOS[g.resultado]?.t || g.resultado}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-chico text-muted-foreground">
+                    {g.canal === "recordatorio"
+                      ? "Recordatorio en la app"
+                      : g.canal === "whatsapp"
+                        ? "WhatsApp"
+                        : "Llamada"}{" "}
+                    · {fechaCorta(g.en)} · {g.por || "automático"}
+                    {g.volver_el &&
+                      ` · volver a llamar el ${g.volver_el.split("-").reverse().join("/")}`}
+                  </span>
+                  {g.nota && <span className="block">{g.nota}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <VisorImagen
+        src={viendo?.src}
+        alt={viendo?.titulo || ""}
+        abierto={Boolean(viendo)}
+        onCerrar={() => setViendo(null)}
+      />
     </div>
   );
 }

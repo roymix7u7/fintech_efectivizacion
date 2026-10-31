@@ -103,6 +103,12 @@ export default function NuevaSolicitudScreen() {
 
   // Código de la solicitud ya enviada: muestra la pantalla de éxito.
   const [enviada, setEnviada] = useState(null);
+  // Scotiabank y BanBif: depósito al día siguiente (lo normal) o para
+  // hoy (más caro, hasta las 6 p. m. de un día hábil). Lo que se puede
+  // elegir y las tarifas los da la base (opciones_deposito); la comisión
+  // final también la fija la base al crear la solicitud.
+  const [opciones, setOpciones] = useState(null);
+  const [modalidad, setModalidad] = useState("siguiente");
   const insets = useSafeAreaInsets();
   const reducir = useReducirMovimiento();
   const altoTeclado = useAlturaTeclado();
@@ -189,8 +195,31 @@ export default function NuevaSolicitudScreen() {
   // mandar el dinero.
   const bancoTarjeta = tarjetaSeleccionada?.banco || null;
   const destinos = cuentasDeDeposito(bancoTarjeta, cuentas);
+
+  useEffect(() => {
+    setOpciones(null);
+    setModalidad("siguiente");
+    if (!bancoTarjeta) return;
+    let vigente = true;
+    supabase
+      .rpc("opciones_deposito", { p_banco: bancoTarjeta })
+      .then(({ data, error }) => vigente && setOpciones(error ? null : data));
+    return () => {
+      vigente = false;
+    };
+  }, [bancoTarjeta]);
+
+  const conEleccion = Boolean(opciones?.con_eleccion);
+  // "Para hoy" se cierra a las 6 p. m.: si ya pasó, queda el día siguiente.
+  const modo = conEleccion && modalidad === "hoy" && !opciones.hoy_disponible ? "siguiente" : modalidad;
   // Se muestra antes de enviar: es lo que se descuenta del depósito.
-  const comision = (datos?.comisiones || []).find((c) => c.banco === bancoTarjeta)?.porcentaje;
+  const comision = conEleccion
+    ? modo === "hoy"
+      ? opciones.porcentaje_hoy
+      : opciones.porcentaje_siguiente
+    : (datos?.comisiones || []).find((c) => c.banco === bancoTarjeta)?.porcentaje;
+  const cuandoTexto =
+    conEleccion && modo === "siguiente" ? `Te depositamos ${opciones.texto_siguiente}.` : plazoDeposito();
   const comisionTexto = comision == null ? null : `${Number(comision).toFixed(2).replace(/\.?0+$/, "")}%`;
   const tieneCuentaDelBanco = destinos.length > 0;
   const falta = faltaParaRecibir(bancoTarjeta, cuentas);
@@ -366,6 +395,7 @@ export default function NuevaSolicitudScreen() {
         comprobante_url: path,
         nota_cliente: nota.trim() || null,
         estado: "pendiente",
+        ...(conEleccion ? { modalidad: modo } : {}),
       });
       if (solError) throw solError;
 
@@ -388,7 +418,10 @@ export default function NuevaSolicitudScreen() {
       // copia de ellas, con una segunda burbuja de alertas escuchando el
       // mismo canal, y eso tumbaba el app justo al enviar.
       invalidar("solicitudes");
-      setEnviada(codigo);
+      setEnviada({
+        codigo,
+        cuando: conEleccion && modo === "siguiente" ? `Te depositaremos ${opciones.texto_siguiente}, como elegiste.` : null,
+      });
     } catch (err) {
       // Sin esto la imagen quedaba huerfana en Storage.
       await borrarImagenes(BUCKET, [pathSubido]);
@@ -435,7 +468,7 @@ export default function NuevaSolicitudScreen() {
             </View>
           </Aparece>
           <Text style={s.enviadaTexto}>
-            {plazoDeposito()} Te avisaremos en cada paso, y cualquier demora la verás en Alertas.
+            {enviada.cuando || plazoDeposito()} Te avisaremos en cada paso, y cualquier demora la verás en Alertas.
           </Text>
         </View>
         <View style={{ gap: 10 }}>
@@ -606,6 +639,60 @@ export default function NuevaSolicitudScreen() {
           })
         )}
 
+        {/* ── Cuándo depositar (Scotiabank y BanBif) ── */}
+        {tarjetaSeleccionada && tieneCuentaDelBanco && conEleccion ? (
+          <Aparece key={`modalidad-${bancoTarjeta}`}>
+            <Etiqueta style={[s.etiqueta, { paddingTop: 10 }]}>¿Cuándo quieres tu depósito?</Etiqueta>
+            <View style={s.modalidades} accessibilityRole="radiogroup">
+              {[
+                {
+                  k: "siguiente",
+                  titulo: "Al día siguiente",
+                  pct: opciones.porcentaje_siguiente,
+                  detalle: `Te depositamos ${opciones.texto_siguiente}.`,
+                  etiqueta: "Menor comisión",
+                  apagado: false,
+                },
+                {
+                  k: "hoy",
+                  titulo: "Para hoy",
+                  pct: opciones.porcentaje_hoy,
+                  detalle: opciones.hoy_disponible ? "El mismo día, en horario de atención." : opciones.motivo_sin_hoy,
+                  apagado: !opciones.hoy_disponible,
+                },
+              ].map((x) => {
+                const activa = modo === x.k;
+                return (
+                  <Toque
+                    key={x.k}
+                    onPress={() => !ocupado && !x.apagado && setModalidad(x.k)}
+                    disabled={ocupado || x.apagado}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: activa, disabled: ocupado || x.apagado }}
+                    accessibilityLabel={`${x.titulo}, comisión ${Number(x.pct).toFixed(2).replace(/\.?0+$/, "")} por ciento. ${x.detalle}`}
+                    style={[s.modalidad, activa && s.opcionActiva, x.apagado && { opacity: 0.55 }]}
+                  >
+                    <View style={s.modalidadArriba}>
+                      <View style={[s.radio, activa && s.radioActivo]} />
+                      <Text style={s.modalidadTitulo}>{x.titulo}</Text>
+                    </View>
+                    {x.etiqueta ? (
+                      <View style={s.modalidadEtiqueta}>
+                        <Text style={s.modalidadEtiquetaTexto}>{x.etiqueta}</Text>
+                      </View>
+                    ) : null}
+                    <Text style={s.modalidadPct}>
+                      {Number(x.pct).toFixed(2).replace(/\.?0+$/, "")}%
+                      <Text style={s.modalidadPctSufijo}> comisión</Text>
+                    </Text>
+                    <Text style={[s.modalidadDetalle, x.apagado && { color: colors.goldText }]}>{x.detalle}</Text>
+                  </Toque>
+                );
+              })}
+            </View>
+          </Aparece>
+        ) : null}
+
         {/* ── 2 · Comprobante ── */}
         <Etiqueta style={[s.etiqueta, { paddingTop: 10 }]}>2 · Comprobante</Etiqueta>
         {procesando ? (
@@ -708,7 +795,7 @@ export default function NuevaSolicitudScreen() {
                 Comisión {bancoDe(bancoTarjeta).name}: <Text style={s.barraComisionValor}>{comisionTexto}</Text> · se
                 descuenta de lo que te depositamos
               </Text>
-              <Text style={s.barraComision}>{plazoDeposito()}</Text>
+              <Text style={s.barraComision}>{cuandoTexto}</Text>
             </View>
           ) : null}
           <Boton
@@ -848,6 +935,29 @@ const s = StyleSheet.create({
     overflow: "hidden",
   },
   opcionActiva: { borderWidth: 2, borderColor: colors.navy },
+  modalidades: { flexDirection: "row", gap: 10 },
+  modalidad: {
+    flex: 1,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: 14,
+    gap: 6,
+  },
+  modalidadArriba: { flexDirection: "row", alignItems: "center", gap: 8 },
+  modalidadTitulo: { flex: 1, fontFamily: fonts.strong, fontSize: 14, color: colors.text },
+  modalidadEtiqueta: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: colors.successBg,
+  },
+  modalidadEtiquetaTexto: { fontFamily: fonts.label, fontSize: 10, letterSpacing: 0.4, color: colors.successText },
+  modalidadPct: { fontFamily: fonts.heavy, fontSize: 24, color: colors.text },
+  modalidadPctSufijo: { fontFamily: fonts.label, fontSize: 12, color: colors.text3 },
+  modalidadDetalle: { fontFamily: fonts.label, fontSize: 12, lineHeight: 16, color: colors.text2 },
   opcionFila: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 14 },
   opcionDigitos: { fontFamily: fonts.strong, fontSize: 15, letterSpacing: 0.6, color: colors.text },
   opcionDeposito: { flexDirection: "row", alignItems: "center", gap: 4 },

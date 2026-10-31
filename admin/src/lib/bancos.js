@@ -108,3 +108,10 @@ export function estadoBanco(banco, tarjetas = [], cuentas = []) {
 
 export const bancosDelCliente = (tarjetas = [], cuentas = []) =>
   ORDEN_BANCOS.filter((b) => estadoBanco(b, tarjetas, cuentas) !== null);
+
+/**
+ * Bancos con dos tarifas: la de siempre es al día siguiente y "para
+ * hoy" cuesta más. La base lo decide por la tarifa estándar
+ * (banco_con_dia_siguiente); esta lista es la misma, para el panel.
+ */
+export const BANCOS_DOS_TARIFAS = ["Scotiabank", "BanBif"];

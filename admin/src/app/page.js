@@ -207,6 +207,15 @@ export default function Inicio() {
                   </span>
                   <span className="font-medium text-white/90">
                     {g.bancos.join(" · ")}
+                    {g.pctHoy && (
+                      <span className="mt-0.5 block text-chico font-normal leading-snug text-white/55">
+                        Depósito al día siguiente ·{" "}
+                        <span className="text-oro-300">
+                          {g.pctHoy.toLocaleString("es-PE")} % si lo quieres
+                          hoy
+                        </span>
+                      </span>
+                    )}
                   </span>
                   <span className="text-right text-chico leading-tight text-white/45">
                     Mín. S/ {g.minimo}
@@ -374,7 +383,7 @@ export default function Inicio() {
               {
                 i: <Banco />,
                 t: "Solo a tu nombre",
-                d: "Depositamos únicamente en cuentas tuyas. Nunca a terceros ni por interbancaria.",
+                d: "Depositamos únicamente en cuentas a tu nombre. Nunca a terceros.",
               },
               {
                 i: <Candado />,

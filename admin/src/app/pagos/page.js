@@ -15,6 +15,7 @@ import { EsqueletoFilas, BotonAccion, Rueda, BarraCarga, CargaPantalla } from "@
 import { Segmentos, Buscador, Barra, Leyenda, Dialogo, Motivo, Tostada, Copiar, IconoAlerta } from "@/components/piezas";
 import Pista from "@/components/pista";
 import Paginador from "@/components/paginador";
+import VisorImagen from "@/components/cliente/visor";
 
 const BUCKET_COMPROBANTES = "comprobantes";
 const POR_PAGINA = 30;
@@ -65,6 +66,25 @@ const agrupar = (n) =>
 
 const nombreDe = (c) => [c?.nombres, c?.apellidos].filter(Boolean).join(" ");
 
+const porcentaje = (v) =>
+  Number(v)
+    .toFixed(2)
+    .replace(/\.?0+$/, "");
+
+/** Fecha sin hora ("2026-11-02") como "lun. 2 nov.", sin correrse de día. */
+const diaCorto = (iso) => {
+  if (!iso) return "";
+  const [a, m, d] = iso.split("-").map(Number);
+  return new Date(a, m - 1, d).toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" });
+};
+
+/**
+ * ¿Qué cuenta recibe? La que eligió Pagos o la de siempre (la base la
+ * manda en cuenta_deposito_id). Sin la migración 065, la regla de siempre.
+ */
+const recibe = (fila, c) =>
+  "cuenta_deposito_id" in fila ? c.id === fila.cuenta_deposito_id : recibeDeposito(fila.banco, c);
+
 /**
  * Mensaje de error de una funcion de pagos.
  *
@@ -88,11 +108,14 @@ function motivoDe(error, contexto) {
  * DNI y las cuentas. El comprobante queda como un botón pequeño, por si
  * hace falta mirarlo.
  */
-function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar }) {
+function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar, onCuenta }) {
   const tomadaPorOtro = fila.marcada_por && !fila.marcada_por_mi;
   const seleccionable = estado === "aprobado" && fila.puedo_pagar && !tomadaPorOtro;
   const marcada = fila.marcada_por_mi;
-  const ningunaRecibe = fila.cuentas?.length > 0 && !fila.cuentas.some((c) => recibeDeposito(fila.banco, c));
+  const ningunaRecibe = fila.cuentas?.length > 0 && !fila.cuentas.some((c) => recibe(fila, c));
+  // Pagos elige en qué cuenta del cliente depositar: de ahorros o, como
+  // último recurso, su CCI.
+  const puedeCambiar = estado === "aprobado" && fila.puedo_pagar && !tomadaPorOtro && "cuenta_deposito_id" in fila;
 
   return (
     <li
@@ -153,23 +176,45 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar }) {
               : `enviada ${haceCuanto(fila.created_at)}`}
         </p>
 
+        {fila.modalidad && (fila.modalidad === "siguiente" || fila.porcentaje_comision != null) && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold",
+                fila.modalidad === "siguiente" ? "bg-sky-50 text-sky-800 ring-1 ring-sky-200" : "bg-muted text-foreground",
+              )}
+            >
+              {fila.modalidad === "siguiente" ? "Al día siguiente" : "Mismo día"}
+              {fila.porcentaje_comision != null && <span className="cifras font-semibold">· {porcentaje(fila.porcentaje_comision)} %</span>}
+            </span>
+            {estado === "aprobado" && fila.programada && (
+              <span className="inline-flex items-center rounded-full bg-oro-100 px-2 py-0.5 text-xs font-bold text-oro-700">
+                Programada: {diaCorto(fila.fecha_deposito)}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* La cuenta que recibe va primera y resaltada: el pagador no
             tiene que deducir a cuál depositar. */}
         <div className="mt-2 flex flex-wrap gap-1.5">
           {fila.cuentas?.length ? (
             [...fila.cuentas]
-              .sort((a, b) => recibeDeposito(fila.banco, b) - recibeDeposito(fila.banco, a))
+              .sort((a, b) => recibe(fila, b) - recibe(fila, a))
               .map((c, i) => {
-                const recibe = recibeDeposito(fila.banco, c);
+                const esta = recibe(fila, c);
+                const elegible = puedeCambiar && !esta;
+                const esCci = c.tipo === "interbancaria";
                 return (
                   <span
-                    key={i}
+                    key={c.id || i}
                     className={cn(
                       "inline-flex items-center gap-1.5 rounded-lg border px-2 py-1",
-                      recibe ? "border-emerald-300 bg-emerald-50" : "border-border bg-background opacity-70",
+                      esta ? "border-emerald-300 bg-emerald-50" : "border-border bg-background",
+                      !esta && !elegible && "opacity-70",
                     )}
                   >
-                    {recibe && (
+                    {esta && (
                       <span className="inline-flex items-center gap-0.5 rounded bg-emerald-600 px-1.5 py-px text-xs font-bold text-white">
                         <Check className="h-3 w-3" />
                         Recibe
@@ -179,6 +224,21 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar }) {
                     <span className="text-xs font-semibold text-muted-foreground">{c.tipo === "interbancaria" ? "CCI" : "Ahorros"}</span>
                     <span className="cifras font-mono text-sm font-semibold text-foreground">{agrupar(c.numero)}</span>
                     <Copiar texto={c.numero} soloIcono etiqueta="Copiar el número" />
+                    {elegible && (
+                      <Pista texto={esCci ? "Último recurso: transferencia interbancaria a su CCI. Tarda más en reflejarse." : "Depositar en esta cuenta del cliente"}>
+                        <button
+                          type="button"
+                          onClick={() => onCuenta(fila, c)}
+                          disabled={ocupado}
+                          className={cn(
+                            "ml-0.5 rounded-md px-1.5 py-0.5 text-xs font-bold transition disabled:opacity-50",
+                            esCci ? "bg-oro-50 text-oro-700 hover:bg-oro-100" : "bg-marca-50 text-marca-700 hover:bg-marca-100",
+                          )}
+                        >
+                          {esCci ? "Por CCI" : "Depositar aquí"}
+                        </button>
+                      </Pista>
+                    )}
                   </span>
                 );
               })
@@ -189,10 +249,36 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar }) {
           )}
         </div>
 
+        {fila.cuenta_cambiada && estado === "aprobado" && (
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-chico font-semibold text-oro-700">
+            {fila.cuentas?.find((c) => c.id === fila.cuenta_deposito_id)?.tipo === "interbancaria"
+              ? "Se pagará por CCI (transferencia interbancaria): al confirmar, el cliente recibe un aviso con su CCI."
+              : "No es la cuenta de siempre: al confirmar, el cliente recibe un aviso con la cuenta."}
+            {puedeCambiar && (
+              <button type="button" onClick={() => onCuenta(fila, null)} disabled={ocupado} className="underline underline-offset-2">
+                Volver a la de siempre
+              </button>
+            )}
+          </p>
+        )}
+
+        {estado === "pagado" && fila.deposito && (
+          <p className="mt-1.5 text-chico text-muted-foreground">
+            Pagado en{" "}
+            <span className="font-semibold text-foreground">
+              {fila.deposito.tipo === "interbancaria" ? "CCI" : "ahorros"} {fila.deposito.banco} ···· {fila.deposito.ultimos_4}
+            </span>
+            {BANCOS_PRINCIPALES.includes(fila.banco) && fila.deposito.banco !== fila.banco && " (otra cuenta del cliente)"}
+          </p>
+        )}
+
         {ningunaRecibe && (
           <p className="mt-1.5 text-chico font-semibold text-red-700">
             Ninguna cuenta recibe esta operación: falta la cuenta de ahorros
-            {BANCOS_PRINCIPALES.includes(fila.banco) ? ` ${fila.banco}` : ""}. Contacta al cliente antes de pagar.
+            {BANCOS_PRINCIPALES.includes(fila.banco) ? ` ${fila.banco}` : ""}.{" "}
+            {fila.cuentas.some((c) => c.tipo === "interbancaria") && "cuenta_deposito_id" in fila
+              ? "Contacta al cliente o, como último recurso, usa «Por CCI»."
+              : "Contacta al cliente antes de pagar."}
           </p>
         )}
 
@@ -259,8 +345,32 @@ export default function PagosPage() {
 
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
+  // Comprobante abierto en el visor: { url } (url null mientras se firma).
+  const [comprobante, setComprobante] = useState(null);
 
   // ── Carga ──
+
+  /** Cambia en qué cuenta del cliente se deposita (null: la de siempre). */
+  async function cambiarCuenta(fila, cuenta) {
+    setOcupados((o) => new Set(o).add(fila.id));
+    const { error: e } = await supabase.rpc("pagos_cuenta_deposito", {
+      p_solicitud: fila.id,
+      p_cuenta: cuenta?.id ?? null,
+    });
+    setOcupados((o) => {
+      const n = new Set(o);
+      n.delete(fila.id);
+      return n;
+    });
+    if (e) return setError(motivoDe(e, "No se pudo cambiar la cuenta de depósito."));
+    setOk(
+      cuenta
+        ? `Se depositará en ${cuenta.tipo === "interbancaria" ? "el CCI" : "ahorros"} ${cuenta.banco} ···· ${String(cuenta.numero).slice(-4)}.`
+        : "Vuelve a la cuenta de siempre.",
+    );
+    cargarLista({ silencioso: true });
+    cargarLote();
+  }
 
   const cargarResumen = useCallback(async () => {
     const { data, error: e } = await supabase.rpc("pagos_resumen");
@@ -472,20 +582,18 @@ export default function PagosPage() {
   async function verComprobante(valor) {
     const path = extraerPath(BUCKET_COMPROBANTES, valor);
     if (!path) return setError("La ruta del comprobante no es válida.");
-    // Se abre la ventana antes de esperar la firma: si se abre despues
-    // de un await, el navegador lo trata como ventana emergente y la
-    // bloquea.
-    const ventana = window.open("", "_blank");
+    // Se abre aquí mismo, con zoom; mientras se firma, el visor espera.
+    setComprobante({ url: null });
     const { data, error: e } = await supabase.storage
       .from(BUCKET_COMPROBANTES)
       .createSignedUrl(path, 300);
     if (e || !data?.signedUrl) {
-      ventana?.close();
+      setComprobante(null);
       return setError(
         "No se pudo abrir el comprobante: " + (e?.message || "sin URL"),
       );
     }
-    if (ventana) ventana.location.href = data.signedUrl;
+    setComprobante({ url: data.signedUrl });
   }
 
   // ── Derivados ──
@@ -582,6 +690,7 @@ export default function PagosPage() {
               cuenta={vista === "cola" ? Number(r[campo] || 0) : null}
               propio={r.es_mio}
               mias={Number(r.marcadas_por_mi || 0)}
+              programadas={vista === "cola" && estado === "aprobado" ? Number(r.programadas || 0) : 0}
             />
           ))}
         </div>
@@ -618,19 +727,21 @@ export default function PagosPage() {
               ) : (
                 <>
                   <ul className="space-y-2">
-                    {filas.map((f) => (
-                      <Fila
-                        key={f.id}
-                        fila={f}
-                        estado={estado}
-                        ocupado={ocupados.has(f.id)}
-                        onMarcar={alternarMarca}
-                        onComprobante={verComprobante}
-                        onCancelar={(x) => {
-                          setACancelar(x);
-                          setMotivo("");
-                        }}
-                      />
+                    {filas.map((f, i) => (
+                      <FilaConSeparador key={f.id} fila={f} anterior={filas[i - 1]} estado={estado}>
+                        <Fila
+                          fila={f}
+                          estado={estado}
+                          ocupado={ocupados.has(f.id)}
+                          onMarcar={alternarMarca}
+                          onComprobante={verComprobante}
+                          onCuenta={cambiarCuenta}
+                          onCancelar={(x) => {
+                            setACancelar(x);
+                            setMotivo("");
+                          }}
+                        />
+                      </FilaConSeparador>
                     ))}
                   </ul>
                   <Paginador pagina={pagina} porPagina={POR_PAGINA} total={total} cargando={refrescando} onCambio={setPagina} />
@@ -643,7 +754,7 @@ export default function PagosPage() {
                     {
                       texto: "Recibe",
                       marca: <span className="h-2.5 w-2.5 rounded-sm bg-emerald-600" />,
-                      pista: "La cuenta a la que hay que depositar: ahorros del mismo banco de la tarjeta.",
+                      pista: "La cuenta a la que hay que depositar: la de ahorros del banco de la tarjeta, o la que elijas con «Depositar aquí».",
                     },
                     {
                       texto: "Tu banco",
@@ -918,12 +1029,37 @@ export default function PagosPage() {
         />
       </Dialogo>
 
+      <VisorImagen
+        src={comprobante?.url}
+        alt="Comprobante de la operación"
+        abierto={Boolean(comprobante)}
+        onCerrar={() => setComprobante(null)}
+      />
       <Tostada mensaje={ok} onCerrar={() => setOk("")} />
     </Shell>
   );
 }
 
-function PestanaBanco({ activa, onClick, titulo, cuenta, propio, mias }) {
+/**
+ * Por pagar: lo de hoy va primero; al empezar lo programado para otro
+ * día (depósito al día siguiente) se pone un separador.
+ */
+function FilaConSeparador({ fila, anterior, estado, children }) {
+  const empieza = estado === "aprobado" && fila.programada && (!anterior || !anterior.programada);
+  return (
+    <>
+      {empieza && (
+        <li className="flex items-center gap-3 pt-3" aria-hidden>
+          <span className="t-etiqueta whitespace-nowrap text-oro-700">Programadas para otro día</span>
+          <span className="h-px flex-1 bg-border" />
+        </li>
+      )}
+      {children}
+    </>
+  );
+}
+
+function PestanaBanco({ activa, onClick, titulo, cuenta, propio, mias, programadas = 0 }) {
   const boton = (
     <button
       onClick={onClick}
@@ -946,6 +1082,14 @@ function PestanaBanco({ activa, onClick, titulo, cuenta, propio, mias }) {
       {mias > 0 && (
         <span className={cn("cifras rounded-full px-1.5 py-0.5 text-xs font-bold", activa ? "bg-oro-500 text-marca-900" : "bg-oro-100 text-oro-700")}>
           ✓{mias}
+        </span>
+      )}
+      {programadas > 0 && (
+        <span
+          title="Programadas para otro día (depósito al día siguiente)"
+          className={cn("cifras rounded-full px-1.5 py-0.5 text-xs font-semibold", activa ? "bg-white/15 text-white/80" : "bg-sky-50 text-sky-800")}
+        >
+          +{programadas} luego
         </span>
       )}
     </button>

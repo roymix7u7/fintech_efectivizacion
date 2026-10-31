@@ -116,7 +116,6 @@ export default function Visor({ url, error, path, titulo = "Documento", alto = "
             onGirar={() => setGiro((g) => g + 90)}
             onAjustar={ajustar}
             onAmpliar={() => setPantallaCompleta(true)}
-            onPestana={() => window.open(url, "_blank", "noopener")}
           />
         </div>
 
@@ -259,7 +258,7 @@ function Lienzo({ url, titulo, zoom, setZoom, giro, mover, setMover, onCargada, 
   );
 }
 
-function Herramientas({ zoom, setZoom, onGirar, onAjustar, onAmpliar, onPestana, sinAmpliar = false }) {
+function Herramientas({ zoom, setZoom, onGirar, onAjustar, onAmpliar, sinAmpliar = false }) {
   return (
     <>
       <Boton onClick={() => setZoom((z) => limitar(z - 0.25))} desactivado={zoom <= MIN} titulo="Alejar (−)">
@@ -292,13 +291,6 @@ function Herramientas({ zoom, setZoom, onGirar, onAjustar, onAmpliar, onPestana,
           <Boton onClick={onAmpliar} titulo="Pantalla completa (F)">
             <svg {...ico}>
               <path d="M9 3H3v6M15 21h6v-6M21 9V3h-6M3 15v6h6" />
-            </svg>
-          </Boton>
-          <Boton onClick={onPestana} titulo="Abrir en otra pestaña">
-            <svg {...ico}>
-              <path d="M14 4h6v6" />
-              <path d="M20 4 11 13" />
-              <path d="M18 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5" />
             </svg>
           </Boton>
         </>

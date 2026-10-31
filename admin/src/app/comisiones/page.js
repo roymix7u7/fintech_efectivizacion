@@ -142,6 +142,7 @@ export default function ComisionesPage() {
         p_porcentaje: aNumero(f.porcentaje),
         p_minimo: vacio(f.minimo) ? null : aNumero(f.minimo),
         p_limite: vacio(f.limite) ? null : aNumero(f.limite),
+        ...(vacio(f.hoy) ? {} : { p_porcentaje_hoy: aNumero(f.hoy) }),
       });
       if (e) {
         setGuardando(null);
@@ -221,6 +222,9 @@ export default function ComisionesPage() {
           p_porcentaje: Number(t.porcentaje),
           p_minimo: t.minimo ?? null,
           p_limite: t.limite ?? null,
+          ...(t.porcentaje_hoy != null
+            ? { p_porcentaje_hoy: Number(t.porcentaje_hoy) }
+            : {}),
         });
         if (e2) {
           setError(
@@ -736,6 +740,11 @@ function TarifaEstandar({ estandar, esAdmin, onEditar }) {
                   <>
                     <span className="cifras block font-heading text-lg leading-tight">
                       {pct(f.porcentaje)}
+                      {!vacio(f.hoy) && (
+                        <span className="ml-1 align-middle font-sans text-chico font-semibold text-muted-foreground">
+                          · {pct(f.hoy)} hoy
+                        </span>
+                      )}
                     </span>
                     <span className="cifras block text-[0.7rem] text-muted-foreground">
                       {vacio(f.minimo)

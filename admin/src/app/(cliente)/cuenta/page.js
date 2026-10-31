@@ -28,6 +28,7 @@ import {
 } from "@/lib/bancos";
 import { Boton, Aviso, Cargando, Casilla } from "@/components/cliente/piezas";
 import SubidaFotos, { fotosCompletas } from "@/components/cliente/fotos";
+import VisorImagen from "@/components/cliente/visor";
 import { WHATSAPP, HORARIO } from "@/components/sitio/datos";
 import { Objetos3D } from "@/components/sitio/tarjetas3d";
 import { ESCENA_REGISTRO_IDENTIDAD } from "@/components/cliente/escenas";
@@ -90,6 +91,24 @@ const fecha = (f, conHora) =>
         ...(conHora ? { hour: "numeric", minute: "2-digit" } : {}),
       })
     : "";
+/** Fecha sin hora ("2026-11-02") como "lun. 2 nov.", sin correrse de día. */
+const diaCorto = (iso) => {
+  if (!iso) return "";
+  const [a, m, d] = iso.split("-").map(Number);
+  return new Date(a, m - 1, d).toLocaleDateString("es-PE", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+};
+const hoyLima = () =>
+  new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+/** Cuándo se deposita, dicho para el cliente. */
+const cuandoDeposito = (x) => {
+  if (!x.fecha_deposito) return null;
+  if (x.fecha_deposito <= hoyLima()) return "Hoy";
+  return diaCorto(x.fecha_deposito);
+};
 const porcentaje = (v) =>
   Number(v)
     .toFixed(2)
@@ -709,7 +728,7 @@ function Activo({ sb, perfil, usuario, guardado, onSalir }) {
         sb
           .from("solicitudes")
           .select(
-            "id, codigo, banco, estado, nota_cliente, motivo_rechazo, comprobante_url, created_at, fecha_revision, pagado_en, tarjetas(banco, ultimos_4)",
+            "*, tarjetas(banco, ultimos_4)",
           )
           .eq("cliente_id", perfil.id)
           .order("created_at", { ascending: false })
@@ -1036,6 +1055,25 @@ function FilaSolicitud({ x, abierta, onAbrir, children }) {
           <span className="cifras block truncate text-chico text-[#6B7690]">
             {x.codigo} · {fecha(x.created_at)}
           </span>
+          {x.modalidad === "siguiente" &&
+            (x.estado === "pendiente" || x.estado === "aprobado") && (
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#EEF3FD] px-2 py-0.5 text-[0.7rem] font-semibold text-[#1E3A8A]">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-3 w-3"
+                  aria-hidden
+                >
+                  <path d="M4 6h16v14H4z" />
+                  <path d="M4 10h16M9 3v4M15 3v4" />
+                </svg>
+                Depósito {cuandoDeposito(x)?.toLowerCase()}
+              </span>
+            )}
         </span>
         <Chip clase={e.chip}>{e.texto}</Chip>
         {onAbrir && (
@@ -1714,6 +1752,132 @@ function NovedadesResumen({ sb, noticias, irA }) {
 
 /* ── Resumen ── */
 
+/**
+ * Para quien aún no opera: los pasos que le faltan y el botón del
+ * siguiente, en un solo lugar. Desaparece con su primera solicitud.
+ */
+function PrimerosPasos({ tarjetas, cuentas }) {
+  const aprobada = tarjetas.some((t) => t.estado === "aprobado");
+  const enRevision = tarjetas.some((t) => t.estado === "pendiente");
+  const lista = bancosDelCliente(tarjetas, cuentas).some(
+    (b) => estadoBanco(b, tarjetas, cuentas) === "listo",
+  );
+  const bancoTarjeta = tarjetas.find((t) => t.estado === "aprobado")?.banco;
+  const pasos = [
+    { t: "Cuenta verificada", hecho: true },
+    {
+      t: "Tarjeta verificada",
+      hecho: aprobada,
+      detalle: aprobada
+        ? null
+        : enRevision
+          ? "La está revisando nuestro equipo. Te avisamos."
+          : "Registra tu tarjeta de crédito a tu nombre.",
+      href: aprobada || enRevision ? null : "/cuenta/tarjeta-nueva",
+      boton: "Agregar tarjeta",
+    },
+    {
+      t: "Cuenta de ahorros",
+      hecho: lista,
+      detalle: lista ? null : "La cuenta a tu nombre donde te depositamos.",
+      href:
+        lista || !aprobada
+          ? null
+          : `/cuenta/cuenta-nueva?tipo=ahorros${BANCOS_PRINCIPALES.includes(bancoTarjeta) ? `&banco=${bancoTarjeta}` : ""}`,
+      boton: "Agregar cuenta",
+    },
+    {
+      t: "Primera solicitud",
+      hecho: false,
+      detalle: lista ? "Paga con tu tarjeta y adjunta el comprobante." : null,
+      href: lista ? "/cuenta/solicitud-nueva" : null,
+      boton: "Nueva solicitud",
+    },
+  ];
+  const hechos = pasos.filter((p) => p.hecho).length;
+  const siguiente = pasos.find((p) => !p.hecho);
+
+  return (
+    <section className="relative isolate overflow-hidden rounded-3xl bg-[#0B1426] p-5 text-white sm:p-6">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-20 -top-24 -z-10 h-64 w-64 rounded-full bg-oro-500/20 blur-3xl"
+      />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-chico font-semibold uppercase tracking-[0.14em] text-oro-500">
+            Empieza a operar
+          </p>
+          <h2 className="mt-1 font-heading text-xl sm:text-2xl">
+            {siguiente?.t === "Primera solicitud"
+              ? "Todo listo: envía tu primera solicitud"
+              : `Te falta: ${siguiente?.t.toLowerCase()}`}
+          </h2>
+        </div>
+        <p className="cifras text-sm text-white/60">
+          {hechos} de {pasos.length} pasos
+        </p>
+      </div>
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div
+          className="h-full rounded-full bg-oro-500 transition-[width] duration-700"
+          style={{ width: `${(hechos / pasos.length) * 100}%` }}
+        />
+      </div>
+      <ol className="mt-5 grid gap-3 sm:grid-cols-4">
+        {pasos.map((p, i) => {
+          const actual = p === siguiente;
+          return (
+            <li
+              key={p.t}
+              className={cn(
+                "rounded-2xl p-3 ring-1",
+                actual ? "bg-white/10 ring-oro-500/50" : "bg-white/[0.04] ring-white/10",
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "cifras flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                    p.hecho
+                      ? "bg-emerald-500 text-white"
+                      : actual
+                        ? "bg-oro-500 text-marca-900"
+                        : "bg-white/10 text-white/50",
+                  )}
+                >
+                  {p.hecho ? "✓" : i + 1}
+                </span>
+                <span
+                  className={cn(
+                    "text-sm font-semibold",
+                    p.hecho || actual ? "text-white" : "text-white/50",
+                  )}
+                >
+                  {p.t}
+                </span>
+              </span>
+              {actual && p.detalle && (
+                <span className="mt-2 block text-chico leading-snug text-white/70">
+                  {p.detalle}
+                </span>
+              )}
+              {actual && p.href && (
+                <Link
+                  href={p.href}
+                  className="mt-3 inline-flex h-9 items-center rounded-full bg-oro-500 px-4 text-sm font-bold text-marca-900 transition hover:bg-oro-300"
+                >
+                  {p.boton}
+                </Link>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
 function Resumen({
   solicitudes,
   tarjetas,
@@ -1732,6 +1896,11 @@ function Resumen({
 
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[1.15fr_1fr]">
+      {solicitudes.length === 0 && (
+        <div className="lg:col-span-2">
+          <PrimerosPasos tarjetas={tarjetas} cuentas={cuentas} />
+        </div>
+      )}
       {comisiones.cupon && (
         <div className="lg:col-span-2">
           <CuponVigente cupon={comisiones.cupon} />
@@ -1777,7 +1946,7 @@ function Resumen({
                         ? vivas.map((t) => `•••• ${t.ultimos_4}`).join("  ")
                         : "Sin tarjeta"}
                       {pct[b] &&
-                        ` · ${porcentaje(pct[b].porcentaje)}% comisión${pct[b].minimo ? ` (mín. ${soles(pct[b].minimo)})` : ""}`}
+                        ` · ${porcentaje(pct[b].porcentaje)}% comisión${pct[b].porcentaje_hoy != null ? ` (${porcentaje(pct[b].porcentaje_hoy)}% para hoy)` : ""}${pct[b].minimo ? ` · mín. ${soles(pct[b].minimo)}` : ""}`}
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
@@ -1943,6 +2112,7 @@ function Solicitudes({ sb, solicitudes }) {
 
 function DetalleSolicitud({ sb, x }) {
   const [url, setUrl] = useState(null);
+  const [viendo, setViendo] = useState(false);
   useEffect(() => {
     if (!x.comprobante_url) return;
     sb.storage
@@ -1951,10 +2121,24 @@ function DetalleSolicitud({ sb, x }) {
       .then(({ data }) => setUrl(data?.signedUrl || null));
   }, [sb, x.comprobante_url]);
 
+  const enCurso = x.estado === "pendiente" || x.estado === "aprobado";
   const filas = [
     ["Enviada", fecha(x.created_at, true)],
+    x.modalidad && [
+      "Depósito",
+      `${x.modalidad === "siguiente" ? "Al día siguiente" : "El mismo día"}${
+        x.porcentaje_comision != null
+          ? ` · comisión ${porcentaje(x.porcentaje_comision)}%`
+          : ""
+      }`,
+    ],
+    enCurso && x.fecha_deposito && ["Te depositamos", cuandoDeposito(x)],
     x.fecha_revision && ["Revisada", fecha(x.fecha_revision, true)],
     x.pagado_en && ["Depositada", fecha(x.pagado_en, true)],
+    x.deposito_banco && [
+      "Depositado en",
+      `${x.deposito_tipo === "interbancaria" ? "CCI" : "Cuenta de ahorros"} ${nombreBanco(x.deposito_banco)} •••• ${x.deposito_ultimos4}`,
+    ],
     x.nota_cliente && ["Tu nota", x.nota_cliente],
   ].filter(Boolean);
 
@@ -1976,11 +2160,12 @@ function DetalleSolicitud({ sb, x }) {
         </dl>
       </div>
       {x.comprobante_url && (
-        <a
-          href={url || undefined}
-          target="_blank"
-          rel="noopener"
-          className="block overflow-hidden rounded-xl bg-[#0B1426] ring-1 ring-[#E3E9F2]"
+        <button
+          type="button"
+          onClick={() => url && setViendo(true)}
+          disabled={!url}
+          aria-label={`Ampliar comprobante ${x.codigo}`}
+          className="group relative block w-full overflow-hidden rounded-xl bg-[#0B1426] ring-1 ring-[#E3E9F2] transition hover:ring-marca-600"
         >
           {url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -1994,8 +2179,19 @@ function DetalleSolicitud({ sb, x }) {
               Cargando comprobante...
             </span>
           )}
-        </a>
+          {url && (
+            <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#0B1426]/85 to-transparent pb-1.5 pt-5 text-center text-[0.7rem] font-semibold text-white">
+              Toca para ampliar
+            </span>
+          )}
+        </button>
       )}
+      <VisorImagen
+        src={url}
+        alt={`Comprobante ${x.codigo}`}
+        abierto={viendo}
+        onCerrar={() => setViendo(false)}
+      />
     </div>
   );
 }
@@ -2224,6 +2420,15 @@ function Perfil({ sb, perfil, usuario, comisiones, onSalir }) {
                         </span>
                       )}
                     </span>
+                    {b.porcentaje_hoy != null && (
+                      <span className="block text-[0.7rem] leading-tight text-[#6B7690]">
+                        Al día siguiente ·{" "}
+                        <span className="cifras font-semibold text-marca-900">
+                          {porcentaje(b.porcentaje_hoy)}%
+                        </span>{" "}
+                        para hoy
+                      </span>
+                    )}
                     {b.minimo && b.limite && (
                       <span className="block text-[0.7rem] leading-tight text-[#6B7690]">
                         Mín. {soles(b.minimo)} si operas menos de{" "}

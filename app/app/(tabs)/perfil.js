@@ -226,8 +226,10 @@ export default function PerfilScreen() {
                     <View
                       style={[s.comision, b.especial && s.comisionEspecial]}
                       accessibilityLabel={`${bancoDe(b.banco).name}: ${porcentaje(b.porcentaje)} por ciento${
-                        b.especial ? ", condición especial" : ""
-                      }`}
+                        b.porcentaje_hoy != null
+                          ? ` al día siguiente, ${porcentaje(b.porcentaje_hoy)} por ciento para hoy`
+                          : ""
+                      }${b.especial ? ", condición especial" : ""}`}
                     >
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                         <BankBadge bank={b.banco} size={26} />
@@ -236,6 +238,11 @@ export default function PerfilScreen() {
                         </Text>
                       </View>
                       <Text style={s.comisionValor}>{porcentaje(b.porcentaje)}%</Text>
+                      {b.porcentaje_hoy != null ? (
+                        <Text style={s.comisionHoy}>
+                          Día siguiente · {porcentaje(b.porcentaje_hoy)}% hoy
+                        </Text>
+                      ) : null}
                     </View>
                   </View>
                 ))}
@@ -390,6 +397,7 @@ const s = StyleSheet.create({
   comisionEspecial: { backgroundColor: colors.goldCream, borderColor: "#F3DE92" },
   comisionBanco: { flex: 1, fontFamily: fonts.strong, fontSize: 12, color: colors.text2 },
   comisionValor: { fontFamily: fonts.display, fontSize: 24, lineHeight: 26, color: colors.text, fontVariant: ["tabular-nums"] },
+  comisionHoy: { marginTop: -6, fontFamily: fonts.label, fontSize: 10, lineHeight: 13, color: colors.text3 },
   vacio: { borderRadius: 18, padding: 16 },
   vacioTexto: { fontFamily: fonts.body, fontSize: 13, color: colors.text2 },
   leyenda: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 6, paddingTop: 8 },

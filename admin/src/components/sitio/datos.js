@@ -39,14 +39,16 @@ export const enlaceMapa = (l) =>
  * limite y minimo: en montos menores al límite se cobra al menos la
  * comisión mínima (lo que sea mayor entre el porcentaje y el mínimo).
  * codigo: la operación se hace con código.
+ * pctHoy: en Scotiabank y BanBif, "pct" es depositando al día siguiente
+ * (lo normal); "pctHoy" es lo que se cobra si el depósito es para hoy.
  *
  * Los colores son solo para distinguir cada tarjeta.
  */
 export const TARIFAS = [
   { nombre: "BCP", color: "#E67E00", pct: 1, limite: 1200, minimo: 12 },
   { nombre: "BBVA", color: "#1464A5", pct: 1, limite: 1200, minimo: 12 },
-  { nombre: "BanBif", color: "#0077C0", pct: 1, limite: 1200, minimo: 12 },
-  { nombre: "Scotiabank", color: "#EC111A", pct: 1.5, limite: 2000, minimo: 20 },
+  { nombre: "BanBif", color: "#0077C0", pct: 1, pctHoy: 1.5, limite: 1200, minimo: 12 },
+  { nombre: "Scotiabank", color: "#EC111A", pct: 1, pctHoy: 1.5, limite: 2000, minimo: 20 },
   { nombre: "Interbank", color: "#00A651", pct: 2, limite: 1500, minimo: 30, codigo: true },
   { nombre: "CMR", color: "#00897B", pct: 2, limite: 1500, minimo: 30, codigo: true },
   { nombre: "iO", color: "#5B3FD6", pct: 2, limite: 1000, minimo: 30, codigo: true },
@@ -55,15 +57,17 @@ export const TARIFAS = [
 export const BANCOS = TARIFAS;
 
 /** Comisión de una operación: el porcentaje, o el mínimo si el monto es menor al límite. */
-export function comisionDe(tarifa, monto) {
-  const porcentaje = Math.round(monto * tarifa.pct) / 100;
+export function comisionDe(tarifa, monto, hoy = false) {
+  const pct = hoy && tarifa.pctHoy ? tarifa.pctHoy : tarifa.pct;
+  const porcentaje = Math.round(monto * pct) / 100;
   return monto < tarifa.limite ? Math.max(porcentaje, tarifa.minimo) : porcentaje;
 }
 
 /** Grupos para la tabla de comisiones de la landing. */
 export const GRUPOS_TARIFA = [
-  { bancos: ["BCP", "BBVA", "BanBif"], pct: 1, limite: 1200, minimo: 12 },
-  { bancos: ["Scotiabank"], pct: 1.5, limite: 2000, minimo: 20 },
+  { bancos: ["BCP", "BBVA"], pct: 1, limite: 1200, minimo: 12 },
+  { bancos: ["BanBif"], pct: 1, pctHoy: 1.5, limite: 1200, minimo: 12 },
+  { bancos: ["Scotiabank"], pct: 1, pctHoy: 1.5, limite: 2000, minimo: 20 },
   { bancos: ["Interbank", "CMR"], pct: 2, limite: 1500, minimo: 30, codigo: true },
   { bancos: ["iO"], pct: 2, limite: 1000, minimo: 30, codigo: true },
 ];
@@ -124,7 +128,7 @@ export const PREGUNTAS = [
   },
   {
     p: "¿Depositan a terceros o por CCI?",
-    r: "No. Solo a cuentas a tu nombre y sin transferencias interbancarias.",
+    r: "A terceros, nunca: solo a cuentas a tu nombre. Lo normal es depositar en tu cuenta de ahorros; si en algún caso no se puede, usamos tu CCI y te avisamos.",
   },
   {
     p: "¿Están afiliados a los bancos?",

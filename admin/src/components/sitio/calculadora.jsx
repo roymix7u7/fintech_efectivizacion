@@ -9,16 +9,21 @@ const soles = (n) => `S/ ${Number(n).toLocaleString("es-PE", { minimumFractionDi
 /**
  * Cuánto recibe el cliente, con las comisiones estándar de la hoja
  * oficial (components/sitio/datos.js): porcentaje por banco y comisión
- * mínima en montos menores al límite de cada uno.
+ * mínima en montos menores al límite de cada uno. En Scotiabank y BanBif
+ * se elige si el depósito es al día siguiente (lo normal) o para hoy.
  */
 export default function Calculadora() {
   const [banco, setBanco] = useState("BCP");
   const [texto, setTexto] = useState("1500");
+  const [hoy, setHoy] = useState(false);
 
   const tarifa = TARIFAS.find((t) => t.nombre === banco) || TARIFAS[0];
+  const dosTarifas = Boolean(tarifa.pctHoy);
+  const conHoy = dosTarifas && hoy;
+  const pctAplicado = conHoy ? tarifa.pctHoy : tarifa.pct;
   const monto = Number(texto);
-  const comision = Number.isFinite(monto) ? comisionDe(tarifa, monto) : 0;
-  const esMinimo = Number.isFinite(monto) && monto < tarifa.limite && (monto * tarifa.pct) / 100 < tarifa.minimo;
+  const comision = Number.isFinite(monto) ? comisionDe(tarifa, monto, conHoy) : 0;
+  const esMinimo = Number.isFinite(monto) && monto < tarifa.limite && (monto * pctAplicado) / 100 < tarifa.minimo;
 
   const error = !texto
     ? "Escribe un monto."
@@ -51,6 +56,36 @@ export default function Calculadora() {
         ))}
       </div>
 
+      {dosTarifas && (
+        <div className="mt-6">
+          <p id="cuando-calc" className="text-sm font-medium text-[#626D82]">
+            Depósito
+          </p>
+          <div role="radiogroup" aria-labelledby="cuando-calc" className="mt-3 grid grid-cols-2 gap-2 rounded-2xl bg-[#F4F7FB] p-1">
+            {[
+              [false, "Al día siguiente", tarifa.pct],
+              [true, "Para hoy", tarifa.pctHoy],
+            ].map(([v, t, p]) => (
+              <button
+                key={t}
+                type="button"
+                role="radio"
+                aria-checked={hoy === v}
+                onClick={() => setHoy(v)}
+                className={cn(
+                  "rounded-xl px-3 py-2 text-left text-sm transition",
+                  hoy === v ? "bg-white font-semibold text-marca-900 shadow-sm" : "text-[#4F5B74] hover:text-marca-900",
+                )}
+              >
+                {t}
+                <span className="cifras block text-chico font-normal text-[#6B7690]">{p.toLocaleString("es-PE")} %</span>
+              </button>
+            ))}
+          </div>
+          {hoy && <p className="mt-2 text-chico text-[#6B7690]">Para hoy, pídelo antes de las 6:00 p. m. de un día hábil.</p>}
+        </div>
+      )}
+
       <label htmlFor="monto" className="mt-8 block text-sm font-medium text-[#626D82]">
         Monto
       </label>
@@ -78,7 +113,7 @@ export default function Calculadora() {
 
       <dl className="mt-4 space-y-3 text-md">
         <div className="flex justify-between text-[#626D82]">
-          <dt>{esMinimo ? "Comisión mínima" : `Comisión ${tarifa.pct.toLocaleString("es-PE")} %`}</dt>
+          <dt>{esMinimo ? "Comisión mínima" : `Comisión ${pctAplicado.toLocaleString("es-PE")} %`}</dt>
           <dd className="cifras">{error ? "—" : `− ${soles(comision)}`}</dd>
         </div>
         <div className="flex items-baseline justify-between border-t border-[#E3E9F2] pt-4">

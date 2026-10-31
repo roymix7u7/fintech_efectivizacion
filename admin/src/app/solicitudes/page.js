@@ -52,9 +52,9 @@ const FILTROS = [
   { clave: "rechazado", etiqueta: "Rechazadas" },
 ];
 
-const CAMPOS = `id, codigo, banco, estado, nota_cliente, motivo_rechazo,
-   comprobante_url, created_at, fecha_revision, cliente_id,
-   asignado_a, asignado_en,
+// Todas las columnas de la solicitud: así llegan también la modalidad
+// y la comisión (migración 065) sin romper si aún no se aplicó.
+const CAMPOS = `*,
    tarjetas (banco, ultimos_4),
    perfiles_cliente (nombres, apellidos, telefono, dni, user_id)`;
 
@@ -729,6 +729,34 @@ export default function SolicitudesPage() {
                       titulo="Comprobante de la operación"
                       alto="h-[520px]"
                     />
+                  )}
+                  {seleccionada.modalidad && (
+                    <div
+                      className={
+                        seleccionada.modalidad === "siguiente"
+                          ? "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3"
+                          : "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-muted/50 px-4 py-3"
+                      }
+                    >
+                      <p className="t-etiqueta text-sky-800">Depósito</p>
+                      <p className="text-md font-semibold">
+                        {seleccionada.modalidad === "siguiente" ? "Al día siguiente" : "Mismo día"}
+                        {seleccionada.porcentaje_comision != null &&
+                          ` · comisión ${Number(seleccionada.porcentaje_comision)
+                            .toFixed(2)
+                            .replace(/\.?0+$/, "")} %`}
+                      </p>
+                      {seleccionada.modalidad === "siguiente" && seleccionada.fecha_deposito && (
+                        <p className="text-chico text-muted-foreground">
+                          Se paga el{" "}
+                          {new Date(`${seleccionada.fecha_deposito}T12:00:00`).toLocaleDateString("es-PE", {
+                            weekday: "long",
+                            day: "numeric",
+                            month: "long",
+                          })}
+                        </p>
+                      )}
+                    </div>
                   )}
                   {seleccionada.nota_cliente && (
                     <div className="rounded-xl border border-marca-200 bg-marca-50 px-4 py-3">

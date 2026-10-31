@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../lib/supabase";
 import { urlFirmada } from "../lib/storage";
-import { hora, tituloDia } from "../lib/fechas";
+import { hora, tituloDia, diaDeposito } from "../lib/fechas";
 import { cuentasDeDeposito } from "../lib/deposito";
 import { useReducirMovimiento } from "../lib/movimiento";
 import { useArrastreCerrar } from "../lib/arrastre";
@@ -36,8 +36,9 @@ const FIRMA_VALIDA_MS = 50 * 60 * 1000;
 // desde el inicio y despues desde el historial no vuelve a firmar.
 const firmas = new Map();
 
-const CAMPOS =
-  "id, codigo, banco, estado, nota_cliente, motivo_rechazo, comprobante_url, created_at, fecha_revision, pagado_en, tarjetas(banco, ultimos_4)";
+// Todas las columnas: también la modalidad, la comisión fijada y la
+// cuenta donde se pagó (migración 065).
+const CAMPOS = "*, tarjetas(banco, ultimos_4)";
 
 /** "Hoy · 10:42", "Ayer · 19:55" o "Jueves 24 set · 15:02". */
 function cuando(iso) {
@@ -207,14 +208,31 @@ export default function DetalleSolicitud({ solicitud, onCerrar }) {
   const bancoSolicitud = detalle?.tarjetas?.banco || detalle?.banco;
   const extras = {
     destinos: deposito ? cuentasDeDeposito(bancoSolicitud, deposito.cuentas) : [],
-    comision: (deposito?.bancos || []).find((b) => b.banco === bancoSolicitud)?.porcentaje ?? null,
+    // La comisión que quedó fijada al enviarla; si es antigua, la de hoy.
+    comision:
+      detalle?.porcentaje_comision ??
+      (deposito?.bancos || []).find((b) => b.banco === bancoSolicitud)?.porcentaje ??
+      null,
   };
 
+  // Ya pagada: la cuenta exacta donde se depositó. Si no, la de siempre.
+  const pagadaEn = detalle?.deposito_banco
+    ? `${detalle.deposito_tipo === "interbancaria" ? "CCI " : ""}${bancoDe(detalle.deposito_banco).name} ···· ${detalle.deposito_ultimos4}`
+    : null;
   const destino =
-    extras.destinos.length === 1
+    pagadaEn ||
+    (extras.destinos.length === 1
       ? `${bancoDe(extras.destinos[0].banco).name} ···· ${String(extras.destinos[0].numero_cuenta || "").slice(-4)}`
       : extras.destinos.length > 1
         ? "Tu cuenta de ahorros"
+        : null);
+  // Scotiabank y BanBif: al día siguiente o para hoy.
+  const enCurso = estado === "pendiente" || estado === "aprobado";
+  const cuandoTexto =
+    detalle?.modalidad === "siguiente"
+      ? `Al día siguiente${enCurso && detalle.fecha_deposito ? ` · ${diaDeposito(detalle.fecha_deposito)}` : ""}`
+      : detalle?.modalidad === "hoy" && ["Scotiabank", "BanBif"].includes(bancoSolicitud)
+        ? "Para hoy"
         : null;
 
   return (
@@ -322,11 +340,18 @@ export default function DetalleSolicitud({ solicitud, onCerrar }) {
                     </View>
                   ) : null}
 
-                  {destino || extras.comision != null || detalle.nota_cliente ? (
+                  {destino || cuandoTexto || extras.comision != null || detalle.nota_cliente ? (
                     <Tarjeta style={s.datos}>
+                      {cuandoTexto ? (
+                        <FilaDato
+                          etiqueta="Depósito"
+                          valor={cuandoTexto}
+                          ultima={!destino && extras.comision == null && !detalle.nota_cliente}
+                        />
+                      ) : null}
                       {destino ? (
                         <FilaDato
-                          etiqueta="Depósito en"
+                          etiqueta={pagadaEn ? "Depositado en" : "Depósito en"}
                           valor={destino}
                           ultima={extras.comision == null && !detalle.nota_cliente}
                         />

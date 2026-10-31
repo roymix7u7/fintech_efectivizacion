@@ -114,3 +114,21 @@ export function plazoDeposito(ahora = new Date()) {
   if (h.abierto) return "Normalmente te depositamos en 1 hora.";
   return `Estamos fuera de horario: la atendemos ${h.cuando} en el transcurso de la mañana.`;
 }
+
+/**
+ * Fecha de depósito ("2026-11-02", sin hora) para el cliente: "Hoy",
+ * "Mañana" o "Lun 2 nov". Se arma con la fecha local: un Date("2026-11-02")
+ * es medianoche UTC y en Lima caería el día anterior.
+ */
+export function diaDeposito(iso, ahora = new Date()) {
+  if (!iso) return "";
+  const [a, m, d] = iso.split("-").map(Number);
+  const fecha = new Date(a, m - 1, d);
+  const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+  const dias = Math.round((fecha - hoy) / 86400000);
+  if (dias <= 0) return "Hoy";
+  if (dias === 1) return "Mañana";
+  const dia = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"][fecha.getDay()];
+  const mes = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic"][fecha.getMonth()];
+  return `${dia} ${fecha.getDate()} ${mes}`;
+}

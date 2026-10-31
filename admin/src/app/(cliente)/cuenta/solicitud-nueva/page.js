@@ -36,6 +36,11 @@ import {
  *   3. Adjuntar el comprobante (y una nota, si hace falta).
  * Antes de enviar se avisa de cualquier alerta crítica en curso, por si
  * justo ese banco está con problemas.
+ *
+ * En los bancos con dos tarifas (Scotiabank y BanBif) se elige cuándo
+ * depositar: al día siguiente (lo normal) o para hoy, más caro y solo
+ * hasta las 6 p. m. de un día hábil. La comisión y la fecha las fija la
+ * base (opciones_deposito y el trigger de solicitudes).
  */
 const BUCKET = "comprobantes";
 const MAX_NOTA = 300;
@@ -58,6 +63,9 @@ export default function SolicitudNuevaPage() {
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [enviada, setEnviada] = useState(null);
+  // Cuándo depositar, en los bancos que dan a elegir.
+  const [opciones, setOpciones] = useState(null);
+  const [modalidad, setModalidad] = useState("siguiente");
   // Candado contra el doble clic: el estado tarda un render en llegar.
   const enCurso = useRef(false);
 
@@ -117,6 +125,16 @@ export default function SolicitudNuevaPage() {
       );
   }, [bancoTarjeta]);
 
+  // ¿Ese banco deja elegir entre hoy y el día siguiente?
+  useEffect(() => {
+    if (!bancoTarjeta) return;
+    setOpciones(null);
+    setModalidad("siguiente");
+    supabaseCliente()
+      .rpc("opciones_deposito", { p_banco: bancoTarjeta })
+      .then(({ data, error: e }) => setOpciones(e ? null : data));
+  }, [bancoTarjeta]);
+
   // Si se sale con el comprobante cargado, el navegador pregunta antes.
   useEffect(() => {
     if (!comprobante || enviada) return;
@@ -130,13 +148,30 @@ export default function SolicitudNuevaPage() {
 
   if (!sesion || (!datos && !error)) return <Cargando />;
 
-  if (enviada) return <Enviada codigo={enviada} sesion={sesion} />;
+  if (enviada)
+    return (
+      <Enviada
+        codigo={enviada.codigo}
+        cuando={enviada.cuando}
+        sesion={sesion}
+      />
+    );
 
   const { tarjetas = [], cuentas = [], comisiones = [] } = datos || {};
   const destinos = cuentasDeDeposito(bancoTarjeta, cuentas);
   const falta = faltaParaRecibir(bancoTarjeta, cuentas);
   const tarifa = comisiones.find((c) => c.banco === bancoTarjeta);
-  const comision = tarifa?.porcentaje;
+  const conEleccion = Boolean(opciones?.con_eleccion);
+  // "Hoy" se cierra a las 6 p. m.: si ya pasó, queda el día siguiente.
+  const modo =
+    conEleccion && modalidad === "hoy" && !opciones.hoy_disponible
+      ? "siguiente"
+      : modalidad;
+  const comision = conEleccion
+    ? modo === "hoy"
+      ? opciones.porcentaje_hoy
+      : opciones.porcentaje_siguiente
+    : tarifa?.porcentaje;
   const destinoTexto = !destinos.length
     ? null
     : BANCOS_PRINCIPALES.includes(bancoTarjeta)
@@ -185,6 +220,7 @@ export default function SolicitudNuevaPage() {
         comprobante_url: path,
         nota_cliente: nota.trim() || null,
         estado: "pendiente",
+        ...(conEleccion ? { modalidad: modo } : {}),
       });
       if (e1) throw e1;
       // La auditoría no tumba la solicitud si falla.
@@ -200,7 +236,13 @@ export default function SolicitudNuevaPage() {
           () => {},
           () => {},
         );
-      setEnviada(codigo);
+      setEnviada({
+        codigo,
+        cuando:
+          conEleccion && modo === "siguiente"
+            ? `Te depositaremos ${opciones.texto_siguiente}, como elegiste.`
+            : null,
+      });
     } catch (err) {
       await borrarImagenes(BUCKET, [path]);
       setAviso({
@@ -353,7 +395,19 @@ export default function SolicitudNuevaPage() {
                     </>
                   )}
                   .
+                  <span className="mt-1 block text-chico text-[#8A93A6]">
+                    Si alguna vez te depositamos en otra de tus cuentas, te
+                    avisamos.
+                  </span>
                 </p>
+              )}
+              {tarjeta && destinos.length > 0 && conEleccion && (
+                <ElegirModalidad
+                  opciones={opciones}
+                  valor={modo}
+                  onCambio={setModalidad}
+                  deshabilitado={enviando}
+                />
               )}
             </Paso>
 
@@ -580,7 +634,103 @@ function Paso({ n, titulo, hecho, children }) {
   );
 }
 
-function Enviada({ codigo, sesion }) {
+/**
+ * Cuándo depositar: al día siguiente (lo normal, con la tarifa de
+ * siempre) o para hoy (más caro). "Para hoy" se apaga pasadas las 6 p. m.
+ * o en un día no hábil, con el motivo a la vista.
+ */
+function ElegirModalidad({ opciones, valor, onCambio, deshabilitado }) {
+  const pct = (v) => `${porcentaje(v)}%`;
+  const items = [
+    {
+      k: "siguiente",
+      titulo: "Al día siguiente",
+      etiqueta: "Menor comisión",
+      comision: opciones.porcentaje_siguiente,
+      detalle: `Te depositamos ${opciones.texto_siguiente}.`,
+      apagado: false,
+    },
+    {
+      k: "hoy",
+      titulo: "Para hoy",
+      etiqueta: null,
+      comision: opciones.porcentaje_hoy,
+      detalle: opciones.hoy_disponible
+        ? "Depósito el mismo día, en horario de atención."
+        : opciones.motivo_sin_hoy,
+      apagado: !opciones.hoy_disponible,
+    },
+  ];
+  return (
+    <fieldset className="mt-5">
+      <legend className="mb-2.5 text-sm font-semibold text-marca-900">
+        ¿Cuándo quieres tu depósito?
+      </legend>
+      <div
+        className="grid gap-2.5 sm:grid-cols-2"
+        role="radiogroup"
+        aria-label="Cuándo depositar"
+      >
+        {items.map((x) => {
+          const activo = valor === x.k;
+          return (
+            <button
+              key={x.k}
+              type="button"
+              role="radio"
+              aria-checked={activo}
+              disabled={deshabilitado || x.apagado}
+              onClick={() => onCambio(x.k)}
+              className={cn(
+                "relative rounded-2xl border-2 p-4 text-left transition disabled:cursor-not-allowed",
+                activo
+                  ? "border-marca-900 bg-[#F4F7FB]"
+                  : "border-[#E3E9F2] hover:border-[#AFBCD0]",
+                x.apagado && "opacity-60 hover:border-[#E3E9F2]",
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2",
+                    activo ? "border-marca-900" : "border-[#AFBCD0]",
+                  )}
+                  aria-hidden
+                >
+                  {activo && (
+                    <span className="h-2.5 w-2.5 rounded-full bg-marca-900" />
+                  )}
+                </span>
+                <span className="font-semibold text-marca-900">{x.titulo}</span>
+                {x.etiqueta && (
+                  <span className="ml-auto rounded-full bg-emerald-50 px-2 py-0.5 text-[0.68rem] font-bold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200">
+                    {x.etiqueta}
+                  </span>
+                )}
+              </span>
+              <span className="mt-2 block">
+                <span className="cifras font-heading text-2xl text-marca-900">
+                  {pct(x.comision)}
+                </span>
+                <span className="ml-1 text-sm text-[#6B7690]">de comisión</span>
+              </span>
+              <span
+                className={cn(
+                  "mt-1 block text-sm leading-snug",
+                  x.apagado ? "text-[#8A6A00]" : "text-[#4F5B74]",
+                )}
+              >
+                {x.detalle}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+function Enviada({ codigo, cuando, sesion }) {
   return (
     <PantallaCuenta activa="nueva" sesion={sesion}>
       <main className="mx-auto max-w-lg px-4 py-14">
@@ -591,8 +741,8 @@ function Enviada({ codigo, sesion }) {
           <h1 className="mt-5 font-heading text-2xl">Solicitud enviada</h1>
           <p className="cifras mt-2 text-sm text-white/60">{codigo}</p>
           <p className="mx-auto mt-4 max-w-sm text-white/75">
-            {plazoDeposito()} Verás cada cambio de estado en Mi cuenta y en la
-            app.
+            {cuando || plazoDeposito()} Verás cada cambio de estado en Mi
+            cuenta y en la app.
           </p>
           <Link
             href="/cuenta"

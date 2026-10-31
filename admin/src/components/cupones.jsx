@@ -1,7 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BANCOS_TARJETA, colorBanco, nombreBanco } from "@/lib/bancos";
+import {
+  BANCOS_TARJETA,
+  BANCOS_DOS_TARIFAS,
+  colorBanco,
+  nombreBanco,
+} from "@/lib/bancos";
 import { cn } from "@/lib/utils";
 import { TARIFAS } from "@/components/sitio/datos";
 import { Check } from "@/components/shell";
@@ -37,13 +42,23 @@ export function fallaPorcentaje(texto) {
   return null;
 }
 
-/** Errores de una fila del cupón: { porcentaje, minimo, limite }. */
-export function fallasFila(f) {
+/**
+ * Errores de una fila del cupón: { porcentaje, hoy, minimo, limite }.
+ * En los bancos con dos tarifas, "para hoy" es obligatoria y no puede
+ * ser menor que la del día siguiente.
+ */
+export function fallasFila(f, banco) {
   const r = {
     porcentaje: fallaPorcentaje(f.porcentaje),
+    hoy: null,
     minimo: null,
     limite: null,
   };
+  if (BANCOS_DOS_TARIFAS.includes(banco) && !vacio(f.porcentaje)) {
+    r.hoy = vacio(f.hoy) ? "Falta la tarifa para hoy." : fallaPorcentaje(f.hoy);
+    if (!r.hoy && !r.porcentaje && aNumero(f.hoy) < aNumero(f.porcentaje))
+      r.hoy = "No puede ser menor que la del día siguiente.";
+  }
   const conMin = !vacio(f.minimo);
   const conLim = !vacio(f.limite);
   if (conMin !== conLim) {
@@ -63,7 +78,8 @@ export function fallasFila(f) {
   }
   return r;
 }
-export const filaValida = (f) => !Object.values(fallasFila(f)).some(Boolean);
+export const filaValida = (f, banco) =>
+  !Object.values(fallasFila(f, banco)).some(Boolean);
 
 /** Las filas editables de un cupón, una por banco. */
 export const filasDe = (cupon) =>
@@ -74,6 +90,7 @@ export const filasDe = (cupon) =>
         banco,
         {
           porcentaje: t?.porcentaje ?? "",
+          hoy: t?.porcentaje_hoy ?? "",
           minimo: t?.minimo ?? "",
           limite: t?.limite ?? "",
         },
@@ -85,6 +102,7 @@ export const igual = (a, b) =>
   (!vacio(a) && !vacio(b) && aNumero(a) === aNumero(b));
 export const filaCambiada = (a, b) =>
   !igual(a.porcentaje, b.porcentaje) ||
+  !igual(a.hoy, b.hoy) ||
   !igual(a.minimo, b.minimo) ||
   !igual(a.limite, b.limite);
 
@@ -104,6 +122,7 @@ export function difiereDeLaWeb(banco, f) {
   if (!w) return false;
   return (
     !igual(f.porcentaje, w.pct) ||
+    (w.pctHoy != null && !igual(f.hoy, w.pctHoy)) ||
     !igual(f.minimo, w.minimo) ||
     !igual(f.limite, w.limite)
   );
@@ -191,7 +210,7 @@ export function EditorCupon({ cupon, guardando, onGuardar, onCerrar }) {
     filaCambiada(filas[b], original[b]),
   ).map((b) => [b, filas[b]]);
   const errores = Object.fromEntries(
-    BANCOS_TARJETA.map((b) => [b, fallasFila(filas[b])]),
+    BANCOS_TARJETA.map((b) => [b, fallasFila(filas[b], b)]),
   );
   const conError = BANCOS_TARJETA.filter(
     (b) =>
@@ -226,11 +245,18 @@ export function EditorCupon({ cupon, guardando, onGuardar, onCerrar }) {
         </p>
       )}
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full min-w-[640px] table-fixed text-sm">
+        <table className="w-full min-w-[740px] table-fixed text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/50 text-left">
               <th className="w-[140px] px-3 py-2 t-etiqueta">Banco</th>
               <th className="w-[96px] px-1.5 py-2 t-etiqueta">Comisión</th>
+              <th className="w-[96px] px-1.5 py-2 t-etiqueta">
+                <Pista texto="Solo Scotiabank y BanBif: la comisión es para depositar al día siguiente; esta es la que paga quien pide el depósito para hoy.">
+                  <span className="cursor-help underline decoration-dotted underline-offset-4">
+                    Para hoy
+                  </span>
+                </Pista>
+              </th>
               <th className="px-1.5 py-2 t-etiqueta">
                 <Pista texto="Se cobra como mínimo cuando la operación es menor al monto. Deja los dos vacíos si no aplica.">
                   <span className="cursor-help underline decoration-dotted underline-offset-4">
@@ -250,7 +276,11 @@ export function EditorCupon({ cupon, guardando, onGuardar, onCerrar }) {
                 cambiada || !vacio(f.porcentaje) ? err[k] : null;
               const ej = ejemplo(f);
               const msg =
-                mostrar("porcentaje") || mostrar("minimo") || mostrar("limite");
+                mostrar("porcentaje") ||
+                mostrar("hoy") ||
+                mostrar("minimo") ||
+                mostrar("limite");
+              const dosTarifas = BANCOS_DOS_TARIFAS.includes(banco);
               return (
                 <tr key={banco} className={cn(cambiada && "bg-marca-50/60")}>
                   <td className="px-3 py-1.5">
@@ -274,6 +304,23 @@ export function EditorCupon({ cupon, guardando, onGuardar, onCerrar }) {
                       sufijo="%"
                       placeholder="—"
                     />
+                  </td>
+                  <td className="px-1.5 py-1.5">
+                    {dosTarifas ? (
+                      <Numero
+                        id={`${cupon.id}-${banco}-hoy`}
+                        etiqueta={`Comisión para hoy de ${nombreBanco(banco)}`}
+                        valor={f.hoy}
+                        onCambio={(v) => editar(banco, "hoy", v)}
+                        error={mostrar("hoy")}
+                        sufijo="%"
+                        placeholder="—"
+                      />
+                    ) : (
+                      <span className="block px-1 text-chico text-muted-foreground">
+                        Mismo día
+                      </span>
+                    )}
                   </td>
                   <td className="px-1.5 py-1.5">
                     <span className="flex items-center gap-1.5">
