@@ -2,6 +2,7 @@ import { View } from "react-native";
 import { Tabs } from "expo-router";
 import BurbujaAlerta from "../../src/components/BurbujaAlerta";
 import RegistroPush from "../../src/components/RegistroPush";
+import AvisosEnVivo from "../../src/components/AvisosEnVivo";
 import AceptarCondiciones from "../../src/components/AceptarCondiciones";
 import { BarraPestanas } from "../../src/components/ui/BarraPestanas";
 import { colors } from "../../src/theme/tokens";
@@ -44,6 +45,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="perfil" options={{ href: null }} />
       </Tabs>
       <RegistroPush />
+      <AvisosEnVivo />
       <BurbujaAlerta />
       {/* Versiones nuevas de términos o privacidad: se aceptan antes de seguir. */}
       <AceptarCondiciones />

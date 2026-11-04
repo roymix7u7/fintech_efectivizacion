@@ -53,6 +53,14 @@ export const SECCIONES = [
     grupo: "Operación",
   },
   {
+    ruta: "/alta-presencial",
+    titulo: "Nuevo cliente",
+    detalle: "Registrar en el local a un cliente que viene en persona",
+    roles: ["admin", "supervisor", "gestor"],
+    icono: PersonaMas,
+    grupo: "Operación",
+  },
+  {
     ruta: "/pagos",
     titulo: "Pagos",
     detalle: "Transferencias a los clientes, por banco",
@@ -613,6 +621,17 @@ export function Persona(p) {
     <svg {...base(p)}>
       <circle cx="12" cy="8" r="4" />
       <path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5" />
+    </svg>
+  );
+}
+
+/** Persona con un "+": dar de alta a alguien. */
+export function PersonaMas(p) {
+  return (
+    <svg {...base(p)}>
+      <circle cx="10" cy="8" r="4" />
+      <path d="M3 21c0-3.9 3.1-6.5 7-6.5 1.6 0 3 .4 4.2 1.1" />
+      <path d="M19 15v6M16 18h6" />
     </svg>
   );
 }

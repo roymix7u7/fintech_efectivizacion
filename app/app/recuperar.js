@@ -21,6 +21,7 @@ import { GlassPanel } from "../src/components/ui/GlassPanel";
 import { CabeceraPasos } from "../src/components/ui/CabeceraPasos";
 import { Campo, CodigoSeisCajas, ReglasClave } from "../src/components/ui/Campos";
 import { mensajeError } from "../src/lib/ui";
+import { desactivarSiEsDe } from "../src/lib/biometria";
 import { useAviso } from "../src/components/Avisos";
 import { useAlturaTeclado } from "../src/lib/teclado";
 import { validarEmail, validarPassword, reglasPassword } from "../src/lib/validaciones";
@@ -164,6 +165,9 @@ export default function RecuperarScreen() {
       const { error: updateError } = await supabase.auth.updateUser({ password: nuevaPassword });
       if (updateError) return mostrar(mensajeError(updateError), "error");
 
+      // La huella guardaba la contraseña anterior: ya no sirve. Se apaga
+      // y al ingresar con la nueva se le vuelve a ofrecer.
+      await desactivarSiEsDe(email);
       await supabase.auth.signOut();
       sesionAbierta.current = false;
       mostrar("Contraseña actualizada. Ingresa con la nueva", "exito", 4500);

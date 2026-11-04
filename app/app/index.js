@@ -8,7 +8,7 @@ import {
   StatusBar,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
 import { hayConexion } from "../src/lib/conexion";
@@ -19,6 +19,7 @@ import {
   motivoDelBloqueo,
 } from "../src/lib/sesion";
 import CuentaBloqueada from "../src/components/CuentaBloqueada";
+import { capacidad, estadoBiometria } from "../src/lib/biometria";
 import { colors, fonts } from "../src/theme/tokens";
 import { Logo } from "../src/components/brand/Logo";
 import { AmbientGlow, heroLights } from "../src/components/ui/AmbientGlow";
@@ -45,6 +46,9 @@ export default function Bienvenida() {
   // explicación y creer que se le borró la cuenta.
   const [bloqueo, setBloqueo] = useState(null);
   const router = useRouter();
+  // "quedarse": vino de cerrar sesión o del botón volver del ingreso.
+  // Ahí se muestra la bienvenida en vez de mandar otra vez al ingreso.
+  const { quedarse } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const reducir = useReducirMovimiento();
   // Cargando o sin conexión, la pantalla es azul noche entera.
@@ -53,6 +57,19 @@ export default function Bienvenida() {
   // Entrada del contenido. Se anima una sola vez, cuando se decide
   // mostrar la bienvenida.
   const entrada = useRef(new Animated.Value(0)).current;
+
+  // Sin sesión (o vencida) y con la huella activa: directo al ingreso,
+  // que la pide sola. Quien entra con su dedo no necesita la bienvenida.
+  const sinSesion = useCallback(async () => {
+    if (!quedarse) {
+      const [estado, c] = await Promise.all([estadoBiometria(), capacidad()]);
+      if (estado && c.disponible) {
+        router.replace("/login");
+        return;
+      }
+    }
+    setFase("bienvenida");
+  }, [quedarse, router]);
 
   const arrancar = useCallback(async () => {
     setFase("revisando");
@@ -68,7 +85,7 @@ export default function Bienvenida() {
       } = await supabase.auth.getSession();
 
       if (!session) {
-        setFase("bienvenida");
+        await sinSesion();
         return;
       }
 
@@ -77,7 +94,7 @@ export default function Bienvenida() {
       // volvería a escribir su contraseña nunca.
       if (await sesionVencida()) {
         await cerrarSesion();
-        setFase("bienvenida");
+        await sinSesion();
         return;
       }
 
@@ -112,7 +129,7 @@ export default function Bienvenida() {
       // lugar de dejar la pantalla colgada.
       setFase("bienvenida");
     }
-  }, [router]);
+  }, [router, sinSesion]);
 
   useEffect(() => {
     arrancar();

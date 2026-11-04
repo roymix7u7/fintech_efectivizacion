@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Switch } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,7 +10,20 @@ import { misAceptaciones, fechaLegal, TIPOS_LEGALES } from "../../src/lib/legal"
 import { Toque } from "../../src/components/ui/Toque";
 import MenuLateral from "../../src/components/MenuLateral";
 import { Esqueleto, Aparece } from "../../src/components/Cargando";
-import { confirmar } from "../../src/lib/ui";
+import { confirmar, mensajeError } from "../../src/lib/ui";
+import { hayConexion } from "../../src/lib/conexion";
+import { useAviso } from "../../src/components/Avisos";
+import OfertaBiometria, { ocultarDuranteLector } from "../../src/components/OfertaBiometria";
+import {
+  capacidad,
+  estadoBiometria,
+  activarBiometria,
+  desactivarBiometria,
+  verificarClave,
+  esClaveIncorrecta,
+  mensajeBiometria,
+  correoOculto,
+} from "../../src/lib/biometria";
 import { cerrarSesion as cerrarSesionCompleta } from "../../src/lib/sesion";
 import { CabeceraNoche } from "../../src/components/ui/CabeceraNoche";
 import { GlassPanel } from "../../src/components/ui/GlassPanel";
@@ -108,6 +121,80 @@ export default function PerfilScreen() {
   const perfil = guardado?.perfil || null;
   const comisiones = guardado?.comisiones || null;
 
+  // ── Entrar con huella o rostro ──
+  // Se vuelve a mirar cada vez que se entra a Mi cuenta: el cliente pudo
+  // agregar o quitar huellas en los ajustes del teléfono.
+  const { mostrar } = useAviso();
+  const [bioCap, setBioCap] = useState(null);
+  const [bioEstado, setBioEstado] = useState(null);
+  const [bioModal, setBioModal] = useState(false);
+  const [bioOculta, setBioOculta] = useState(false);
+  const revisarBio = useCallback(async () => {
+    const [c, e] = await Promise.all([capacidad(), estadoBiometria()]);
+    setBioCap(c);
+    setBioEstado(e);
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      revisarBio();
+    }, [revisarBio]),
+  );
+  const correo = (usuario?.email || "").toLowerCase();
+  const bioActiva = Boolean(bioEstado && correo && bioEstado.email === correo && bioCap?.disponible);
+  const bioOtraCuenta = Boolean(bioEstado && correo && bioEstado.email !== correo);
+  const mostrarBio =
+    Boolean(bioCap) && (bioCap.disponible || bioCap.motivo === "sin_inscribir" || bioCap.motivo === "debil");
+  const textoBio = bioActiva
+    ? "Entras sin escribir tu contraseña"
+    : bioCap?.motivo === "sin_inscribir"
+      ? "Primero agrega una huella o tu rostro en los ajustes del teléfono"
+      : bioCap?.motivo === "debil"
+        ? "El desbloqueo de este teléfono no es compatible. Usa una huella"
+        : bioOtraCuenta
+          ? "Está activa para otra cuenta en este teléfono"
+          : "Entra sin escribir tu contraseña";
+
+  async function cambiarBio(v) {
+    if (v) return setBioModal(true);
+    if (!(await confirmar(`¿Dejar de entrar con ${bioCap?.nombre || "tu huella"} en este teléfono?`, "Apagar"))) return;
+    await desactivarBiometria();
+    await revisarBio();
+    mostrar("Listo. La próxima vez ingresa con tu contraseña.", "exito");
+  }
+
+  // Devuelve el texto del error para la ventana, o null.
+  async function activarBio(clave) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user?.email) return "Tu sesión venció. Vuelve a ingresar.";
+    if (!(await hayConexion())) return "Sin conexión. Revisa tu internet e inténtalo de nuevo.";
+
+    // Primero se confirma que es su contraseña: guardar una equivocada
+    // dejaría una huella que nunca sirve.
+    const prueba = await verificarClave(user.email, clave);
+    if (!prueba.ok) {
+      return esClaveIncorrecta(prueba.error)
+        ? "Esa no es tu contraseña. Revísala e inténtalo de nuevo."
+        : mensajeError(prueba.error);
+    }
+
+    if (ocultarDuranteLector) setBioOculta(true);
+    const nombre = (perfil?.nombres || "").trim().split(/\s+/)[0] || null;
+    const r = await activarBiometria({ email: user.email, clave, nombre });
+    setBioOculta(false);
+    if (!r.ok) return r.motivo === "cancelado" ? null : mensajeBiometria(r.motivo, bioCap?.nombre);
+
+    setBioModal(false);
+    await revisarBio();
+    mostrar(
+      bioCap?.tipo === "rostro" ? "Listo. La próxima vez entra con tu rostro." : "Listo. La próxima vez entra con tu huella.",
+      "exito",
+      4000,
+    );
+    return null;
+  }
+
   // window.confirm no existe en React Native: sin esto el boton de
   // cerrar sesion no hacia nada en el telefono.
   async function cerrarSesion() {
@@ -115,7 +202,9 @@ export default function PerfilScreen() {
     // Borra la sesion, la marca de tiempo y los datos guardados, para
     // que nada del usuario anterior quede en el telefono.
     await cerrarSesionCompleta();
-    router.replace("/");
+    // "quedarse": quien cerró sesión a propósito ve la bienvenida, no
+    // la huella pidiéndose sola.
+    router.replace("/?quedarse=1");
   }
 
   // Con nombres vacio, perfil.nombres[0] lanzaba una excepcion.
@@ -256,6 +345,32 @@ export default function PerfilScreen() {
             </View>
           </Aparece>
 
+          {/* Entrar con la huella o el rostro. No aparece en teléfonos sin
+              lector; si lo tiene pero sin huella registrada, se dice qué
+              falta en vez de esconderlo. */}
+          {mostrarBio ? (
+            <Aparece retraso={200}>
+              <Text style={s.seccion}>Seguridad</Text>
+              <Tarjeta style={[s.datos, s.misDatos]}>
+                <View style={[s.datoIcono, { backgroundColor: colors.goldCream }]}>
+                  <Ionicons name={bioCap.icono} size={20} color={colors.goldText} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                  <Text style={s.datoValor}>Entrar con {bioCap.tipo === "rostro" ? "tu rostro" : "tu huella"}</Text>
+                  <Text style={s.datoEtiqueta}>{textoBio}</Text>
+                </View>
+                <Switch
+                  value={bioActiva}
+                  onValueChange={cambiarBio}
+                  disabled={!bioCap.disponible && !bioActiva}
+                  trackColor={{ false: colors.track, true: colors.gold }}
+                  thumbColor={colors.white}
+                  accessibilityLabel={`Entrar con ${bioCap.nombre}`}
+                />
+              </Tarjeta>
+            </Aparece>
+          ) : null}
+
           {/* Lo que aceptó, con versión y fecha: la misma constancia que
               tiene la empresa, a la vista del cliente. */}
           <Aparece retraso={220}>
@@ -340,6 +455,15 @@ export default function PerfilScreen() {
       </ScrollView>
 
       <MenuLateral visible={menuVisible} onClose={() => setMenuVisible(false)} perfil={perfil} />
+      <OfertaBiometria
+        visible={bioModal}
+        oculta={bioOculta}
+        modo="clave"
+        cap={bioCap}
+        reemplaza={bioOtraCuenta ? correoOculto(bioEstado.email) : null}
+        onActivar={activarBio}
+        onCerrar={() => setBioModal(false)}
+      />
     </View>
   );
 }

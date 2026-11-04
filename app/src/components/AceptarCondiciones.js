@@ -71,7 +71,7 @@ export default function AceptarCondiciones() {
 
   async function salir() {
     await cerrarSesion();
-    router.replace("/");
+    router.replace("/?quedarse=1");
   }
 
   if (!lista.length) return null;

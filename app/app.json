@@ -43,7 +43,18 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Usamos Face ID para que entres a AlToque sin escribir tu contraseña. Tu rostro no sale de tu teléfono."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Usamos Face ID para que entres a AlToque sin escribir tu contraseña. Tu rostro no sale de tu teléfono."
+        }
+      ],
       [
         "expo-camera",
         {
