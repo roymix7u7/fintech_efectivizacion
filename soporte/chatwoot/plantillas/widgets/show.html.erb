@@ -9,7 +9,8 @@
         avatarUrl: '<%= @web_widget.inbox.avatar_url %>',
         hasAConnectedAgentBot: '<%= @web_widget.inbox.agent_bot&.name %>',
         locale: '<%= @web_widget.account.locale %>',
-        websiteName: '<%= @web_widget.inbox.name %>',
+        <%# AlToque: el cliente ve el nombre de la empresa, no el de la bandeja ("Visitantes web"). %>
+        websiteName: 'AlToque Perú WK',
         websiteToken: '<%= @web_widget.website_token %>',
         welcomeTagline: <%= @web_widget.welcome_tagline.to_json.html_safe %>,
         welcomeTitle: '<%= @web_widget.welcome_title %>',
@@ -39,6 +40,28 @@
   <body>
     <div id="app" class="h-full"></div>
     <%= yield %>
+    <%# AlToque: el cliente no ve quién lo atiende. Cada mensaje del equipo
+        sale como "Asesor AlToque" con el logo ATK, y no se muestran las
+        fotos de los asesores en línea. Dentro de Chatwoot el equipo sigue
+        viendo los nombres reales (solo cambia esta página). %>
+    <style>
+      /* Foto junto a los mensajes del asesor → logo ATK */
+      .user-thumbnail-box:has(> *) > *,
+      .row--agent-block > :first-child { display: none !important; }
+      .user-thumbnail-box:has(> *),
+      .row--agent-block::before {
+        content: "";
+        display: inline-block;
+        flex-shrink: 0;
+        width: 24px;
+        height: 24px;
+        border-radius: 9999px;
+        background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Ccircle cx='22' cy='22' r='22' fill='%231B2A4A'/%3E%3Cpath d='M22 9.5 33 33h-5.4L22 20.6 16.4 33H11z' fill='%23E8B800'/%3E%3C/svg%3E") center / cover no-repeat;
+      }
+      .row--agent-block::before { width: 20px; height: 20px; }
+      /* Fotos de los asesores en línea (inicio del chat) */
+      span.shadow-solid.rounded-full { display: none !important; }
+    </style>
     <%# AlToque: el campo "celular" del formulario previo (configurar.rb)
         no deja escribir de más: hasta 15 caracteres ("+51 987 654 321"),
         solo números, espacios y "+", y teclado numérico en el celular.
@@ -82,9 +105,14 @@
           clearTimeout(temporizador);
           temporizador = setTimeout(function () { aviso.style.display = "none"; }, 7000);
         }
+        var NOMBRE_EQUIPO = "Asesor AlToque";
         new MutationObserver(function () {
           var el = document.querySelector('input[name="celular"]');
           if (el) preparar(el);
+          var nombres = document.querySelectorAll(".agent-name, .agent--name");
+          for (var n = 0; n < nombres.length; n++) {
+            if (nombres[n].textContent.trim() !== NOMBRE_EQUIPO) nombres[n].textContent = NOMBRE_EQUIPO;
+          }
           var banners = document.querySelectorAll(".banner");
           for (var i = 0; i < banners.length; i++) {
             var b = banners[i];
