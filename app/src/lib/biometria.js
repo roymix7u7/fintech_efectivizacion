@@ -10,7 +10,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase";
  * (Keystore en Android, Keychain en iPhone) atados a la biometría: el
  * sistema solo los entrega después de que el dueño pone su huella o su
  * rostro. Con eso el app ingresa como siempre (signInWithPassword), así
- * que la base, la regla de las dos horas y el resto del ingreso no
+ * que la base, el bloqueo del app y el resto del ingreso no
  * cambian.
  *
  * Cuándo deja de servir, y por qué:
@@ -235,7 +235,7 @@ export const esClaveIncorrecta = (error) =>
  *
  * Para activar desde Mi cuenta: hay que saber que la contraseña es la
  * correcta antes de guardarla. Se usa un cliente aparte y sin memoria,
- * así la sesión del app (y sus dos horas) no cambia, y esa sesión de
+ * así la sesión del app no cambia, y esa sesión de
  * prueba se cierra enseguida.
  */
 export async function verificarClave(email, clave) {

@@ -13,7 +13,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../src/lib/supabase";
 import { hayConexion } from "../src/lib/conexion";
 import {
-  sesionVencida,
   cerrarSesion,
   entrarA,
   motivoDelBloqueo,
@@ -89,15 +88,8 @@ export default function Bienvenida() {
         return;
       }
 
-      // La sesión de Supabase se renueva sola, así que el plazo de dos
-      // horas lo lleva la app aparte. Sin esto, quien entró una vez no
-      // volvería a escribir su contraseña nunca.
-      if (await sesionVencida()) {
-        await cerrarSesion();
-        await sinSesion();
-        return;
-      }
-
+      // Con sesión, el app abre bloqueada: BloqueoApp pide la huella o
+      // la contraseña encima de la pantalla a la que se entra aquí.
       const { data: usuario } = await supabase
         .from("users")
         .select("rol, estado")

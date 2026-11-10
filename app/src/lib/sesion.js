@@ -1,54 +1,27 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
 import { limpiarCache } from "./cache";
+import { bloquear, desbloquear } from "./bloqueo";
 
 /**
- * Duracion maxima de una sesion.
+ * Se llama justo después de ingresar o de registrarse: el app queda
+ * desbloqueada desde ahora.
  *
- * Dos horas contadas desde que la persona escribio su contrasena, no
- * desde su ultimo toque. Es como funciona la banca: puedes entrar y
- * salir de la app todas las veces que quieras dentro de ese rato, pero
- * pasado el plazo se cierra aunque hayas estado usandola.
- *
- * La diferencia importa. Un plazo por inactividad se renueva solo con
- * mover el dedo, asi que un telefono robado con la app abierta nunca
- * expiraria. Uno absoluto siempre termina.
+ * Antes la sesión duraba dos horas y luego se cerraba, lo que además
+ * soltaba el teléfono de las notificaciones. Ahora la sesión sigue y el
+ * app se bloquea tras 10 minutos sin uso o al volver a abrirla
+ * (lib/bloqueo).
  */
-export const DURACION_SESION_MS = 2 * 60 * 60 * 1000;
-
-const CLAVE = "atk:inicio-sesion";
-
-/** Se llama justo despues de un inicio de sesion correcto. */
-export async function marcarInicioSesion() {
-  try {
-    await AsyncStorage.setItem(CLAVE, String(Date.now()));
-  } catch {}
-}
-
-/** Milisegundos que faltan para que caduque, o 0 si ya caduco. */
-export async function tiempoRestante() {
-  try {
-    const guardado = await AsyncStorage.getItem(CLAVE);
-    if (!guardado) return 0;
-    const restante = Number(guardado) + DURACION_SESION_MS - Date.now();
-    return restante > 0 ? restante : 0;
-  } catch {
-    return 0;
-  }
+export function marcarInicioSesion() {
+  desbloquear();
 }
 
 /**
- * true si hay que volver a pedir la contrasena.
+ * Cierra la sesion y borra todo rastro local del usuario anterior.
  *
- * Sin marca guardada se considera caducada. Puede pasar tras
- * reinstalar la app o al actualizar desde una version que no llevaba
- * esta cuenta, y ante la duda conviene pedir credenciales.
+ * Solo para salir de verdad ("Cerrar sesión", cuenta bloqueada,
+ * demasiados intentos al desbloquear): suelta el teléfono de las
+ * notificaciones. El bloqueo por tiempo no pasa por aquí.
  */
-export async function sesionVencida() {
-  return (await tiempoRestante()) === 0;
-}
-
-/** Cierra la sesion y borra todo rastro local del usuario anterior. */
 export async function cerrarSesion() {
   // El token del telefono se suelta antes de cerrar la sesion, porque
   // despues la politica de la tabla ya no dejaria borrarlo.
@@ -65,9 +38,8 @@ export async function cerrarSesion() {
   try {
     await supabase.auth.signOut();
   } catch {}
-  try {
-    await AsyncStorage.removeItem(CLAVE);
-  } catch {}
+  // La próxima sesión empieza bloqueada hasta que alguien ingrese.
+  bloquear();
   await limpiarCache();
 }
 

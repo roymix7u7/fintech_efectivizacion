@@ -17,7 +17,6 @@ import { GlassPanel } from "./ui/GlassPanel";
 import { Toque } from "./ui/Toque";
 import { useAvisosSinLeer } from "../lib/avisos";
 import { listarAlertas } from "../lib/alertas";
-import { tiempoRestante } from "../lib/sesion";
 import {
   CURVA,
   DURACION,
@@ -47,11 +46,6 @@ function nombreCorto(perfil) {
   return `${n} ${a}`.trim() || "Mi cuenta";
 }
 
-/** "4:42 p. m." */
-function horaCorta(fecha) {
-  return fecha.toLocaleTimeString("es-PE", { hour: "numeric", minute: "2-digit" });
-}
-
 /**
  * Menú lateral de cristal.
  *
@@ -69,7 +63,6 @@ export default function MenuLateral({ visible, onClose, perfil }) {
   const insets = useSafeAreaInsets();
   const [montado, setMontado] = useState(visible);
   const [urgente, setUrgente] = useState(false);
-  const [cierre, setCierre] = useState(null);
   const avisosSinLeer = useAvisosSinLeer();
   const reducir = useReducirMovimiento();
 
@@ -84,7 +77,6 @@ export default function MenuLateral({ visible, onClose, perfil }) {
       listarAlertas().then(({ alertas }) =>
         setUrgente(alertas.some((a) => a.tipo === "critico" && !a.vista)),
       );
-      tiempoRestante().then((ms) => setCierre(ms > 0 ? new Date(Date.now() + ms) : null));
 
       Animated.parallel([
         Animated.timing(desliz, {
@@ -259,12 +251,10 @@ export default function MenuLateral({ visible, onClose, perfil }) {
               </View>
             </ScrollView>
 
-            {cierre ? (
-              <View style={s.sesion}>
-                <Ionicons name="time-outline" size={15} color={colors.text2} />
-                <Text style={s.sesionTexto}>Sesión hasta las {horaCorta(cierre)}</Text>
-              </View>
-            ) : null}
+            <View style={s.sesion}>
+              <Ionicons name="lock-closed-outline" size={15} color={colors.text2} />
+              <Text style={s.sesionTexto}>Se bloquea tras 10 min sin uso</Text>
+            </View>
           </View>
         </GlassPanel>
       </Animated.View>

@@ -5,8 +5,6 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Animated,
-  Easing,
   AppState,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,7 +25,6 @@ import { mensajeError } from "../src/lib/ui";
 import { useAviso } from "../src/components/Avisos";
 import { validarEmail } from "../src/lib/validaciones";
 import { hayConexion } from "../src/lib/conexion";
-import { useReducirMovimiento } from "../src/lib/movimiento";
 import {
   marcarInicioSesion,
   entrarA,
@@ -47,6 +44,7 @@ import {
 } from "../src/lib/biometria";
 import CuentaBloqueada from "../src/components/CuentaBloqueada";
 import OfertaBiometria, { ocultarDuranteLector } from "../src/components/OfertaBiometria";
+import BotonBiometria from "../src/components/BotonBiometria";
 import { ScrollConTeclado } from "../src/components/ui/ScrollConTeclado";
 
 const LUCES = [
@@ -177,7 +175,7 @@ export default function LoginScreen() {
       return null;
     }
 
-    // Desde aquí empiezan a contar las dos horas de sesión.
+    // Desde aquí el app queda desbloqueada (lib/bloqueo).
     await marcarInicioSesion();
 
     // pendiente y observado comparten pantalla: en-revision muestra el
@@ -489,7 +487,7 @@ export default function LoginScreen() {
 
           <View style={s.seguro}>
             <Ionicons name="lock-closed-outline" size={14} color={colors.goldText} />
-            <Text style={s.seguroTexto}>Tu sesión se cierra sola a las 2 horas</Text>
+            <Text style={s.seguroTexto}>Se bloquea sola tras 10 minutos sin uso</Text>
           </View>
 
           <View style={{ flex: 1, minHeight: 24 }} />
@@ -509,41 +507,6 @@ export default function LoginScreen() {
   );
 }
 
-/**
- * El círculo grande de la huella, con un anillo que late suave para
- * decir "tócame". Con menos movimiento pedido, queda quieto.
- */
-function BotonBiometria({ icono = "finger-print", cargando, onPress, etiqueta }) {
-  const reducir = useReducirMovimiento();
-  const pulso = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (reducir || cargando) {
-      pulso.setValue(0);
-      return;
-    }
-    const ciclo = Animated.loop(
-      Animated.timing(pulso, { toValue: 1, duration: 1800, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-    );
-    ciclo.start();
-    return () => ciclo.stop();
-  }, [reducir, cargando, pulso]);
-
-  const escala = pulso.interpolate({ inputRange: [0, 1], outputRange: [1, 1.35] });
-  const opacidad = pulso.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.45, 0.12, 0] });
-
-  return (
-    <Toque onPress={onPress} disabled={cargando} accessibilityLabel={etiqueta} escala={0.94} style={s.bioToque}>
-      <View style={s.bioCaja}>
-        <Animated.View style={[s.bioAnillo, { opacity: opacidad, transform: [{ scale: escala }] }]} />
-        <View style={s.bioCirculo}>
-          <Ionicons name={icono} size={52} color={colors.navy} />
-        </View>
-      </View>
-    </Toque>
-  );
-}
-
 const s = StyleSheet.create({
   pantalla: { flex: 1, backgroundColor: colors.ground },
   cabecera: { paddingHorizontal: 20, paddingBottom: 92, gap: 22 },
@@ -553,25 +516,6 @@ const s = StyleSheet.create({
   cuerpo: { flexGrow: 1, marginTop: -64, paddingHorizontal: 16, gap: 14 },
   tarjeta: { padding: 18, paddingHorizontal: 16, gap: 14 },
   tarjetaBio: { alignItems: "center", paddingTop: 26 },
-  bioToque: { alignSelf: "center" },
-  bioCaja: { width: 132, height: 132, alignItems: "center", justifyContent: "center" },
-  bioAnillo: {
-    position: "absolute",
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    backgroundColor: colors.gold,
-  },
-  bioCirculo: {
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    backgroundColor: colors.goldCream,
-    borderWidth: 2,
-    borderColor: colors.gold,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   cuenta: { fontFamily: fonts.strong, fontSize: 14, color: colors.text2, marginTop: -4 },
   alterno: {
     flexDirection: "row",

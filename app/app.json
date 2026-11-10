@@ -7,11 +7,6 @@
     "icon": "./assets/icon.png",
     "scheme": "fintech",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0F1B33"
-    },
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
@@ -80,7 +75,15 @@
       ],
       "expo-status-bar",
       "expo-font",
-      "expo-splash-screen"
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "imageWidth": 200,
+          "backgroundColor": "#0F1B33"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

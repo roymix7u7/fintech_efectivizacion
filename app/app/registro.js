@@ -481,7 +481,7 @@ export default function RegistroScreen() {
         await aceptar(lista.map((d) => d.id));
       } catch {}
 
-      // Desde aquí hay sesión: empiezan a contar sus dos horas.
+      // Desde aquí hay sesión: el app queda desbloqueada.
       await marcarInicioSesion();
       setCodigoOk(true);
       // Se deja ver el "Correo verificado" un momento antes de avanzar.
