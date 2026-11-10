@@ -21,6 +21,7 @@ import {
   Cargando,
 } from "@/components/cliente/piezas";
 import { ESCENA_INGRESAR } from "@/components/cliente/escenas";
+import { mostrarCarga } from "@/components/pantallaCarga";
 
 /**
  * Ingreso de clientes. Las mismas comprobaciones que la app
@@ -151,6 +152,7 @@ function Ingresar() {
       }
 
       marcarInicioSesion();
+      mostrarCarga("Abriendo tu cuenta…");
       router.replace("/cuenta");
     } catch (err) {
       setAviso({ tono: "error", texto: mensajeError(err) });

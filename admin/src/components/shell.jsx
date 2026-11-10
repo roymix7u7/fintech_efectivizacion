@@ -12,6 +12,7 @@ import { Logo } from "@/components/marca";
 import Pista from "@/components/pista";
 import Disponibilidad from "@/components/disponibilidad";
 import AbrirChat from "@/components/abrirChat";
+import { mostrarCarga } from "@/components/pantallaCarga";
 
 /**
  * Menú del panel.
@@ -416,6 +417,7 @@ export default function Shell({
   }
 
   async function salir() {
+    mostrarCarga("Cerrando sesión…");
     await logout();
     contadoresGuardados = {};
     pedidosEn = 0;

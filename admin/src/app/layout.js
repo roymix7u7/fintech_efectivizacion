@@ -1,5 +1,6 @@
 import localFont from "next/font/local";
 import "./globals.css";
+import PantallaCarga from "@/components/pantallaCarga";
 
 // Las mismas fuentes que la app móvil: Manrope para leer y operar,
 // Sora para títulos y cifras grandes.
@@ -40,7 +41,10 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="es" className={`${manrope.variable} ${sora.variable} ${geistMono.variable}`}>
-      <body className="font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased">
+        {children}
+        <PantallaCarga />
+      </body>
     </html>
   );
 }

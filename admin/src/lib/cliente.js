@@ -62,7 +62,8 @@ export async function cerrarSesionCliente() {
   olvidarChat();
   // Y deja de recibir los avisos del chat en este navegador (antes de
   // cerrar la sesión: hace falta para quitarlo).
-  await quitarAvisosNavegador(supabaseCliente());
+  // Con tope: si el servicio de avisos tarda, la salida no espera.
+  await Promise.race([quitarAvisosNavegador(supabaseCliente()), new Promise((r) => setTimeout(r, 1500))]);
   try {
     await supabaseCliente().auth.signOut();
   } catch {}

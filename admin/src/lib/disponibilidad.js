@@ -50,10 +50,17 @@ export function olvidarDisponibilidad() {
 export const faltaMigracion = (e) =>
   e?.code === "PGRST202" || /fijar_disponibilidad|senal_disponibilidad/.test(e?.message || "");
 
-/** Cambia el propio estado. Devuelve { data: { estado, desde }, error }. */
-export async function fijarDisponibilidad(estado) {
+/**
+ * Cambia el propio estado. Devuelve { data: { estado, desde }, error }.
+ * esperarChat: false al entrar, para no demorar la entrada esperando a
+ * Chatwoot (el aviso sale igual, por detrás).
+ */
+export async function fijarDisponibilidad(estado, { esperarChat = true } = {}) {
   const { data, error } = await supabase.rpc("fijar_disponibilidad", { p_estado: estado });
-  if (!error) await avisarAlChat();
+  if (!error) {
+    const aviso = avisarAlChat();
+    if (esperarChat) await aviso;
+  }
   return { data, error };
 }
 

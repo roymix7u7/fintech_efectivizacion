@@ -8,6 +8,7 @@ import { Aviso } from "@/components/marca";
 import { Flecha, Ojo, Candado } from "@/components/shell";
 import { Campo } from "@/components/piezas";
 import { BotonAccion } from "@/components/carga";
+import { mostrarCarga, ocultarCarga } from "@/components/pantallaCarga";
 
 const CORREO = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
 
@@ -31,10 +32,12 @@ export default function LoginPage() {
     setError("");
     if (errores.email || errores.password) return;
     setLoading(true);
+    mostrarCarga("Entrando al panel…");
     try {
       const { rol } = await login(email, password);
       router.push(inicioDe(rol));
     } catch (err) {
+      ocultarCarga();
       setError(/invalid login credentials/i.test(err.message) ? "Correo o contraseña incorrectos." : err.message);
       setLoading(false);
     }

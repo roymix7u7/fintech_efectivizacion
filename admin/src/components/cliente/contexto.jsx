@@ -21,6 +21,7 @@ import MarcoCuenta from "./barra";
 import MisAvisos from "./avisos";
 import MenuUsuario from "./usuario";
 import ChatSoporte from "./soporte";
+import { mostrarCarga } from "@/components/pantallaCarga";
 import AvisosNavegador from "./avisosNavegador";
 
 /**
@@ -74,6 +75,7 @@ export function ProveedorCuenta({ children }) {
 
   const salir = useCallback(
     async (motivo) => {
+      mostrarCarga("Cerrando sesión…");
       await cerrarSesionCliente();
       cache.current = null;
       router.replace(motivo ? `/ingresar?${motivo}=1` : "/ingresar");

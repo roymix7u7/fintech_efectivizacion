@@ -653,3 +653,63 @@ html:has(.sitio-publico) {
     bottom: calc(76px + env(safe-area-inset-bottom)) !important;
   }
 }
+
+/* Señales de carga (components/pantallaCarga.jsx) */
+.atk-barra-carga {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 3px;
+  z-index: 2147483646;
+  overflow: hidden;
+  background: rgba(232, 184, 0, 0.18);
+  pointer-events: none;
+}
+.atk-barra-carga > span,
+.atk-pantalla-carga__pista > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: #e8b800;
+  border-radius: 9999px;
+  animation: atk-carga-avanza 1.1s ease-in-out infinite;
+}
+.atk-pantalla-carga {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483645;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(246, 248, 252, 0.88);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: atk-carga-aparece 0.15s ease-out;
+}
+.atk-pantalla-carga__logo {
+  animation: atk-carga-late 1.2s ease-in-out infinite;
+}
+.atk-pantalla-carga__pista {
+  position: relative;
+  width: 160px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: rgba(27, 42, 74, 0.12);
+}
+@keyframes atk-carga-avanza {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(260%); }
+}
+@keyframes atk-carga-late {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+@keyframes atk-carga-aparece {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .atk-barra-carga > span,
+  .atk-pantalla-carga__pista > span { animation-duration: 2.5s; }
+  .atk-pantalla-carga__logo { animation: none; }
+}

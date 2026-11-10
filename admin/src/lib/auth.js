@@ -78,19 +78,47 @@ export async function login(email, password) {
   // recibir casos. Si falla (sin migración 070, sin red), entra igual.
   olvidarDisponibilidad();
   try {
-    await fijarDisponibilidad("en_linea");
+    // Lo de Chatwoot no se espera: la entrada no se demora por el chat.
+    await fijarDisponibilidad("en_linea", { esperarChat: false });
   } catch {}
   return enMemoria;
 }
 
+/**
+ * Cerrar sesión sin dejar a la persona mirando una pantalla quieta:
+ *   1. Queda "desconectado" (para que el reparto no le dé más casos).
+ *   2. La sesión se borra de este navegador al instante.
+ *   3. Por detrás: se avisa a Chatwoot y se cierra la sesión también en
+ *      el servidor, con la clave que tenía (keepalive: termina aunque se
+ *      cambie de página).
+ */
 export async function logout() {
   enMemoria = null;
-  // Antes de salir, para que el reparto no le siga dando casos.
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   try {
-    await fijarDisponibilidad("desconectado");
+    await supabase.rpc("fijar_disponibilidad", { p_estado: "desconectado" });
   } catch {}
   olvidarDisponibilidad();
-  await supabase.auth.signOut();
+  if (session) terminarPorDetras(session.access_token);
+  await supabase.auth.signOut({ scope: "local" });
+}
+
+function terminarPorDetras(token) {
+  (async () => {
+    const encabezados = { Authorization: `Bearer ${token}` };
+    try {
+      await fetch("/api/atencion/disponibilidad", { method: "POST", headers: encabezados, keepalive: true });
+    } catch {}
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/logout?scope=global`, {
+        method: "POST",
+        headers: { ...encabezados, apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY },
+        keepalive: true,
+      });
+    } catch {}
+  })();
 }
 
 /**
