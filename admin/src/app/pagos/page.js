@@ -102,27 +102,46 @@ function motivoDe(error, contexto) {
 // ── Piezas ────────────────────────────────────────────────────
 
 /**
- * Una solicitud en la lista.
+ * Una solicitud en la lista: una fila limpia en tres columnas.
  *
- * Es una vista para pagar, no para revisar: lo grande es el nombre, el
- * DNI y las cuentas. El comprobante queda como un botón pequeño, por si
- * hace falta mirarlo.
+ *   Cliente (nombre; debajo, en gris, DNI, código y cuándo)
+ *   La cuenta donde depositar (grande, con copiar)
+ *   Acciones (comprobante, cancelar envío) como íconos
+ *
+ * Solo se ve la cuenta que recibe. Las demás del cliente quedan bajo
+ * "Otras cuentas", para cuando haya que cambiar a cuál depositar.
  */
 function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar, onCuenta }) {
+  const [verOtras, setVerOtras] = useState(false);
   const tomadaPorOtro = fila.marcada_por && !fila.marcada_por_mi;
   const seleccionable = estado === "aprobado" && fila.puedo_pagar && !tomadaPorOtro;
   const marcada = fila.marcada_por_mi;
-  const ningunaRecibe = fila.cuentas?.length > 0 && !fila.cuentas.some((c) => recibe(fila, c));
+  const cuentas = fila.cuentas || [];
+  const destino = cuentas.find((c) => recibe(fila, c)) || null;
+  const otras = cuentas.filter((c) => c !== destino);
+  const ningunaRecibe = cuentas.length > 0 && !destino;
   // Pagos elige en qué cuenta del cliente depositar: de ahorros o, como
   // último recurso, su CCI.
   const puedeCambiar = estado === "aprobado" && fila.puedo_pagar && !tomadaPorOtro && "cuenta_deposito_id" in fila;
+  const cuando =
+    estado === "pagado"
+      ? `pagada ${haceCuanto(fila.pagado_en)}${fila.pagado_por ? ` por ${fila.pagado_por}` : ""}`
+      : estado === "aprobado"
+        ? `aprobada ${haceCuanto(fila.fecha_revision)}`
+        : `enviada ${haceCuanto(fila.created_at)}`;
+  const conChips =
+    fila.modalidad === "siguiente" ||
+    (estado === "aprobado" && fila.programada) ||
+    tomadaPorOtro ||
+    (!fila.puedo_pagar && estado === "aprobado");
+  const conAvisos = (fila.cuenta_cambiada && estado === "aprobado") || ningunaRecibe || fila.nota_cliente;
 
   return (
     <li
       className={cn(
-        "flex gap-3 rounded-xl border bg-card p-3.5 transition",
-        marcada ? "border-marca-500 bg-marca-50/50 ring-1 ring-marca-500/40" : "border-border",
-        tomadaPorOtro && "opacity-70",
+        "flex items-start gap-3 px-4 py-3 transition",
+        marcada ? "bg-marca-50/70" : "hover:bg-muted/40",
+        tomadaPorOtro && "opacity-60",
       )}
     >
       {estado === "aprobado" && (
@@ -145,164 +164,171 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar, onCu
             aria-pressed={marcada}
             aria-label={marcada ? "Quitar del lote" : "Agregar al lote"}
             className={cn(
-              "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition",
+              "mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition",
               marcada ? "border-marca-700 bg-marca-700 text-white" : "border-marca-200 bg-card hover:border-marca-500",
               "disabled:cursor-not-allowed disabled:opacity-40",
             )}
           >
-            {ocupado ? <Rueda className="h-3 w-3" claro={marcada} /> : marcada && <Check className="h-4 w-4" />}
+            {ocupado ? <Rueda className="h-3 w-3" claro={marcada} /> : marcada && <Check className="h-3.5 w-3.5" />}
           </button>
         </Pista>
       )}
 
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <p className="text-md font-bold text-foreground">{nombreDe(fila.cliente) || "Cliente sin nombre"}</p>
-          <span className="inline-flex items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5">
-            <span className="cifras text-chico font-bold text-foreground">DNI {fila.cliente?.dni}</span>
-            <Copiar texto={fila.cliente?.dni} soloIcono etiqueta="Copiar DNI" />
-          </span>
+      <div className="grid min-w-0 flex-1 gap-x-6 gap-y-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_auto] md:items-start">
+        {/* Cliente */}
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">{nombreDe(fila.cliente) || "Cliente sin nombre"}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-0.5">
+              <span className="cifras">DNI {fila.cliente?.dni}</span>
+              <Copiar texto={fila.cliente?.dni} soloIcono etiqueta="Copiar DNI" />
+            </span>
+            <span aria-hidden>·</span>
+            <span className="cifras font-mono">{fila.codigo}</span>
+            <span aria-hidden>·</span>
+            <span>{cuando}</span>
+            {fila.porcentaje_comision != null && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="cifras">{porcentaje(fila.porcentaje_comision)} %</span>
+              </>
+            )}
+          </p>
+          {conChips && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {fila.modalidad === "siguiente" && (
+                <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">Al día siguiente</span>
+              )}
+              {estado === "aprobado" && fila.programada && (
+                <span className="rounded-full bg-oro-100 px-2 py-0.5 text-[11px] font-semibold text-oro-700">
+                  Programada: {diaCorto(fila.fecha_deposito)}
+                </span>
+              )}
+              {tomadaPorOtro && (
+                <span className="max-w-[200px] truncate rounded-full bg-oro-100 px-2 py-0.5 text-[11px] font-semibold text-oro-700">
+                  Marcada por {fila.marcada_por}
+                </span>
+              )}
+              {!fila.puedo_pagar && estado === "aprobado" && !tomadaPorOtro && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">Solo lectura</span>
+              )}
+            </div>
+          )}
         </div>
 
-        <p className="mt-0.5 text-chico text-muted-foreground">
-          <span className="cifras font-mono">{fila.codigo}</span>
-          {" · "}Tarjeta {fila.banco}
-          {fila.ultimos_4 && <span className="cifras"> ···· {fila.ultimos_4}</span>}
-          {" · "}
-          {estado === "pagado"
-            ? `pagada ${haceCuanto(fila.pagado_en)}${fila.pagado_por ? ` por ${fila.pagado_por}` : ""}`
-            : estado === "aprobado"
-              ? `aprobada ${haceCuanto(fila.fecha_revision)}`
-              : `enviada ${haceCuanto(fila.created_at)}`}
-        </p>
+        {/* Dónde depositar */}
+        <div className="min-w-0">
+          {destino ? (
+            <>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {estado === "pagado" ? "Pagado en" : "Depositar en"} {destino.banco} ·{" "}
+                {destino.tipo === "interbancaria" ? "CCI" : "Ahorros"}
+              </p>
+              <p className="flex items-center gap-1">
+                <span className="cifras font-mono text-[15px] font-semibold tracking-tight text-foreground">
+                  {agrupar(destino.numero)}
+                </span>
+                <Copiar texto={destino.numero} soloIcono etiqueta="Copiar el número de cuenta" />
+              </p>
+            </>
+          ) : cuentas.length === 0 ? (
+            <p className="text-xs font-semibold text-red-700">Sin cuentas registradas: contacta al cliente antes de pagar.</p>
+          ) : null}
 
-        {fila.modalidad && (fila.modalidad === "siguiente" || fila.porcentaje_comision != null) && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold",
-                fila.modalidad === "siguiente" ? "bg-sky-50 text-sky-800 ring-1 ring-sky-200" : "bg-muted text-foreground",
-              )}
+          {otras.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setVerOtras((v) => !v)}
+              aria-expanded={verOtras}
+              className="mt-0.5 text-xs font-medium text-marca-600 hover:underline"
             >
-              {fila.modalidad === "siguiente" ? "Al día siguiente" : "Mismo día"}
-              {fila.porcentaje_comision != null && <span className="cifras font-semibold">· {porcentaje(fila.porcentaje_comision)} %</span>}
-            </span>
-            {estado === "aprobado" && fila.programada && (
-              <span className="inline-flex items-center rounded-full bg-oro-100 px-2 py-0.5 text-xs font-bold text-oro-700">
-                Programada: {diaCorto(fila.fecha_deposito)}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* La cuenta que recibe va primera y resaltada: el pagador no
-            tiene que deducir a cuál depositar. */}
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {fila.cuentas?.length ? (
-            [...fila.cuentas]
-              .sort((a, b) => recibe(fila, b) - recibe(fila, a))
-              .map((c, i) => {
-                const esta = recibe(fila, c);
-                const elegible = puedeCambiar && !esta;
+              {verOtras ? "Ocultar otras cuentas" : `Otras cuentas (${otras.length})`}
+            </button>
+          )}
+          {verOtras && (
+            <ul className="mt-1.5 space-y-1">
+              {otras.map((c, i) => {
                 const esCci = c.tipo === "interbancaria";
                 return (
-                  <span
-                    key={c.id || i}
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-lg border px-2 py-1",
-                      esta ? "border-emerald-300 bg-emerald-50" : "border-border bg-background",
-                      !esta && !elegible && "opacity-70",
-                    )}
-                  >
-                    {esta && (
-                      <span className="inline-flex items-center gap-0.5 rounded bg-emerald-600 px-1.5 py-px text-xs font-bold text-white">
-                        <Check className="h-3 w-3" />
-                        Recibe
-                      </span>
-                    )}
-                    <span className="text-xs font-bold uppercase tracking-wide text-marca-700">{c.banco}</span>
-                    <span className="text-xs font-semibold text-muted-foreground">{c.tipo === "interbancaria" ? "CCI" : "Ahorros"}</span>
-                    <span className="cifras font-mono text-sm font-semibold text-foreground">{agrupar(c.numero)}</span>
+                  <li key={c.id || i} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
+                    <span className="font-semibold uppercase text-marca-700">{c.banco}</span>
+                    <span className="text-muted-foreground">{esCci ? "CCI" : "Ahorros"}</span>
+                    <span className="cifras font-mono text-foreground">{agrupar(c.numero)}</span>
                     <Copiar texto={c.numero} soloIcono etiqueta="Copiar el número" />
-                    {elegible && (
-                      <Pista texto={esCci ? "Último recurso: transferencia interbancaria a su CCI. Tarda más en reflejarse." : "Depositar en esta cuenta del cliente"}>
+                    {puedeCambiar && (
+                      <Pista
+                        texto={
+                          esCci
+                            ? "Último recurso: transferencia interbancaria a su CCI. Tarda más en reflejarse."
+                            : "Depositar en esta cuenta del cliente"
+                        }
+                      >
                         <button
                           type="button"
                           onClick={() => onCuenta(fila, c)}
                           disabled={ocupado}
                           className={cn(
-                            "ml-0.5 rounded-md px-1.5 py-0.5 text-xs font-bold transition disabled:opacity-50",
+                            "rounded-md px-1.5 py-0.5 font-semibold transition disabled:opacity-50",
                             esCci ? "bg-oro-50 text-oro-700 hover:bg-oro-100" : "bg-marca-50 text-marca-700 hover:bg-marca-100",
                           )}
                         >
-                          {esCci ? "Por CCI" : "Depositar aquí"}
+                          {esCci ? "Usar CCI" : "Depositar aquí"}
                         </button>
                       </Pista>
                     )}
-                  </span>
+                  </li>
                 );
-              })
-          ) : (
-            <span className="rounded-lg bg-red-50 px-2 py-1 text-chico font-semibold text-red-700">
-              Sin cuentas registradas: contacta al cliente antes de pagar
-            </span>
+              })}
+            </ul>
           )}
         </div>
 
-        {fila.cuenta_cambiada && estado === "aprobado" && (
-          <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-chico font-semibold text-oro-700">
-            {fila.cuentas?.find((c) => c.id === fila.cuenta_deposito_id)?.tipo === "interbancaria"
-              ? "Se pagará por CCI (transferencia interbancaria): al confirmar, el cliente recibe un aviso con su CCI."
-              : "No es la cuenta de siempre: al confirmar, el cliente recibe un aviso con la cuenta."}
-            {puedeCambiar && (
-              <button type="button" onClick={() => onCuenta(fila, null)} disabled={ocupado} className="underline underline-offset-2">
-                Volver a la de siempre
+        {/* Acciones */}
+        <div className="flex items-center gap-1 md:justify-end">
+          {fila.comprobante_url && (
+            <Pista texto="Ver el comprobante del cliente">
+              <button
+                type="button"
+                onClick={() => onComprobante(fila.comprobante_url)}
+                aria-label="Ver el comprobante"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              >
+                <Documento className="h-4 w-4" />
               </button>
+            </Pista>
+          )}
+          {estado === "pagado" && fila.puedo_pagar && (
+            <BotonAccion tono="peligroSuave" tamano="chico" onClick={() => onCancelar(fila)}>
+              Cancelar envío
+            </BotonAccion>
+          )}
+        </div>
+
+        {/* Avisos: solo cuando hay algo que saber */}
+        {conAvisos && (
+          <div className="space-y-1 md:col-span-3">
+            {fila.cuenta_cambiada && estado === "aprobado" && (
+              <p className="flex flex-wrap items-center gap-x-2 text-xs font-medium text-oro-700">
+                {destino?.tipo === "interbancaria"
+                  ? "Se pagará por CCI: al confirmar, el cliente recibe un aviso con su CCI."
+                  : "No es la cuenta de siempre: al confirmar, el cliente recibe un aviso con la cuenta."}
+                {puedeCambiar && (
+                  <button type="button" onClick={() => onCuenta(fila, null)} disabled={ocupado} className="underline underline-offset-2">
+                    Volver a la de siempre
+                  </button>
+                )}
+              </p>
             )}
-          </p>
-        )}
-
-        {estado === "pagado" && fila.deposito && (
-          <p className="mt-1.5 text-chico text-muted-foreground">
-            Pagado en{" "}
-            <span className="font-semibold text-foreground">
-              {fila.deposito.tipo === "interbancaria" ? "CCI" : "ahorros"} {fila.deposito.banco} ···· {fila.deposito.ultimos_4}
-            </span>
-            {BANCOS_PRINCIPALES.includes(fila.banco) && fila.deposito.banco !== fila.banco && " (otra cuenta del cliente)"}
-          </p>
-        )}
-
-        {ningunaRecibe && (
-          <p className="mt-1.5 text-chico font-semibold text-red-700">
-            Ninguna cuenta recibe esta operación: falta la cuenta de ahorros
-            {BANCOS_PRINCIPALES.includes(fila.banco) ? ` ${fila.banco}` : ""}.{" "}
-            {fila.cuentas.some((c) => c.tipo === "interbancaria") && "cuenta_deposito_id" in fila
-              ? "Contacta al cliente o, como último recurso, usa «Por CCI»."
-              : "Contacta al cliente antes de pagar."}
-          </p>
-        )}
-
-        {fila.nota_cliente && <p className="mt-1.5 text-chico italic text-muted-foreground">“{fila.nota_cliente}”</p>}
-      </div>
-
-      <div className="flex shrink-0 flex-col items-end gap-1.5">
-        {tomadaPorOtro && (
-          <span className="max-w-[170px] truncate rounded-full bg-oro-100 px-2 py-0.5 text-xs font-bold text-oro-700">
-            Marcada por {fila.marcada_por}
-          </span>
-        )}
-        {!fila.puedo_pagar && estado === "aprobado" && !tomadaPorOtro && (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">Solo lectura</span>
-        )}
-        {fila.comprobante_url && (
-          <BotonAccion tono="suave" tamano="chico" onClick={() => onComprobante(fila.comprobante_url)} icono={<Documento className="h-3.5 w-3.5" />}>
-            Comprobante
-          </BotonAccion>
-        )}
-        {estado === "pagado" && fila.puedo_pagar && (
-          <BotonAccion tono="peligroSuave" tamano="chico" onClick={() => onCancelar(fila)}>
-            Cancelar envío
-          </BotonAccion>
+            {ningunaRecibe && (
+              <p className="text-xs font-semibold text-red-700">
+                Falta su cuenta de ahorros{BANCOS_PRINCIPALES.includes(fila.banco) ? ` ${fila.banco}` : ""}.{" "}
+                {cuentas.some((c) => c.tipo === "interbancaria") && "cuenta_deposito_id" in fila
+                  ? "Contacta al cliente o, como último recurso, abre «Otras cuentas» y usa su CCI."
+                  : "Contacta al cliente antes de pagar."}
+              </p>
+            )}
+            {fila.nota_cliente && <p className="text-xs italic text-muted-foreground">“{fila.nota_cliente}”</p>}
+          </div>
         )}
       </div>
     </li>
@@ -726,7 +752,7 @@ export default function PagosPage() {
                 />
               ) : (
                 <>
-                  <ul className="space-y-2">
+                  <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
                     {filas.map((f, i) => (
                       <FilaConSeparador key={f.id} fila={f} anterior={filas[i - 1]} estado={estado}>
                         <Fila
@@ -751,11 +777,6 @@ export default function PagosPage() {
               {estado === "aprobado" && filas.length > 0 && (
                 <Leyenda
                   items={[
-                    {
-                      texto: "Recibe",
-                      marca: <span className="h-2.5 w-2.5 rounded-sm bg-emerald-600" />,
-                      pista: "La cuenta a la que hay que depositar: la de ahorros del banco de la tarjeta, o la que elijas con «Depositar aquí».",
-                    },
                     {
                       texto: "Tu banco",
                       marca: <span className="h-2 w-2 rounded-full bg-oro-500" />,
@@ -1049,9 +1070,8 @@ function FilaConSeparador({ fila, anterior, estado, children }) {
   return (
     <>
       {empieza && (
-        <li className="flex items-center gap-3 pt-3" aria-hidden>
+        <li className="bg-oro-50/60 px-4 py-1.5" aria-hidden>
           <span className="t-etiqueta whitespace-nowrap text-oro-700">Programadas para otro día</span>
-          <span className="h-px flex-1 bg-border" />
         </li>
       )}
       {children}
