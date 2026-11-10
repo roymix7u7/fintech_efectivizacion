@@ -174,22 +174,23 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar, onCu
         </Pista>
       )}
 
-      <div className="grid min-w-0 flex-1 gap-x-6 gap-y-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_auto] md:items-start">
+      {/* Lo que Pagos mira: nombre, DNI, su porcentaje en ese banco y la
+          cuenta. El código y cuándo, en pequeño debajo del nombre. */}
+      <div className="grid min-w-0 flex-1 gap-x-6 gap-y-2.5 md:grid-cols-[minmax(0,1.1fr)_7rem_minmax(0,1.2fr)_auto] md:items-center">
         {/* Cliente */}
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-marca-900">{nombreDe(fila.cliente) || "Cliente sin nombre"}</p>
-          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
-            <span className="inline-flex items-center gap-0.5 rounded-md bg-marca-50 py-0.5 pl-1.5 pr-0.5 text-marca-700 ring-1 ring-marca-100">
-              <span className="cifras font-semibold">DNI {fila.cliente?.dni}</span>
-              <Copiar texto={fila.cliente?.dni} soloIcono etiqueta="Copiar DNI" />
-            </span>
-            <span className="cifras font-mono font-medium text-marca-500">{fila.codigo}</span>
-            {fila.porcentaje_comision != null && (
-              <span className="cifras rounded-md bg-oro-50 px-1.5 py-0.5 font-semibold text-oro-700 ring-1 ring-oro-200">
-                {porcentaje(fila.porcentaje_comision)} %
-              </span>
-            )}
-            <span className="text-muted-foreground">{cuando}</span>
+          <p className="truncate text-[15px] font-bold leading-snug text-marca-900">{nombreDe(fila.cliente) || "Cliente sin nombre"}</p>
+          <p className="mt-1 inline-flex items-center gap-0.5 rounded-md bg-marca-50 py-0.5 pl-2 pr-0.5 text-marca-800 ring-1 ring-marca-100">
+            <span className="text-[11px] font-semibold text-marca-500">{fila.cliente?.tipo_documento === "ce" ? "CE" : "DNI"}</span>
+            <span className="cifras ml-1 text-sm font-bold tracking-wide">{fila.cliente?.dni}</span>
+            <Copiar texto={fila.cliente?.dni} soloIcono etiqueta="Copiar DNI" />
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            <span className="cifras font-mono">{fila.codigo}</span>
+            {" · "}Tarjeta {fila.banco}
+            {fila.ultimos_4 && <span className="cifras"> ···· {fila.ultimos_4}</span>}
+            {" · "}
+            {cuando}
           </p>
           {conChips && (
             <div className="mt-1.5 flex flex-wrap gap-1">
@@ -211,6 +212,14 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar, onCu
               )}
             </div>
           )}
+        </div>
+
+        {/* Su porcentaje en el banco de la tarjeta */}
+        <div className="flex items-baseline gap-2 md:block md:text-center">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-oro-700">Comisión {fila.banco}</p>
+          <p className="cifras text-xl font-bold leading-tight text-marca-900">
+            {fila.porcentaje_comision != null ? `${porcentaje(fila.porcentaje_comision)} %` : "—"}
+          </p>
         </div>
 
         {/* Dónde depositar */}
@@ -315,7 +324,7 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar, onCu
 
         {/* Avisos: solo cuando hay algo que saber */}
         {conAvisos && (
-          <div className="space-y-1 md:col-span-3">
+          <div className="space-y-1 md:col-span-4">
             {fila.cuenta_cambiada && estado === "aprobado" && (
               <p className="flex flex-wrap items-center gap-x-2 text-xs font-medium text-oro-700">
                 {destino?.tipo === "interbancaria"
