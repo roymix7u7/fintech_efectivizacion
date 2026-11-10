@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { supabaseCliente, mensajeError } from "@/lib/cliente";
+import { supabaseCliente, mensajeError, verificarRegistro } from "@/lib/cliente";
 import {
   validarEmail,
   validarPassword,
@@ -72,6 +72,26 @@ export default function RecuperarPage() {
     if (errorEmail) return setIntentos((n) => n + 1);
     setCargando(true);
     try {
+      // Solo se envía el código a correos con cuenta: si no, el cliente se
+      // queda esperando un correo que nunca llega. (El registro ya responde
+      // lo mismo con verificar_registro: no se revela nada nuevo.) Si la
+      // consulta falla (null), se sigue como antes.
+      const registro = await verificarRegistro({ email: correo });
+      if (registro?.email === false) {
+        setPaso(1);
+        return setAviso({
+          tono: "error",
+          texto: (
+            <>
+              No hay ninguna cuenta con <strong className="break-all">{correo}</strong>. Revisa que sea el
+              mismo correo con el que te registraste.{" "}
+              <Link href="/registro" className="font-semibold underline">
+                ¿Aún no tienes cuenta? Regístrate
+              </Link>
+            </>
+          ),
+        });
+      }
       const { error } = await sb.auth.resetPasswordForEmail(correo);
       if (error) return setAviso({ tono: "error", texto: mensajeError(error) });
       setCodigo("");
@@ -202,7 +222,7 @@ export default function RecuperarPage() {
       {paso === 2 && (
         <Marco
           titulo="Revisa tu correo"
-          subtitulo={`Si ${correo} tiene una cuenta, te llegó un código de 6 dígitos.`}
+          subtitulo={`Te enviamos un código de 6 dígitos a ${correo}. Si no lo ves en unos minutos, revisa la carpeta de spam o promociones.`}
           paso={2}
           pasos={PASOS}
           escena={ESCENA_RECUPERAR}
