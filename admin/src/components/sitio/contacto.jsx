@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabaseCliente } from "@/lib/cliente";
 import { chatDisponible, cargarChatwoot } from "@/lib/chatwoot";
 import { HORARIO } from "./datos";
 
@@ -60,6 +62,22 @@ export default function ContactoFlotante({ whatsapp, whatsappTexto }) {
   const [error, setError] = useState("");
   const [chatListo, setChatListo] = useState(false);
   const [atiende, setAtiende] = useState(null); // se calcula en el navegador
+  // Cliente con la sesión abierta (volvió a la landing desde Mi cuenta):
+  // su conversación está en el chat de clientes, con su historial. El de
+  // visitantes no la tiene, y cambiar de uno a otro olvidaría la suya.
+  const [cliente, setCliente] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    let vigente = true;
+    supabaseCliente()
+      .auth.getSession()
+      .then(({ data }) => vigente && setCliente(Boolean(data?.session)))
+      .catch(() => {});
+    return () => {
+      vigente = false;
+    };
+  }, []);
   const caja = useRef(null);
   const reto = useRef(null);
 
@@ -158,7 +176,7 @@ export default function ContactoFlotante({ whatsapp, whatsappTexto }) {
     };
   }, [abierto]);
 
-  if (!CON_CHAT && !MOSTRAR_WHATSAPP) return null;
+  if (!cliente && !CON_CHAT && !MOSTRAR_WHATSAPP) return null;
 
   return (
     <div ref={caja} className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-3">
@@ -235,9 +253,9 @@ export default function ContactoFlotante({ whatsapp, whatsappTexto }) {
       )}
 
       <button
-        onClick={() => setAbierto((a) => !a)}
+        onClick={() => (cliente ? router.push("/cuenta?chat=1") : setAbierto((a) => !a))}
         aria-expanded={abierto}
-        aria-label={abierto ? "Cerrar" : "Chatea con un asesor"}
+        aria-label={abierto ? "Cerrar" : cliente ? "Ir a mi chat en Mi cuenta" : "Chatea con un asesor"}
         className={
           "group flex items-center gap-2.5 rounded-full bg-marca-900 text-white shadow-[0_12px_30px_rgba(15,27,51,0.4)] ring-1 ring-white/10 transition hover:-translate-y-0.5 hover:bg-marca-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-oro-500 motion-reduce:transition-none motion-reduce:hover:translate-y-0 " +
           (abierto ? "h-14 w-14 justify-center" : "h-14 py-1.5 pl-1.5 pr-1.5 sm:pr-5")
@@ -252,8 +270,8 @@ export default function ContactoFlotante({ whatsapp, whatsappTexto }) {
               <Punto atiende={atiende} className="absolute -right-0.5 -top-0.5 ring-2 ring-marca-900" />
             </span>
             <span className="hidden text-left leading-tight sm:block">
-              <span className="block text-sm font-semibold">Chatea con un asesor</span>
-              <span className="block text-[11px] text-white/65">{atiende === false ? "Déjanos tu mensaje" : "En línea ahora"}</span>
+              <span className="block text-sm font-semibold">{cliente ? "Chatea con tu asesor" : "Chatea con un asesor"}</span>
+              <span className="block text-[11px] text-white/65">{cliente ? "Sigue tu conversación" : atiende === false ? "Déjanos tu mensaje" : "En línea ahora"}</span>
             </span>
           </>
         )}
