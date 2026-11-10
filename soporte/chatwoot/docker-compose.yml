@@ -22,6 +22,8 @@ x-base: &base
     - ./plantillas/devise/mailer/reset_password_instructions.html.erb:/app/app/views/devise/mailer/reset_password_instructions.html.erb:ro
     - ./plantillas/devise/mailer/password_change.html.erb:/app/app/views/devise/mailer/password_change.html.erb:ro
     - ./plantillas/locales/zz_altoque.yml:/app/config/locales/zz_altoque.yml:ro
+    # Página del chat (copia de la v4.19.1) con el límite del campo celular.
+    - ./plantillas/widgets/show.html.erb:/app/app/views/widgets/show.html.erb:ro
     # Tareas propias que se corren con rails runner (ver README).
     - ./tareas:/altoque/tareas:ro
 
