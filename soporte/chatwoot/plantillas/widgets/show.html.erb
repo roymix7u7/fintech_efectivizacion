@@ -60,9 +60,41 @@
           var limpio = el.value.replace(/[^\d +]/g, "").slice(0, MAX);
           if (limpio !== el.value) el.value = limpio;
         }, true);
+        // Archivo muy pesado: el aviso de Chatwoot dice "...adjuntos 40" (sin
+        // "MB"), sale arriba (en el celular queda tapado por el teclado) y
+        // dura 3 s. Se cambia por uno claro, abajo, junto a donde se escribe.
+        var LIMITE_MB = <%= (@global_config['MAXIMUM_FILE_UPLOAD_SIZE'].presence || 40).to_i %>;
+        var aviso = null, temporizador = null;
+        function avisarPeso() {
+          if (!aviso) {
+            aviso = document.createElement("div");
+            aviso.setAttribute("role", "alert");
+            aviso.style.cssText =
+              "position:fixed;left:12px;right:12px;bottom:84px;z-index:2147483647;" +
+              "background:#9F1239;color:#fff;font:600 14px/1.4 system-ui,sans-serif;" +
+              "padding:12px 14px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);text-align:center";
+            aviso.addEventListener("click", function () { aviso.style.display = "none"; });
+            document.body.appendChild(aviso);
+          }
+          aviso.textContent = "El archivo pesa más de " + LIMITE_MB + " MB y no se puede enviar. " +
+            "Envía una foto o un archivo más liviano.";
+          aviso.style.display = "block";
+          clearTimeout(temporizador);
+          temporizador = setTimeout(function () { aviso.style.display = "none"; }, 7000);
+        }
         new MutationObserver(function () {
           var el = document.querySelector('input[name="celular"]');
           if (el) preparar(el);
+          var banners = document.querySelectorAll(".banner");
+          for (var i = 0; i < banners.length; i++) {
+            var b = banners[i];
+            if (b.dataset.altoque) continue;
+            if (/exced|exceed/i.test(b.textContent)) {
+              b.dataset.altoque = "1";
+              b.style.display = "none";
+              avisarPeso();
+            }
+          }
         }).observe(document.documentElement, { childList: true, subtree: true });
       })();
     </script>
