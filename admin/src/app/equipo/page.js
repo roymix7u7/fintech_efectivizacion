@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { actualizar, registrarAuditoria, explicarError } from "@/lib/acciones";
 import { estadoCola, contadoresDe } from "@/lib/cola";
 import { cn } from "@/lib/utils";
-import Shell, { Personas, Mas, Candado } from "@/components/shell";
+import Shell, { Personas, Mas, Candado, Basura } from "@/components/shell";
 import { Vacio, Aviso, Estado } from "@/components/marca";
 import { EsqueletoFilas, BotonAccion, CargaPantalla } from "@/components/carga";
 import { Segmentos, Buscador, Barra, Leyenda, Campo, Dialogo, Tostada, Copiar, Avatar, useConfirmar, IconoCheck } from "@/components/piezas";
@@ -308,6 +308,58 @@ export default function EquipoPage() {
   }
 
   /**
+   * Elimina una cuenta del personal (solo administrador; función
+   * eliminar-staff y migración 074). Si nunca usó el sistema se borra por
+   * completo; si ya trabajó, queda de baja y su historial se conserva.
+   */
+  async function eliminarPersona(persona) {
+    if (persona.id === session.user.id) return setError("No puedes eliminar tu propia cuenta.");
+    const si = await confirmar({
+      titulo: `¿Eliminar a ${persona.email}?`,
+      texto:
+        "Si nunca usó el sistema, su cuenta se borra por completo. Si ya trabajó (revisó, pagó, atendió), queda dada de baja: no puede entrar más, sale de esta lista y su correo queda libre para otra cuenta; lo que hizo se conserva para la auditoría. No se puede deshacer.",
+      boton: "Eliminar",
+      tono: "peligro",
+    });
+    if (!si) return;
+
+    setGuardando(persona.id);
+    setError("");
+    // Primero sale del chat, mientras todavía figura en la lista.
+    if (persona.atiende_chat) {
+      await supabase.rpc("fijar_chat_personal", { p_user: persona.id, p_activo: false });
+      await sincronizarChat({ silencioso: true });
+    }
+    const { data, error: e } = await supabase.functions.invoke("eliminar-staff", { body: { id: persona.id } });
+    setGuardando(null);
+    if (e) {
+      let mensaje = e.message;
+      try {
+        const cuerpo = await e.context?.json?.();
+        if (cuerpo?.error) mensaje = cuerpo.error;
+      } catch {}
+      if (mensaje.includes("Failed to send") || mensaje.includes("not found")) {
+        mensaje = "La función eliminar-staff no está desplegada. Ejecuta: npx supabase functions deploy eliminar-staff";
+      }
+      return setError(mensaje);
+    }
+
+    await registrarAuditoria({
+      usuario_id: session.user.id,
+      accion: data?.resultado === "borrada" ? "ELIMINAR_STAFF" : "BAJA_STAFF",
+      entidad: "users",
+      entidad_id: persona.id,
+      datos_antes: { email: persona.email, rol: persona.rol },
+    });
+    setOk(
+      data?.resultado === "borrada"
+        ? `Se eliminó la cuenta de ${persona.email}.`
+        : `${persona.email} quedó dada de baja: ya no puede entrar y su correo quedó libre. Lo que hizo se conserva.`,
+    );
+    cargar();
+  }
+
+  /**
    * Lleva a Chatwoot lo que dice esta lista (quién atiende el chat, rol,
    * sede y disponibilidad). silencioso: solo avisa si algo cambió o falló.
    */
@@ -327,6 +379,7 @@ export default function EquipoPage() {
         return;
       }
       const partes = [
+        j.altas?.length && `Ya pueden atender el chat: ${j.altas.join(", ")} (entran con el botón "Abrir chat de atención", sin otra contraseña).`,
         j.invitados?.length && `Invitamos al chat a ${j.invitados.join(", ")} (le llega un correo para crear su contraseña).`,
         j.quitados?.length && `Salieron del chat: ${j.quitados.join(", ")}.`,
         j.actualizados?.length && `Rol actualizado en el chat: ${j.actualizados.join(", ")}.`,
@@ -350,8 +403,8 @@ export default function EquipoPage() {
             titulo: `¿${persona.email} atenderá el chat?`,
             texto:
               persona.rol === "supervisor" || persona.rol === "admin"
-                ? "Entrará al chat como jefe: ve todas las conversaciones y los reportes de su sede, sin recibir chats solos. Le llega un correo para crear su contraseña."
-                : "Entrará al chat como asesor y recibirá conversaciones de clientes por turnos. Le llega un correo para crear su contraseña.",
+                ? "Entrará al chat como jefe: ve todas las conversaciones y los reportes de su sede, sin recibir chats solos. Entra con el botón «Abrir chat de atención» del panel, sin otra contraseña."
+                : "Entrará al chat como asesor y recibirá conversaciones de clientes por turnos. Entra con el botón «Abrir chat de atención» del panel, sin otra contraseña.",
             boton: "Sí, atiende el chat",
             tono: "info",
           }
@@ -645,6 +698,20 @@ export default function EquipoPage() {
                             {bloqueado ? "Desbloquear" : "Bloquear"}
                           </BotonAccion>
                         </Pista>
+                        {esAdmin && !yo && (
+                          <Pista texto="Eliminar la cuenta (si ya trabajó, queda de baja y se conserva lo que hizo)" fin>
+                            <BotonAccion
+                              tono="peligroSuave"
+                              tamano="chico"
+                              onClick={() => eliminarPersona(p)}
+                              disabled={guardando === p.id || sincronizando}
+                              icono={<Basura className="h-3.5 w-3.5" />}
+                              className="ml-1.5 mt-1.5 sm:mt-0"
+                            >
+                              <span className="sr-only sm:not-sr-only">Eliminar</span>
+                            </BotonAccion>
+                          </Pista>
+                        )}
                       </td>
                     </tr>
                   );

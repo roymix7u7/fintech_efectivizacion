@@ -527,6 +527,20 @@ else
   hecho "Chatwoot avisa a #{avisos_url} (firmado)"
 end
 
+# ── 13. Entrar desde el panel sin otra contraseña ─────────────────────
+# La Platform App "Panel AlToque" (se crea en /super_admin → Platform Apps;
+# su clave va en Vercel como CHATWOOT_PLATFORM_TOKEN) queda a cargo de la
+# cuenta y del personal: así el panel puede dar de alta asesores sin el
+# correo de invitación y abrirles Chatwoot con un enlace de un solo uso.
+puts "Entrada desde el panel"
+if (app_panel = PlatformApp.find_by(name: "Panel AlToque"))
+  app_panel.platform_app_permissibles.find_or_create_by!(permissible: account)
+  account.users.each { |u| app_panel.platform_app_permissibles.find_or_create_by!(permissible: u) }
+  hecho "Panel AlToque a cargo de la cuenta y de #{account.users.count} persona(s)"
+else
+  puts "  · no existe la Platform App \"Panel AlToque\" (créala en /super_admin → Platform Apps)"
+end
+
 if (visitas = account.inboxes.find_by(name: VISITANTES))
   puts "Chat de visitantes: NEXT_PUBLIC_CHATWOOT_VISITANTES_TOKEN=#{visitas.channel.website_token} (es público)"
 end

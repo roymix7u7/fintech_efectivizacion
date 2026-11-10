@@ -5,6 +5,9 @@ import {
   responder,
   sesionDe,
   chatwootConfigurado,
+  cwPlataforma,
+  plataformaConfigurada,
+  claveAlAzar,
   ROL_CHATWOOT,
   DISPONIBILIDAD_CHATWOOT,
 } from "@/lib/chatwootApi";
@@ -41,6 +44,22 @@ const nombreDe = (correo) =>
     .map((p) => p[0].toUpperCase() + p.slice(1))
     .join(" ") || correo;
 
+/**
+ * Alta en Chatwoot sin correo de invitación: la persona entra con el botón
+ * "Abrir chat de atención" del panel (/api/atencion/entrar), así que no
+ * necesita una contraseña de Chatwoot. Requiere la app de plataforma y que
+ * la cuenta esté a su cargo (configurar.rb). Devuelve el agente o null.
+ */
+async function altaSinInvitacion(correo, rol) {
+  if (!plataformaConfigurada()) return null;
+  const usuario = await cwPlataforma("/users", {
+    metodo: "POST",
+    cuerpo: { email: correo, name: nombreDe(correo), password: claveAlAzar() },
+  });
+  await cwPlataforma("/accounts/:cuenta/account_users", { metodo: "POST", cuerpo: { user_id: usuario.id, role: rol } });
+  return { id: usuario.id, email: correo, name: usuario.name, role: rol };
+}
+
 export async function POST(req) {
   if (!chatwootConfigurado()) {
     return responder({ error: "El chat no está configurado en este servidor (CHATWOOT_URL y CHATWOOT_API_TOKEN)." }, 503);
@@ -57,7 +76,7 @@ export async function POST(req) {
     return responder({ error: "Falta aplicar en Supabase la migración 20261109000071_chat_personal.sql." }, 409);
   }
 
-  const r = { invitados: [], actualizados: [], quitados: [], avisos: [] };
+  const r = { altas: [], invitados: [], actualizados: [], quitados: [], avisos: [] };
   try {
     const [perfil, agentesRaw, inboxesRaw, teamsRaw, reglasRaw, etiquetasRaw] = await Promise.all([
       cw("/api/v1/profile"),
@@ -87,13 +106,19 @@ export async function POST(req) {
       }
       if (quiere) {
         if (!a) {
-          a = await cw("/api/v1/accounts/:cuenta/agents", {
-            metodo: "POST",
-            cuerpo: { name: nombreDe(correo), email: correo, role: rol },
-          });
+          a = await altaSinInvitacion(correo, rol).catch(() => null);
+          if (a) {
+            r.altas.push(correo);
+          } else {
+            // Sin la app de plataforma: invitación por correo (crea su clave de Chatwoot).
+            a = await cw("/api/v1/accounts/:cuenta/agents", {
+              metodo: "POST",
+              cuerpo: { name: nombreDe(correo), email: correo, role: rol },
+            });
+            r.invitados.push(correo);
+          }
           porCorreo.set(correo, a);
           gestionados.add(a.id);
-          r.invitados.push(correo);
         } else if (a.role !== rol) {
           a = await cw(`/api/v1/accounts/:cuenta/agents/${a.id}`, { metodo: "PATCH", cuerpo: { role: rol } });
           r.actualizados.push(correo);

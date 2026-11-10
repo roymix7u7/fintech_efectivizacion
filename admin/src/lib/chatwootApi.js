@@ -38,6 +38,42 @@ export async function cw(ruta, { metodo = "GET", cuerpo, params } = {}) {
   return texto ? JSON.parse(texto) : null;
 }
 
+/**
+ * API de plataforma de Chatwoot (Platform App "Panel AlToque", clave en
+ * CHATWOOT_PLATFORM_TOKEN). Sirve para que el personal entre a Chatwoot
+ * desde el panel sin una segunda contraseña (/api/atencion/entrar) y para
+ * darlos de alta sin el correo de invitación (sincronizar).
+ */
+const CW_PLATAFORMA = process.env.CHATWOOT_PLATFORM_TOKEN;
+export const plataformaConfigurada = () => Boolean(CW_URL && CW_PLATAFORMA);
+
+export async function cwPlataforma(ruta, { metodo = "GET", cuerpo } = {}) {
+  const r = await fetch(`${CW_URL}/platform/api/v1${ruta.replace(":cuenta", CW_CUENTA)}`, {
+    method: metodo,
+    headers: { api_access_token: CW_PLATAFORMA, ...(cuerpo && { "Content-Type": "application/json" }) },
+    body: cuerpo ? JSON.stringify(cuerpo) : undefined,
+    cache: "no-store",
+  });
+  if (!r.ok) {
+    let detalle = "";
+    try {
+      const j = await r.json();
+      detalle = j.message || j.error || "";
+    } catch {}
+    throw new Error(`Chatwoot (plataforma) respondió ${r.status}${detalle ? `: ${detalle}` : ""}`);
+  }
+  const texto = await r.text();
+  return texto ? JSON.parse(texto) : null;
+}
+
+/** Contraseña al azar para quien solo entra desde el panel (nunca se usa ni se muestra). */
+export function claveAlAzar() {
+  const b = new Uint8Array(24);
+  crypto.getRandomValues(b);
+  // Chatwoot exige mayúscula, minúscula, número y símbolo.
+  return `Aa1!${Buffer.from(b).toString("base64url")}`;
+}
+
 /** Lista de una respuesta de Chatwoot, venga como arreglo o como { payload }. */
 export const lista = (x) => (Array.isArray(x) ? x : x?.payload || []);
 

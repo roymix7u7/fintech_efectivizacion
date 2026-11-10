@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { Logo } from "@/components/marca";
 import Pista from "@/components/pista";
 import Disponibilidad from "@/components/disponibilidad";
+import AbrirChat from "@/components/abrirChat";
 
 /**
  * Menú del panel.
@@ -530,6 +531,7 @@ export default function Shell({
           <div className="mt-1">
             <Disponibilidad compacta={compacta} />
           </div>
+          <AbrirChat userId={session.user.id} compacta={compacta} />
           <div className={cn("mt-1 flex gap-1", compacta ? "lg:flex-col" : "")}>
             <BotonBarra
               onClick={salir}
