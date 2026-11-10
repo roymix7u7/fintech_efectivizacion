@@ -8,6 +8,7 @@ import { actualizar, registrarAuditoria, explicarError } from "@/lib/acciones";
 import { estadoCola, contadoresDe } from "@/lib/cola";
 import { cn } from "@/lib/utils";
 import Shell, { Personas, Mas, Candado, Basura } from "@/components/shell";
+import { fijarAccesoChat } from "@/components/abrirChat";
 import { Vacio, Aviso, Estado } from "@/components/marca";
 import { EsqueletoFilas, BotonAccion, CargaPantalla } from "@/components/carga";
 import { Segmentos, Buscador, Barra, Leyenda, Campo, Dialogo, Tostada, Copiar, Avatar, useConfirmar, IconoCheck } from "@/components/piezas";
@@ -430,6 +431,7 @@ export default function EquipoPage() {
       entidad_id: persona.id,
     });
     setEquipo((lista) => lista.map((x) => (x.id === persona.id ? { ...x, atiende_chat: activar } : x)));
+    if (persona.id === session.user.id) fijarAccesoChat(persona.id, activar);
     await sincronizarChat();
   }
 

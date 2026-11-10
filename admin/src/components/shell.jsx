@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Popover } from "radix-ui";
-import { logout } from "@/lib/auth";
+import { logout, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { estadoCola, contadoresDe } from "@/lib/cola";
 import { cn } from "@/lib/utils";
@@ -258,6 +258,8 @@ let pedidosEn = 0;
 
 async function pedirContadores(rol) {
   const salida = {};
+  // Recién cerrada la sesión no se pide nada (sin sesión la base lo rechaza).
+  if (!sesionEnCache()) return salida;
   const tareas = [];
 
   if (["admin", "supervisor", "gestor"].includes(rol)) {

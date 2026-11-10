@@ -14,6 +14,12 @@ import Pista from "@/components/pista";
  */
 let atiende = null; // { id, activo }
 
+/** Equipo lo llama al cambiar el "Chat" de uno mismo: el botón se actualiza al instante. */
+export function fijarAccesoChat(id, activo) {
+  atiende = { id, activo };
+  window.dispatchEvent(new CustomEvent("atk:acceso-chat", { detail: atiende }));
+}
+
 export default function AbrirChat({ userId, compacta }) {
   const [activo, setActivo] = useState(atiende?.id === userId ? atiende.activo : false);
   const [abriendo, setAbriendo] = useState(false);
@@ -34,6 +40,12 @@ export default function AbrirChat({ userId, compacta }) {
     return () => {
       vigente = false;
     };
+  }, [userId]);
+
+  useEffect(() => {
+    const alCambiar = (e) => e.detail?.id === userId && setActivo(e.detail.activo);
+    window.addEventListener("atk:acceso-chat", alCambiar);
+    return () => window.removeEventListener("atk:acceso-chat", alCambiar);
   }, [userId]);
 
   useEffect(() => {
