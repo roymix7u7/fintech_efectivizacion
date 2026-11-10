@@ -615,9 +615,11 @@ export default function PagosPage() {
       .createSignedUrl(path, 300);
     if (e || !data?.signedUrl) {
       setComprobante(null);
-      return setError(
-        "No se pudo abrir el comprobante: " + (e?.message || "sin URL"),
-      );
+      // El archivo no está guardado (p. ej. una solicitud de prueba sin foto).
+      if (/not found/i.test(e?.message || "")) {
+        return setError("Esta solicitud no tiene la foto del comprobante guardada. Pídesela al cliente si la necesitas.");
+      }
+      return setError("No se pudo abrir el comprobante. Revisa tu conexión e inténtalo de nuevo.");
     }
     setComprobante({ url: data.signedUrl });
   }
