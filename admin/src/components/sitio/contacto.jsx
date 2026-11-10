@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { chatDisponible, cargarChatwoot } from "@/lib/chatwoot";
+import { HORARIO } from "./datos";
 
 /**
- * Contacto flotante de la landing: chat con un asesor o WhatsApp.
+ * Botón flotante de la landing: chat con un asesor.
  *
  * El chat es para quien todavía no tiene cuenta (bandeja "Visitantes web"
  * de Chatwoot). Para que no lo saturen con bots:
@@ -15,9 +16,13 @@ import { chatDisponible, cargarChatwoot } from "@/lib/chatwoot";
  *   3. Chatwoot pide nombre y celular, limita mensajes por IP y solo
  *      deja mostrar el chat desde nuestros dominios.
  *
- * Sin NEXT_PUBLIC_CHATWOOT_VISITANTES_TOKEN o la clave de Turnstile,
- * queda solo WhatsApp.
+ * WhatsApp está oculto por ahora: para volver a mostrarlo en la tarjeta,
+ * MOSTRAR_WHATSAPP = true (el enlace ya llega por props desde la landing).
+ *
+ * Sin NEXT_PUBLIC_CHATWOOT_VISITANTES_TOKEN o la clave de Turnstile (y con
+ * WhatsApp oculto) el botón no se muestra.
  */
+const MOSTRAR_WHATSAPP = false;
 const TOKEN = process.env.NEXT_PUBLIC_CHATWOOT_VISITANTES_TOKEN;
 const SITIO_TURNSTILE = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 const CON_CHAT = chatDisponible(TOKEN) && Boolean(SITIO_TURNSTILE);
@@ -54,8 +59,16 @@ export default function ContactoFlotante({ whatsapp, whatsappTexto }) {
   const [paso, setPaso] = useState("opciones"); // opciones | verificando | cargando
   const [error, setError] = useState("");
   const [chatListo, setChatListo] = useState(false);
+  const [atiende, setAtiende] = useState(null); // se calcula en el navegador
   const caja = useRef(null);
   const reto = useRef(null);
+
+  useEffect(() => {
+    const revisar = () => setAtiende(atiendeAhora());
+    revisar();
+    const t = setInterval(revisar, 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   const abrirChat = useCallback(async () => {
     setPaso("cargando");
@@ -66,7 +79,7 @@ export default function ContactoFlotante({ whatsapp, whatsappTexto }) {
       setPaso("opciones");
       cw.toggle("open");
     } catch (e) {
-      setError(e.message || "No se pudo abrir el chat. Escríbenos por WhatsApp.");
+      setError(e.message || "No se pudo abrir el chat. Inténtalo de nuevo en un momento.");
       setPaso("opciones");
     }
   }, []);
@@ -114,7 +127,7 @@ export default function ContactoFlotante({ whatsapp, whatsappTexto }) {
           },
           "error-callback": () => {
             if (!vigente) return;
-            setError("No pudimos verificarte. Inténtalo de nuevo o escríbenos por WhatsApp.");
+            setError("No pudimos verificarte. Inténtalo de nuevo.");
             setPaso("opciones");
           },
         });
@@ -145,17 +158,27 @@ export default function ContactoFlotante({ whatsapp, whatsappTexto }) {
     };
   }, [abierto]);
 
+  if (!CON_CHAT && !MOSTRAR_WHATSAPP) return null;
+
   return (
     <div ref={caja} className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-3">
       {abierto && (
         <div
           role="dialog"
-          aria-label="Contáctanos"
-          className="w-[300px] max-w-[calc(100vw-2.5rem)] overflow-hidden rounded-2xl bg-white text-marca-900 shadow-[0_24px_60px_rgba(15,27,51,0.35)]"
+          aria-label="Chatea con un asesor"
+          className="w-[320px] max-w-[calc(100vw-2.5rem)] overflow-hidden rounded-2xl bg-white text-marca-900 shadow-[0_24px_60px_rgba(15,27,51,0.35)]"
         >
-          <div className="bg-marca-900 px-4 py-3.5 text-white">
-            <p className="font-heading text-base font-semibold">¿En qué te ayudamos?</p>
-            <p className="mt-0.5 text-xs text-white/65">Lunes a sábado, 9:00 a. m. a 6:00 p. m.</p>
+          <div className="flex items-center gap-3 bg-marca-900 px-4 py-4 text-white">
+            <span className="relative shrink-0">
+              <MarcaAtk className="h-11 w-11" />
+              <Punto atiende={atiende} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-marca-900" />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-heading text-base font-semibold leading-tight">AlToque Perú WK</span>
+              <span className="mt-0.5 block text-xs text-white/70">
+                {atiende === false ? "Fuera de horario: te respondemos desde las 9:00 a. m." : "Asesores en línea: respondemos en minutos"}
+              </span>
+            </span>
           </div>
 
           <div className="space-y-2 p-3">
@@ -169,32 +192,35 @@ export default function ContactoFlotante({ whatsapp, whatsappTexto }) {
               </div>
             ) : (
               <>
+                <p className="px-1 pb-1 text-sm text-marca-600">
+                  ¿Dudas sobre comisiones, bancos o cómo efectivizar tu tarjeta? Escríbenos.
+                </p>
                 {CON_CHAT && (
                   <button
                     onClick={pedirChat}
                     disabled={paso === "cargando"}
-                    className="flex w-full items-center gap-3 rounded-xl bg-marca-900 px-3.5 py-3 text-left text-white transition hover:bg-marca-700 disabled:opacity-70"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-oro-500 px-4 py-3 text-sm font-semibold text-marca-900 transition hover:bg-oro-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marca-900 disabled:opacity-70"
                   >
-                    <IconoChat className="h-5 w-5 shrink-0 text-oro-500" />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold">{paso === "cargando" ? "Abriendo el chat…" : "Chatear aquí"}</span>
-                      <span className="block text-xs text-white/65">Te responde un asesor</span>
-                    </span>
+                    <IconoChat className="h-5 w-5 shrink-0" />
+                    {paso === "cargando" ? "Abriendo el chat…" : "Empezar chat"}
                   </button>
                 )}
-                <a
-                  href={whatsapp}
-                  target="_blank"
-                  rel="noopener"
-                  className="flex w-full items-center gap-3 rounded-xl border border-marca-100 px-3.5 py-3 transition hover:bg-marca-50"
-                >
-                  <IconoWhatsapp className="h-5 w-5 shrink-0 text-[#25D366]" />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold">WhatsApp</span>
-                    <span className="block text-xs text-marca-500">{whatsappTexto}</span>
-                  </span>
-                </a>
+                {MOSTRAR_WHATSAPP && whatsapp && (
+                  <a
+                    href={whatsapp}
+                    target="_blank"
+                    rel="noopener"
+                    className="flex w-full items-center gap-3 rounded-xl border border-marca-100 px-3.5 py-3 transition hover:bg-marca-50"
+                  >
+                    <IconoWhatsapp className="h-5 w-5 shrink-0 text-[#25D366]" />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold">WhatsApp</span>
+                      <span className="block text-xs text-marca-500">{whatsappTexto}</span>
+                    </span>
+                  </a>
+                )}
                 {error && <p className="px-1 text-xs font-semibold text-red-700">{error}</p>}
+                <p className="px-1 text-[11px] text-marca-500">{HORARIO.dias}, {HORARIO.horas}</p>
               </>
             )}
           </div>
@@ -211,14 +237,58 @@ export default function ContactoFlotante({ whatsapp, whatsappTexto }) {
       <button
         onClick={() => setAbierto((a) => !a)}
         aria-expanded={abierto}
-        aria-label={abierto ? "Cerrar contacto" : "Contáctanos"}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-oro-500 text-marca-900 shadow-[0_12px_30px_rgba(232,184,0,0.45)] transition hover:scale-105"
+        aria-label={abierto ? "Cerrar" : "Chatea con un asesor"}
+        className={
+          "group flex items-center gap-2.5 rounded-full bg-marca-900 text-white shadow-[0_12px_30px_rgba(15,27,51,0.4)] ring-1 ring-white/10 transition hover:-translate-y-0.5 hover:bg-marca-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-oro-500 motion-reduce:transition-none motion-reduce:hover:translate-y-0 " +
+          (abierto ? "h-14 w-14 justify-center" : "h-14 py-1.5 pl-1.5 pr-1.5 sm:pr-5")
+        }
       >
-        {abierto ? <IconoCerrar className="h-6 w-6" /> : <IconoChat className="h-7 w-7" />}
+        {abierto ? (
+          <IconoCerrar className="h-6 w-6 text-oro-500" />
+        ) : (
+          <>
+            <span className="relative shrink-0">
+              <MarcaAtk className="h-11 w-11" />
+              <Punto atiende={atiende} className="absolute -right-0.5 -top-0.5 ring-2 ring-marca-900" />
+            </span>
+            <span className="hidden text-left leading-tight sm:block">
+              <span className="block text-sm font-semibold">Chatea con un asesor</span>
+              <span className="block text-[11px] text-white/65">{atiende === false ? "Déjanos tu mensaje" : "En línea ahora"}</span>
+            </span>
+          </>
+        )}
       </button>
     </div>
   );
 }
+
+/** ¿Hay atención ahora? Lunes a sábado de 9:00 a 18:00, hora de Lima. */
+function atiendeAhora() {
+  const partes = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/Lima", weekday: "short", hour: "numeric", hourCycle: "h23" })
+      .formatToParts(new Date())
+      .map((p) => [p.type, p.value])
+  );
+  const hora = Number(partes.hour);
+  return partes.weekday !== "Sun" && hora >= 9 && hora < 18;
+}
+
+/** Verde si hay asesores en horario; gris fuera de horario. Antes de saberlo, nada. */
+const Punto = ({ atiende, className = "" }) =>
+  atiende == null ? null : (
+    <span
+      aria-hidden
+      className={`block h-3 w-3 rounded-full ${atiende ? "bg-emerald-400" : "bg-marca-300"} ${className}`}
+    />
+  );
+
+/** La "Λ" dorada del logo ATK sobre un círculo azul. */
+const MarcaAtk = (p) => (
+  <svg viewBox="0 0 44 44" aria-hidden {...p}>
+    <circle cx="22" cy="22" r="22" fill="#1B2A4A" />
+    <path d="M22 9.5 L33 33 H27.6 L22 20.6 L16.4 33 H11 Z" fill="#E8B800" />
+  </svg>
+);
 
 const IconoChat = (p) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden {...p}>
