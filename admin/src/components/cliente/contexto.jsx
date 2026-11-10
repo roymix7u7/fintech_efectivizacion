@@ -20,6 +20,7 @@ import { Encabezado, Aviso, Boton, Cargando } from "./piezas";
 import MarcoCuenta from "./barra";
 import MisAvisos from "./avisos";
 import MenuUsuario from "./usuario";
+import ChatSoporte from "./soporte";
 
 /**
  * Sesión de Mi cuenta, compartida por /cuenta y sus pantallas (nueva
@@ -38,6 +39,17 @@ const PANTALLAS = {
   "/cuenta/solicitud-nueva": "nueva",
   "/cuenta/tarjeta-nueva": "tarjeta",
   "/cuenta/cuenta-nueva": "cuenta",
+};
+// Como se llaman en la barra lateral: así las ve el asesor en el chat.
+const NOMBRE_PANTALLA = {
+  resumen: "Resumen",
+  solicitudes: "Solicitudes",
+  bancos: "Tarjetas y cuentas",
+  noticias: "Noticias",
+  perfil: "Mi perfil",
+  nueva: "Nueva solicitud",
+  tarjeta: "Agregar tarjeta",
+  cuenta: "Agregar cuenta",
 };
 
 export function ProveedorCuenta({ children }) {
@@ -284,6 +296,18 @@ export function ProveedorCuenta({ children }) {
     <CuentaCtx.Provider value={valor}>
       <Encabezado derecha={derecha} completo={estado === "activo"} />
       {contenido}
+      {usuario && estado && estado !== "bloqueado" && (
+        <ChatSoporte
+          sb={sb}
+          usuarioId={usuario.id}
+          sobreBarra={estado === "activo"}
+          pantalla={
+            estado === "activo"
+              ? NOMBRE_PANTALLA[ruta === "/cuenta" ? vista : PANTALLAS[ruta]]
+              : "Revisión de su cuenta"
+          }
+        />
+      )}
     </CuentaCtx.Provider>
   );
 }

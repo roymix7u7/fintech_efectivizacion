@@ -645,3 +645,11 @@ html:has(.sitio-publico) {
   from { opacity: 0; transform: translateY(4px) scale(0.98); }
   to { opacity: 1; transform: none; }
 }
+
+/* Burbuja del chat de atención (components/cliente/soporte.jsx): en el
+   celular sube por encima de la barra inferior de Mi cuenta. */
+@media (max-width: 1023px) {
+  body.chat-sobre-barra .woot-widget-bubble {
+    bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+  }
+}

@@ -1,0 +1,12 @@
+# Asuntos de los correos de cuenta en español. Se carga después de los
+# de Chatwoot (por eso el "zz_") y los reemplaza. Ver docker-compose.yml.
+en: &asuntos
+  devise:
+    mailer:
+      confirmation_instructions:
+        subject: "Tu cuenta de atención al cliente de AlToque"
+      reset_password_instructions:
+        subject: "Cambia tu contraseña de AlToque"
+      password_change:
+        subject: "Tu contraseña de AlToque cambió"
+es: *asuntos

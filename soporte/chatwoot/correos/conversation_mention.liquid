@@ -1,0 +1,23 @@
+<tr><td style="padding: 0 0 6px;"><span style="display: inline-block; padding: 5px 10px; border-radius: 999px; background-color: #FFF6D6; color: #8C6A00; font-size: 11px; line-height: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">Mención</span></td></tr>
+<tr><td style="padding: 8px 0 10px;"><h1 style="margin: 0; font-size: 26px; line-height: 32px; font-weight: 700; color: #0F1B33;">Te mencionaron en una conversación</h1></td></tr>
+<tr><td style="padding: 0 0 16px;"><p style="margin: 0; font-size: 14px; line-height: 22px; color: #3D4A63;">Hola. <strong>{{ message.sender_display_name }}</strong> te mencionó en la conversación <strong>#{{ conversation.display_id }}</strong>:</p></td></tr>
+<tr><td style="padding: 0 0 20px;"><p style="margin: 0; padding: 12px 16px; border-left: 4px solid #E8B800; background-color: #FFFBEB; border-radius: 8px; font-size: 14px; line-height: 21px; color: #0F1B33;">{{ message.text_content }}</p></td></tr>
+<tr><td style="padding: 0 0 8px;"><p style="margin: 0; font-size: 12px; font-weight: 700; color: #6B7891; text-transform: uppercase; letter-spacing: 0.06em;">Mensajes anteriores</p></td></tr>
+<tr><td style="padding: 0 0 20px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border: 1px solid #DDE3EE; border-radius: 14px; background-color: #F6F8FB;">
+    {% for chat_message in conversation.recent_messages %}
+      <tr><td style="padding: 14px 18px;{% unless forloop.first %} border-top: 1px solid #E4E8F0;{% endunless %}">
+        <p style="margin: 0 0 4px; font-size: 12px; line-height: 16px; font-weight: 700; color: #6B7891;">
+          {% if chat_message.sender == user.available_name %}Tú{% else %}{{ chat_message.sender }}{% endif %}
+        </p>
+        <p style="margin: 0; font-size: 14px; line-height: 21px; color: #0F1B33; unicode-bidi: plaintext;">
+          {% if chat_message.content %}{{ chat_message.content }}{% endif %}
+          {% if chat_message.attachments %}{% for attachment in chat_message.attachments %}<br /><a href="{{ attachment }}" target="_blank" style="color: #1B2A4A; font-weight: 600;">Ver archivo adjunto</a>{% endfor %}{% endif %}
+        </p>
+      </td></tr>
+    {% endfor %}
+  </table>
+</td></tr>
+<tr><td style="padding: 4px 0 24px;">
+  <a href="{{ action_url }}" target="_blank" style="display: inline-block; padding: 12px 22px; border-radius: 10px; background-color: #0F1B33; color: #FFFFFF; font-size: 14px; font-weight: 700; text-decoration: none;">Abrir la conversación</a>
+</td></tr>

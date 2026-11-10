@@ -1,0 +1,29 @@
+# Se suma a docker-compose.yml en el servidor (no en la PC):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.servidor.yml up -d
+#
+# Agrega Caddy, que atiende https://chat.<dominio> con certificado
+# automático (Let's Encrypt) y le pasa todo a Chatwoot. Chatwoot deja de
+# escuchar en un puerto propio: solo se llega a él a través de Caddy.
+
+services:
+  rails:
+    ports: !reset []
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on:
+      - rails
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,79 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="es">
+  <head>
+    <meta name="viewport" content="width=device-width" />
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>AlToque Perú WK</title>
+    <style type="text/css">
+      img { max-width: 100%; border: none; }
+      body { margin: 0; padding: 0; width: 100% !important; -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: none; background-color: #EEF1F6; }
+      table { border-collapse: separate; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+      a { color: #1B2A4A; }
+      @media only screen and (max-width: 640px) {
+        .page-wrap { padding: 16px 10px 28px !important; }
+        .content-wrap { padding: 28px 22px 12px !important; }
+        h1 { font-size: 24px !important; line-height: 30px !important; }
+      }
+    </style>
+  </head>
+  {% comment %}
+    Diseño de los correos de Chatwoot con la imagen de AlToque. Lo carga
+    soporte/chatwoot/configurar.rb. La marca content_for_layout (más
+    abajo) es donde cada correo pone su contenido: no se borra.
+  {% endcomment %}
+  <body style="margin: 0; padding: 0; background-color: #EEF1F6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 21px; color: #1B2A4A;" bgcolor="#EEF1F6">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; background-color: #EEF1F6;" bgcolor="#EEF1F6">
+      <tr>
+        <td align="center" class="page-wrap" style="padding: 32px 16px 40px;" valign="top">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 600px; margin: 0 auto;">
+            <tr>
+              <td>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-radius: 18px; overflow: hidden; background-color: #FFFFFF; border: 1px solid #DDE3EE;" bgcolor="#FFFFFF">
+                  <!-- Cabecera: el logo sobre el azul de la marca y la línea dorada. -->
+                  <tr>
+                    <td style="background-color: #0F1B33; padding: 22px 32px;" bgcolor="#0F1B33">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td valign="middle">
+                            <img src="https://www.panel-admin-atk-mobil.com/logo.png" alt="ATK" width="96" style="display: block; width: 96px; height: auto;" />
+                          </td>
+                          <td valign="middle" align="right" style="color: #C9D2E3; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;">
+                            Atención al cliente
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="height: 4px; background-color: #E8B800; font-size: 0; line-height: 0;" bgcolor="#E8B800">&nbsp;</td>
+                  </tr>
+                  <tr>
+                    <td class="content-wrap" style="padding: 36px 32px 16px;" valign="top">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%;">
+                        {{ content_for_layout }}
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 20px 12px 0; text-align: center; color: #6B7891; font-size: 12px; line-height: 19px;">
+                <strong style="color: #1B2A4A;">AlToque Perú WK</strong> · Lince · San Juan de Miraflores · Los Olivos<br />
+                Lunes a sábado, de 9:00 a. m. a 6:00 p. m.
+              </td>
+            </tr>
+            {% if notification_settings_url != nil and notification_settings_url != '' %}
+              <tr>
+                <td style="padding: 8px 12px 0; text-align: center; color: #6B7891; font-size: 12px; line-height: 19px;">
+                  Te llega este correo porque tienes activados los avisos por correo.
+                  <a href="{{ notification_settings_url }}" style="color: #1B2A4A; font-weight: 600;">Cambiar mis avisos</a>.
+                </td>
+              </tr>
+            {% endif %}
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

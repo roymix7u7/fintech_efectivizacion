@@ -1,157 +1,243 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
+import { Popover } from "radix-ui";
 import { logout } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { estadoCola, contadoresDe } from "@/lib/cola";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/marca";
 import Pista from "@/components/pista";
+import Disponibilidad from "@/components/disponibilidad";
 
 /**
- * Secciones del panel, agrupadas por para qué se usan. Los roles se
- * repiten aquí y en cada página a propósito: esto solo decide qué se ve,
- * la página decide qué se puede abrir, y las políticas RLS deciden qué
- * se puede tocar de verdad.
+ * Menú del panel.
+ *
+ * Cada entrada es una pantalla suelta (Resumen) o un grupo con sus
+ * pantallas. Los grupos siguen el recorrido del negocio: primero lo que
+ * se trabaja todos los días (Operación), luego las personas (Clientes),
+ * cómo está armada la empresa (Organización), lo que se publica en la
+ * app y, al final, lo legal.
+ *
+ * Para sumar una pantalla nueva basta con agregarla al grupo que le
+ * toca (o crear un grupo) con su ruta, título, detalle, roles e ícono.
+ * La barra, el submenú, la burbuja de la barra plegada, la migaja de la
+ * cabecera y la guardia de rutas salen solos de aquí.
+ *
+ * Los roles se repiten aquí y en cada página a propósito: esto solo
+ * decide qué se ve, la página decide qué se puede abrir, y las políticas
+ * RLS deciden qué se puede tocar de verdad.
+ *
+ * `enGrupo` es el nombre corto que se usa dentro del submenú, cuando el
+ * grupo ya da el contexto ("Clientes › Directorio").
  */
-export const SECCIONES = [
+export const MENU = [
   {
     ruta: "/dashboard",
     titulo: "Resumen",
     detalle: "Lo pendiente de hoy, de un vistazo",
     roles: ["admin", "supervisor", "gestor"],
     icono: Cuadricula,
-    grupo: null,
   },
   {
-    ruta: "/solicitudes",
-    titulo: "Solicitudes",
-    detalle: "Comprobantes que envían los clientes para cobrar",
-    roles: ["admin", "supervisor", "gestor"],
-    icono: Documento,
-    contador: "solicitudesPendientes",
     grupo: "Operación",
+    detalle: "Lo que se revisa y se paga cada día",
+    icono: Bandeja,
+    items: [
+      {
+        ruta: "/kyc",
+        titulo: "Verificación",
+        detalle: "Documentos de identidad de los clientes nuevos",
+        roles: ["admin", "supervisor", "gestor"],
+        icono: Persona,
+        contador: "kycPendientes",
+      },
+      {
+        ruta: "/tarjetas",
+        titulo: "Tarjetas",
+        detalle: "Tarjetas que registran los clientes y hay que verificar",
+        roles: ["admin", "supervisor", "gestor"],
+        icono: Tarjeta,
+        contador: "tarjetasPendientes",
+      },
+      {
+        ruta: "/solicitudes",
+        titulo: "Solicitudes",
+        detalle: "Comprobantes que envían los clientes para cobrar",
+        roles: ["admin", "supervisor", "gestor"],
+        icono: Documento,
+        contador: "solicitudesPendientes",
+      },
+      {
+        ruta: "/pagos",
+        titulo: "Pagos",
+        detalle: "Transferencias a los clientes, por banco",
+        roles: ["admin", "pagos"],
+        icono: Billete,
+        contador: "porPagar",
+      },
+    ],
   },
   {
-    ruta: "/kyc",
-    titulo: "Verificación",
-    detalle: "Documentos de identidad de los clientes nuevos",
-    roles: ["admin", "supervisor", "gestor"],
+    grupo: "Clientes",
+    detalle: "Buscar, registrar y atender a los clientes",
     icono: Persona,
-    contador: "kycPendientes",
-    grupo: "Operación",
+    items: [
+      {
+        ruta: "/clientes",
+        titulo: "Clientes",
+        enGrupo: "Directorio",
+        detalle: "Buscar clientes, ver sus datos y su cupón",
+        roles: ["admin", "supervisor", "pagos"],
+        icono: Lupa,
+      },
+      {
+        ruta: "/alta-presencial",
+        titulo: "Nuevo cliente",
+        detalle: "Registrar en el local a un cliente que viene en persona",
+        roles: ["admin", "supervisor", "gestor"],
+        icono: PersonaMas,
+      },
+      {
+        ruta: "/atencion",
+        titulo: "Atención al cliente",
+        enGrupo: "Atención",
+        detalle: "Chats de tu sede: tiempos, asesores y satisfacción",
+        roles: ["admin", "supervisor"],
+        icono: Burbuja,
+      },
+    ],
   },
   {
-    ruta: "/tarjetas",
-    titulo: "Tarjetas",
-    detalle: "Tarjetas que registran los clientes y hay que verificar",
-    roles: ["admin", "supervisor", "gestor"],
-    icono: Tarjeta,
-    contador: "tarjetasPendientes",
-    grupo: "Operación",
-  },
-  {
-    ruta: "/alta-presencial",
-    titulo: "Nuevo cliente",
-    detalle: "Registrar en el local a un cliente que viene en persona",
-    roles: ["admin", "supervisor", "gestor"],
-    icono: PersonaMas,
-    grupo: "Operación",
-  },
-  {
-    ruta: "/pagos",
-    titulo: "Pagos",
-    detalle: "Transferencias a los clientes, por banco",
-    roles: ["admin", "pagos"],
-    icono: Billete,
-    contador: "porPagar",
-    grupo: "Operación",
-  },
-  {
-    ruta: "/clientes",
-    titulo: "Clientes",
-    detalle: "Buscar clientes, ver sus datos y su cupón",
-    roles: ["admin", "supervisor", "pagos"],
-    icono: Lupa,
-    grupo: "Gestión",
-  },
-  {
-    ruta: "/comisiones",
-    titulo: "Comisiones",
-    detalle: "Tarifa estándar, cupones y comisiones especiales",
-    roles: ["admin", "supervisor"],
-    icono: Porcentaje,
-    grupo: "Gestión",
-  },
-  {
-    ruta: "/equipo",
-    titulo: "Equipo",
-    detalle: "Personal, roles, sedes y rendimiento",
-    roles: ["admin", "supervisor"],
-    icono: Personas,
-    grupo: "Gestión",
-  },
-  {
-    ruta: "/sedes",
-    titulo: "Sedes",
-    detalle: "Oficinas y quién las supervisa",
-    roles: ["admin"],
+    grupo: "Organización",
+    detalle: "Personal, oficinas y tarifas",
     icono: Edificio,
-    grupo: "Gestión",
+    items: [
+      {
+        ruta: "/equipo",
+        titulo: "Equipo",
+        detalle: "Personal, roles, sedes y rendimiento",
+        roles: ["admin", "supervisor"],
+        icono: Personas,
+      },
+      {
+        ruta: "/sedes",
+        titulo: "Sedes",
+        detalle: "Oficinas y quién las supervisa",
+        roles: ["admin"],
+        icono: Edificio,
+      },
+      {
+        ruta: "/comisiones",
+        titulo: "Comisiones",
+        detalle: "Tarifa estándar, cupones y comisiones especiales",
+        roles: ["admin", "supervisor"],
+        icono: Porcentaje,
+      },
+    ],
   },
   {
-    ruta: "/alertas",
-    titulo: "Noticias y alertas",
+    grupo: "App de clientes",
     detalle: "Lo que ven los clientes en la app",
-    roles: ["admin"],
-    icono: Megafono,
-    grupo: "Contenido de la app",
+    icono: Celular,
+    items: [
+      {
+        ruta: "/alertas",
+        titulo: "Noticias y alertas",
+        detalle: "Avisos y novedades que aparecen en la app",
+        roles: ["admin"],
+        icono: Megafono,
+      },
+      {
+        ruta: "/guias",
+        titulo: "Guías de banco",
+        detalle: "Pasos para operar en la app de cada banco",
+        roles: ["admin"],
+        icono: Libro,
+      },
+    ],
   },
   {
-    ruta: "/guias",
-    titulo: "Guías de banco",
-    detalle: "Pasos para operar en la app de cada banco",
-    roles: ["admin"],
-    icono: Libro,
-    grupo: "Contenido de la app",
-  },
-  {
-    ruta: "/reclamaciones",
-    titulo: "Reclamaciones",
-    detalle: "Libro de Reclamaciones: plazo de respuesta legal",
-    roles: ["admin", "supervisor"],
-    icono: Reclamo,
-    contador: "reclamosPendientes",
     grupo: "Cumplimiento",
-  },
-  {
-    ruta: "/pedidos-datos",
-    titulo: "Pedidos de datos",
-    detalle: "Clientes que pidieron eliminar su cuenta",
-    roles: ["admin", "supervisor"],
-    icono: Escudo,
-    contador: "pedidosDatos",
-    grupo: "Cumplimiento",
-  },
-  {
-    ruta: "/legal",
-    titulo: "Legal",
-    detalle: "Términos, privacidad y autorización de fotos",
-    roles: ["admin"],
+    detalle: "Reclamos, datos personales y registros",
     icono: Balanza,
-    grupo: "Cumplimiento",
-  },
-  {
-    ruta: "/auditoria",
-    titulo: "Auditoría",
-    detalle: "Quién hizo qué y cuándo",
-    roles: ["admin"],
-    icono: Reloj,
-    grupo: "Cumplimiento",
+    items: [
+      {
+        ruta: "/reclamaciones",
+        titulo: "Reclamaciones",
+        detalle: "Libro de Reclamaciones: plazo de respuesta legal",
+        roles: ["admin", "supervisor"],
+        icono: Reclamo,
+        contador: "reclamosPendientes",
+      },
+      {
+        ruta: "/pedidos-datos",
+        titulo: "Pedidos de datos",
+        detalle: "Clientes que pidieron eliminar su cuenta",
+        roles: ["admin", "supervisor"],
+        icono: Escudo,
+        contador: "pedidosDatos",
+      },
+      {
+        ruta: "/legal",
+        titulo: "Legal",
+        detalle: "Términos, privacidad y autorización de fotos",
+        roles: ["admin"],
+        icono: Balanza,
+      },
+      {
+        ruta: "/auditoria",
+        titulo: "Auditoría",
+        detalle: "Quién hizo qué y cuándo",
+        roles: ["admin"],
+        icono: Reloj,
+      },
+    ],
   },
 ];
+
+/** Todas las pantallas en una lista, con el grupo al que pertenecen. */
+export const SECCIONES = MENU.flatMap((e) =>
+  e.items
+    ? e.items.map((s) => ({ ...s, grupo: e.grupo }))
+    : [{ ...e, grupo: null }],
+);
+
+/**
+ * Con pocas pantallas los grupos estorban: a un gestor o a pagos se les
+ * muestra la lista plana, sin clics de más. Pasado este número, la barra
+ * se ordena en submenús.
+ */
+const PLANA_HASTA = 6;
+
+/**
+ * El menú tal como lo ve un rol: grupos sin pantallas desaparecen y un
+ * grupo con una sola pantalla se muestra como enlace directo.
+ */
+function menuDe(rol) {
+  const visibles = SECCIONES.filter((s) => s.roles.includes(rol));
+  if (visibles.length <= PLANA_HASTA) {
+    return { visibles, entradas: visibles, agrupada: false };
+  }
+  const entradas = [];
+  for (const e of MENU) {
+    if (!e.items) {
+      if (e.roles.includes(rol)) entradas.push({ ...e, grupo: null });
+      continue;
+    }
+    const items = e.items
+      .filter((s) => s.roles.includes(rol))
+      .map((s) => ({ ...s, grupo: e.grupo }));
+    if (items.length === 1) entradas.push(items[0]);
+    else if (items.length > 1) entradas.push({ ...e, items });
+  }
+  return { visibles, entradas, agrupada: true };
+}
+
+const esActiva = (ruta, pathname) =>
+  pathname === ruta || pathname.startsWith(ruta + "/");
 
 const ROL_TEXTO = {
   admin: "Administrador",
@@ -220,6 +306,22 @@ function leerPlegado() {
   }
 }
 
+/** Grupos que la persona dejó abiertos la última vez. */
+function leerGrupos() {
+  try {
+    const v = JSON.parse(window.localStorage.getItem("panel-grupos") || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+function guardarGrupos(lista) {
+  try {
+    window.localStorage.setItem("panel-grupos", JSON.stringify(lista));
+  } catch {}
+}
+
 /**
  * Armazón de todas las pantallas: barra lateral, cabecera con el título
  * y el área de contenido, que ocupa todo el ancho disponible.
@@ -234,20 +336,41 @@ export default function Shell({
   contadores = {},
   children,
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { visibles, entradas, agrupada } = menuDe(session.rol);
+  const actual = visibles.find((s) => esActiva(s.ruta, pathname));
+  const grupoActual = actual?.grupo || null;
+
   const [abierto, setAbierto] = useState(false);
   const [plegado, setPlegado] = useState(leerPlegado);
   const [globales, setGlobales] = useState(contadoresGuardados);
-  const pathname = usePathname();
-  const router = useRouter();
+  // El grupo de la pantalla abierta arranca desplegado, para que se vea
+  // dónde se está sin tener que buscar.
+  const [grupos, setGrupos] = useState(() => {
+    const g = leerGrupos();
+    return grupoActual && !g.includes(grupoActual) ? [...g, grupoActual] : g;
+  });
 
-  const visibles = SECCIONES.filter((s) => s.roles.includes(session.rol));
+  useEffect(() => {
+    if (grupoActual)
+      setGrupos((g) => (g.includes(grupoActual) ? g : [...g, grupoActual]));
+  }, [grupoActual]);
+
+  function alternarGrupo(nombre) {
+    setGrupos((g) => {
+      const nuevo = g.includes(nombre)
+        ? g.filter((x) => x !== nombre)
+        : [...g, nombre];
+      guardarGrupos(nuevo);
+      return nuevo;
+    });
+  }
 
   // Guardia de rutas. Esconder un enlace no impide escribir la
   // dirección a mano: se le devuelve a lo suyo. Los datos igual están
   // protegidos por las políticas; esto evita la pantalla confusa.
-  const permitida = visibles.some(
-    (s) => pathname === s.ruta || pathname.startsWith(s.ruta + "/"),
-  );
+  const permitida = Boolean(actual);
   useEffect(() => {
     if (!permitida && visibles.length > 0) router.replace(visibles[0].ruta);
   }, [permitida, visibles, router]);
@@ -280,6 +403,7 @@ export default function Shell({
 
   // Lo que manda la pantalla es más fresco que lo guardado.
   const cuentas = { ...globales, ...contadores };
+  const cuenta = (s) => cuentas[s.contador] || 0;
 
   function alternarPlegado() {
     setPlegado((p) => {
@@ -299,19 +423,14 @@ export default function Shell({
 
   // Plegada solo en escritorio: en el teléfono la barra es un cajón.
   const compacta = plegado && !abierto;
-  const grupos = [];
-  for (const s of visibles) {
-    const g = grupos.find((x) => x.titulo === s.grupo);
-    if (g) g.secciones.push(s);
-    else grupos.push({ titulo: s.grupo, secciones: [s] });
-  }
+  const cerrarCajon = () => setAbierto(false);
 
   return (
     <div className="min-h-screen lg:flex">
       {abierto && (
         <button
           aria-label="Cerrar menú"
-          onClick={() => setAbierto(false)}
+          onClick={cerrarCajon}
           className="fixed inset-0 z-30 bg-marca-950/50 lg:hidden"
         />
       )}
@@ -334,7 +453,7 @@ export default function Shell({
           <Link
             href={visibles[0]?.ruta || "/"}
             className="min-w-0"
-            onClick={() => setAbierto(false)}
+            onClick={cerrarCajon}
           >
             <span className={cn(compacta && "lg:hidden")}>
               <Logo />
@@ -351,36 +470,37 @@ export default function Shell({
           className="scroll-fino flex-1 overflow-y-auto overflow-x-hidden px-3 py-3"
           aria-label="Secciones del panel"
         >
-          {grupos.map((g) => (
-            <div key={g.titulo || "inicio"} className="mb-3 last:mb-0">
-              {g.titulo &&
-                (compacta ? (
-                  <div className="mx-2 mb-2 mt-1 hidden h-px bg-white/10 lg:block" />
-                ) : null)}
-              {g.titulo && (
-                <p
-                  className={cn(
-                    "mb-1 px-3 pt-1 text-xs font-bold uppercase tracking-[0.08em] text-white/40",
-                    compacta && "lg:hidden",
-                  )}
-                >
-                  {g.titulo}
-                </p>
-              )}
-              {g.secciones.map((s) => (
-                <Enlace
-                  key={s.ruta}
-                  s={s}
-                  activo={
-                    pathname === s.ruta || pathname.startsWith(s.ruta + "/")
-                  }
-                  n={cuentas[s.contador] || 0}
-                  compacta={compacta}
-                  onClick={() => setAbierto(false)}
+          {entradas.map((e) =>
+            e.items ? (
+              compacta ? (
+                <GrupoPlegado
+                  key={e.grupo}
+                  g={e}
+                  pathname={pathname}
+                  cuenta={cuenta}
                 />
-              ))}
-            </div>
-          ))}
+              ) : (
+                <Grupo
+                  key={e.grupo}
+                  g={e}
+                  abierto={grupos.includes(e.grupo)}
+                  onAlternar={() => alternarGrupo(e.grupo)}
+                  pathname={pathname}
+                  cuenta={cuenta}
+                  onNavegar={cerrarCajon}
+                />
+              )
+            ) : (
+              <Enlace
+                key={e.ruta}
+                s={e}
+                activo={esActiva(e.ruta, pathname)}
+                n={cuenta(e)}
+                compacta={compacta}
+                onClick={cerrarCajon}
+              />
+            ),
+          )}
         </nav>
 
         <div className="shrink-0 border-t border-white/10 p-3">
@@ -406,6 +526,9 @@ export default function Shell({
                 {ROL_TEXTO[session.rol] || session.rol}
               </p>
             </div>
+          </div>
+          <div className="mt-1">
+            <Disponibilidad compacta={compacta} />
           </div>
           <div className={cn("mt-1 flex gap-1", compacta ? "lg:flex-col" : "")}>
             <BotonBarra
@@ -467,6 +590,13 @@ export default function Shell({
           )}
 
           <div className="flex min-w-0 flex-1 items-baseline gap-3">
+            {/* Migaja: con la barra en submenús, dice en qué grupo se está. */}
+            {agrupada && grupoActual && (
+              <span className="hidden shrink-0 items-center gap-1.5 self-center text-sm font-semibold text-muted-foreground lg:flex">
+                {grupoActual}
+                <Chevron className="h-3.5 w-3.5 -rotate-90 opacity-60" />
+              </span>
+            )}
             <h1 className="t-pagina min-w-0 truncate">{titulo}</h1>
             {descripcion && (
               <p className="hidden min-w-0 truncate text-sm font-medium text-muted-foreground md:block">
@@ -488,6 +618,20 @@ export default function Shell({
         <main className="flex-1 px-4 py-5 lg:px-6">{children}</main>
       </div>
     </div>
+  );
+}
+
+function Globo({ n, activo }) {
+  if (!n) return null;
+  return (
+    <span
+      className={cn(
+        "cifras rounded-full px-2 py-0.5 text-xs font-bold",
+        activo ? "bg-oro-500 text-marca-900" : "bg-oro-500/20 text-oro-300",
+      )}
+    >
+      {n > 99 ? "99+" : n}
+    </span>
   );
 }
 
@@ -516,26 +660,14 @@ function Enlace({ s, activo, n, compacta, onClick }) {
             activo ? "text-oro-500" : "text-white/50 group-hover:text-white/80",
           )}
         />
-        {compacta && n > 0 && (
-          <span className="absolute -right-2 -top-1.5 hidden h-4 min-w-[16px] items-center justify-center rounded-full bg-oro-500 px-1 text-[0.6875rem] font-bold leading-none text-marca-900 lg:flex">
-            {n > 99 ? "99+" : n}
-          </span>
-        )}
+        {compacta && <Punto n={n} />}
       </span>
       <span className={cn("min-w-0 flex-1 truncate", compacta && "lg:hidden")}>
         {s.titulo}
       </span>
-      {n > 0 && (
-        <span
-          className={cn(
-            "cifras rounded-full px-2 py-0.5 text-xs font-bold",
-            activo ? "bg-oro-500 text-marca-900" : "bg-oro-500/20 text-oro-300",
-            compacta && "lg:hidden",
-          )}
-        >
-          {n > 99 ? "99+" : n}
-        </span>
-      )}
+      <span className={cn(compacta && "lg:hidden")}>
+        <Globo n={n} activo={activo} />
+      </span>
     </Link>
   );
 
@@ -553,6 +685,218 @@ function Enlace({ s, activo, n, compacta, onClick }) {
     >
       {enlace}
     </Pista>
+  );
+}
+
+/** Contador chiquito sobre el ícono, para la barra plegada. */
+function Punto({ n }) {
+  if (!n) return null;
+  return (
+    <span className="absolute -right-2 -top-1.5 hidden h-4 min-w-[16px] items-center justify-center rounded-full bg-oro-500 px-1 text-[0.6875rem] font-bold leading-none text-marca-900 lg:flex">
+      {n > 99 ? "99+" : n}
+    </span>
+  );
+}
+
+/**
+ * Grupo con submenú. Cerrado, suma lo pendiente de sus pantallas para
+ * que no se escape nada; abierto, cada pantalla muestra lo suyo.
+ */
+function Grupo({ g, abierto, onAlternar, pathname, cuenta, onNavegar }) {
+  const Icono = g.icono;
+  const contiene = g.items.some((s) => esActiva(s.ruta, pathname));
+  const total = g.items.reduce((t, s) => t + cuenta(s), 0);
+  const id = `submenu-${g.grupo.replace(/\W+/g, "-").toLowerCase()}`;
+
+  return (
+    <div className="mb-0.5">
+      <button
+        type="button"
+        onClick={onAlternar}
+        aria-expanded={abierto}
+        aria-controls={id}
+        className={cn(
+          "group relative flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold transition",
+          contiene && !abierto
+            ? "bg-white/10 text-white"
+            : contiene
+              ? "text-white"
+              : "text-white/65 hover:bg-white/5 hover:text-white",
+        )}
+      >
+        {contiene && !abierto && (
+          <span className="absolute inset-y-2 left-0 w-[3px] rounded-r bg-oro-500" />
+        )}
+        <Icono
+          className={cn(
+            "h-[19px] w-[19px] shrink-0",
+            contiene ? "text-oro-500" : "text-white/50 group-hover:text-white/80",
+          )}
+        />
+        <span className="min-w-0 flex-1 truncate">{g.grupo}</span>
+        {!abierto && <Globo n={total} activo={false} />}
+        <Chevron
+          className={cn(
+            "h-4 w-4 shrink-0 text-white/40 transition-transform duration-200",
+            abierto && "rotate-180",
+          )}
+        />
+      </button>
+
+      <div
+        id={id}
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200 ease-out",
+          abierto ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <ul
+          className="relative ml-[21px] min-h-0 overflow-hidden border-l border-white/10 pl-2"
+          aria-hidden={abierto ? undefined : true}
+        >
+          {g.items.map((s) => {
+            const activo = esActiva(s.ruta, pathname);
+            const n = cuenta(s);
+            return (
+              <li key={s.ruta} className="first:pt-0.5 last:pb-1">
+                <Pista texto={s.detalle} lado="right" className="block w-full">
+                  <Link
+                    href={s.ruta}
+                    onClick={onNavegar}
+                    tabIndex={abierto ? undefined : -1}
+                    aria-current={activo ? "page" : undefined}
+                    className={cn(
+                      "relative my-px flex h-9 w-full items-center gap-2 rounded-lg px-3 text-sm font-medium transition",
+                      activo
+                        ? "bg-white/10 font-semibold text-white"
+                        : "text-white/60 hover:bg-white/5 hover:text-white",
+                    )}
+                  >
+                    {activo && (
+                      <span className="absolute -left-[9.5px] inset-y-2 w-[2px] rounded bg-oro-500" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate">
+                      {s.enGrupo || s.titulo}
+                    </span>
+                    <Globo n={n} activo={activo} />
+                  </Link>
+                </Pista>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Grupo con la barra plegada: queda el ícono, y al pasar el cursor (o
+ * al hacer clic, o con el teclado) se abre al costado la lista de sus
+ * pantallas. Va en una capa aparte para que la barra no la recorte.
+ */
+function GrupoPlegado({ g, pathname, cuenta }) {
+  const [abierto, setAbierto] = useState(false);
+  const espera = useRef(null);
+  const porMouse = useRef(false);
+  const Icono = g.icono;
+  const contiene = g.items.some((s) => esActiva(s.ruta, pathname));
+  const total = g.items.reduce((t, s) => t + cuenta(s), 0);
+
+  useEffect(() => () => clearTimeout(espera.current), []);
+
+  const entrar = () => {
+    clearTimeout(espera.current);
+    porMouse.current = true;
+    setAbierto(true);
+  };
+  const salir = () => {
+    clearTimeout(espera.current);
+    espera.current = setTimeout(() => setAbierto(false), 160);
+  };
+
+  return (
+    <Popover.Root
+      open={abierto}
+      onOpenChange={(v) => {
+        porMouse.current = false;
+        setAbierto(v);
+      }}
+    >
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          aria-label={g.grupo}
+          onPointerEnter={(e) => e.pointerType === "mouse" && entrar()}
+          onPointerLeave={(e) => e.pointerType === "mouse" && salir()}
+          className={cn(
+            "group relative mb-0.5 flex h-10 w-full items-center justify-center rounded-lg transition",
+            contiene || abierto
+              ? "bg-white/10 text-white"
+              : "text-white/65 hover:bg-white/5 hover:text-white",
+          )}
+        >
+          {contiene && (
+            <span className="absolute inset-y-2 left-0 w-[3px] rounded-r bg-oro-500" />
+          )}
+          <span className="relative">
+            <Icono
+              className={cn(
+                "h-[19px] w-[19px] shrink-0",
+                contiene ? "text-oro-500" : "text-white/50 group-hover:text-white/80",
+              )}
+            />
+            <Punto n={total} />
+          </span>
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          side="right"
+          align="start"
+          sideOffset={12}
+          collisionPadding={12}
+          onOpenAutoFocus={(e) => porMouse.current && e.preventDefault()}
+          onPointerEnter={entrar}
+          onPointerLeave={salir}
+          className="z-[95] w-64 rounded-xl border border-white/10 bg-marca-900 p-1.5 shadow-flotante animate-aparecer"
+        >
+          <p className="px-3 pb-1 pt-1.5 text-xs font-bold uppercase tracking-[0.08em] text-white/40">
+            {g.grupo}
+          </p>
+          {g.items.map((s) => {
+            const activo = esActiva(s.ruta, pathname);
+            return (
+              <Link
+                key={s.ruta}
+                href={s.ruta}
+                onClick={() => setAbierto(false)}
+                aria-current={activo ? "page" : undefined}
+                className={cn(
+                  "flex items-start gap-2 rounded-lg px-3 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oro-500/60",
+                  activo ? "bg-white/10" : "hover:bg-white/5 focus-visible:bg-white/5",
+                )}
+              >
+                <span className="min-w-0 flex-1">
+                  <span
+                    className={cn(
+                      "block truncate text-sm font-semibold",
+                      activo ? "text-white" : "text-white/80",
+                    )}
+                  >
+                    {s.enGrupo || s.titulo}
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-snug text-white/45">
+                    {s.detalle}
+                  </span>
+                </span>
+                <Globo n={cuenta(s)} activo={activo} />
+              </Link>
+            );
+          })}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
@@ -696,6 +1040,15 @@ export function Reloj(p) {
     <svg {...base(p)}>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v5l3.5 2" />
+    </svg>
+  );
+}
+
+export function Burbuja(p) {
+  return (
+    <svg {...base(p)}>
+      <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.3A8 8 0 1 1 21 12z" />
+      <path d="M8.5 11h.01M12 11h.01M15.5 11h.01" />
     </svg>
   );
 }
@@ -906,6 +1259,33 @@ export function Correo(p) {
     <svg {...base(p)}>
       <rect x="2.5" y="5" width="19" height="14" rx="2" />
       <path d="m3 7 9 6 9-6" />
+    </svg>
+  );
+}
+
+/** Bandeja de entrada: lo que llega para revisar. */
+export function Bandeja(p) {
+  return (
+    <svg {...base(p)}>
+      <path d="M3 13h5l1.5 3h5L16 13h5" />
+      <path d="M5.5 5h13L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z" />
+    </svg>
+  );
+}
+
+export function Celular(p) {
+  return (
+    <svg {...base(p)}>
+      <rect x="6" y="2.5" width="12" height="19" rx="2.5" />
+      <path d="M11 18h2" />
+    </svg>
+  );
+}
+
+export function Chevron(p) {
+  return (
+    <svg {...base(p)}>
+      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }

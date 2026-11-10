@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { fijarDisponibilidad, olvidarDisponibilidad } from "./disponibilidad";
 
 /** Roles que tienen panel propio. */
 export const ROLES_STAFF = ["admin", "supervisor", "gestor", "pagos"];
@@ -73,11 +74,22 @@ export async function login(email, password) {
   }
 
   enMemoria = { user: data.user, rol: userData.rol };
+  // Quien entra al panel viene a trabajar: queda en línea y empieza a
+  // recibir casos. Si falla (sin migración 070, sin red), entra igual.
+  olvidarDisponibilidad();
+  try {
+    await fijarDisponibilidad("en_linea");
+  } catch {}
   return enMemoria;
 }
 
 export async function logout() {
   enMemoria = null;
+  // Antes de salir, para que el reparto no le siga dando casos.
+  try {
+    await fijarDisponibilidad("desconectado");
+  } catch {}
+  olvidarDisponibilidad();
   await supabase.auth.signOut();
 }
 

@@ -14,6 +14,7 @@ import { Segmentos, Buscador, Barra, Leyenda, Campo, Dialogo, Tostada, Copiar, A
 import Pista from "@/components/pista";
 import { BANCOS_TARJETA } from "@/lib/bancos";
 import Desplegable from "@/components/desplegable";
+import { ESTADOS } from "@/lib/disponibilidad";
 
 const ROLES = [
   {
@@ -63,6 +64,7 @@ export default function EquipoPage() {
   // Bancos de cada encargado de pagos: { user_id: ["BCP", ...] }
   const [bancosPago, setBancosPago] = useState({});
   const [confirmar, ventanaConfirmar] = useConfirmar();
+  const [sincronizando, setSincronizando] = useState(false);
   const router = useRouter();
 
   const cargar = useCallback(async () => {
@@ -100,6 +102,18 @@ export default function EquipoPage() {
       cargar();
     });
   }, [router, cargar]);
+
+  // El estado de cada uno (en línea, ocupado...) cambia solo: se vuelve a
+  // pedir cada 30 s sin recargar la pantalla entera.
+  useEffect(() => {
+    if (!session) return;
+    const t = setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
+      const { data } = await supabase.rpc("listar_equipo");
+      if (data) setEquipo(data);
+    }, 30000);
+    return () => clearInterval(t);
+  }, [session]);
 
   const esAdmin = session?.rol === "admin";
   const miSede = equipo.find((p) => p.id === session?.user.id)?.sede_id || "";
@@ -201,6 +215,7 @@ export default function EquipoPage() {
       datos_despues: { rol },
     });
     setOk(`${persona.email} ahora es ${rolDe(rol)?.etiqueta.toLowerCase()}.`);
+    if (persona.atiende_chat) sincronizarChat({ silencioso: true });
     cargar();
   }
 
@@ -250,6 +265,7 @@ export default function EquipoPage() {
       datos_despues: { sede_id: sedeId },
     });
     setOk(`Sede de ${persona.email} actualizada.`);
+    if (persona.atiende_chat) sincronizarChat({ silencioso: true });
     cargar();
   }
 
@@ -286,7 +302,82 @@ export default function EquipoPage() {
       entidad_id: persona.id,
     });
     setOk(`${persona.email} quedó ${nuevoEstado}.`);
+    // Bloqueado sale también del chat; desbloqueado vuelve si lo atendía.
+    if (persona.atiende_chat) sincronizarChat({ silencioso: true });
     cargar();
+  }
+
+  /**
+   * Lleva a Chatwoot lo que dice esta lista (quién atiende el chat, rol,
+   * sede y disponibilidad). silencioso: solo avisa si algo cambió o falló.
+   */
+  async function sincronizarChat({ silencioso = false } = {}) {
+    setSincronizando(true);
+    try {
+      const {
+        data: { session: sb },
+      } = await supabase.auth.getSession();
+      const res = await fetch("/api/atencion/sincronizar", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${sb?.access_token || ""}` },
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (!(silencioso && res.status === 503)) setError(j.error || "No se pudo sincronizar con el chat.");
+        return;
+      }
+      const partes = [
+        j.invitados?.length && `Invitamos al chat a ${j.invitados.join(", ")} (le llega un correo para crear su contraseña).`,
+        j.quitados?.length && `Salieron del chat: ${j.quitados.join(", ")}.`,
+        j.actualizados?.length && `Rol actualizado en el chat: ${j.actualizados.join(", ")}.`,
+      ].filter(Boolean);
+      if (partes.length) setOk(partes.join(" "));
+      else if (!silencioso) setOk(`El chat ya estaba al día (${j.enChat} ${j.enChat === 1 ? "persona" : "personas"} atienden).`);
+      if (j.avisos?.length) setError(j.avisos.join(" "));
+    } catch {
+      if (!silencioso) setError("No se pudo sincronizar con el chat. Revisa tu conexión.");
+    } finally {
+      setSincronizando(false);
+    }
+  }
+
+  /** "Atiende chat": lo invita a Chatwoot o lo saca. */
+  async function alternarChat(persona) {
+    const activar = !persona.atiende_chat;
+    const si = await confirmar(
+      activar
+        ? {
+            titulo: `¿${persona.email} atenderá el chat?`,
+            texto:
+              persona.rol === "supervisor" || persona.rol === "admin"
+                ? "Entrará al chat como jefe: ve todas las conversaciones y los reportes de su sede, sin recibir chats solos. Le llega un correo para crear su contraseña."
+                : "Entrará al chat como asesor y recibirá conversaciones de clientes por turnos. Le llega un correo para crear su contraseña.",
+            boton: "Sí, atiende el chat",
+            tono: "info",
+          }
+        : {
+            titulo: `¿Sacar a ${persona.email} del chat?`,
+            texto: "Dejará de poder entrar al chat y de recibir conversaciones. Sus conversaciones pasadas se conservan.",
+            boton: "Sacar del chat",
+            tono: "atencion",
+          },
+    );
+    if (!si) return;
+
+    setGuardando(persona.id);
+    setError("");
+    const { error: e } = await supabase.rpc("fijar_chat_personal", { p_user: persona.id, p_activo: activar });
+    setGuardando(null);
+    if (e) return setError(explicarError(e, "No se pudo cambiar quién atiende el chat."));
+
+    await registrarAuditoria({
+      usuario_id: session.user.id,
+      accion: activar ? "ACTIVAR_CHAT_STAFF" : "QUITAR_CHAT_STAFF",
+      entidad: "chat_personal",
+      entidad_id: persona.id,
+    });
+    setEquipo((lista) => lista.map((x) => (x.id === persona.id ? { ...x, atiende_chat: activar } : x)));
+    await sincronizarChat();
   }
 
   const visibles = useMemo(() => {
@@ -300,6 +391,10 @@ export default function EquipoPage() {
 
   if (!session) return <CargaPantalla />;
 
+  // Con la migración 071 aplicada, la lista trae quién atiende el chat.
+  const conChat = equipo.length > 0 && "atiende_chat" in equipo[0];
+  const puedeChat = (p) =>
+    p.estado !== "bloqueado" && (esAdmin || (session.rol === "supervisor" && p.rol === "gestor" && p.sede_id === miSede));
   const metricasDe = (id) => rendimiento.find((r) => r.usuario_id === id);
   const cuentaRol = (r) => equipo.filter((p) => p.rol === r).length;
 
@@ -315,9 +410,18 @@ export default function EquipoPage() {
           : "Cambiar roles y mover gente entre sedes es del administrador. Tú creas gestores para tu sede y puedes bloquearlos."
       }
       acciones={
-        <BotonAccion onClick={abrirAlta} icono={<Mas className="h-4 w-4" />}>
-          <span className="hidden sm:inline">Nueva cuenta</span>
-        </BotonAccion>
+        <div className="flex items-center gap-2">
+          {conChat && (
+            <Pista texto="Pasa al chat quién lo atiende, con su rol, sede y disponibilidad" lado="bottom">
+              <BotonAccion tono="neutro" onClick={() => sincronizarChat()} disabled={sincronizando}>
+                {sincronizando ? "Sincronizando…" : <span><span className="hidden md:inline">Sincronizar </span>chat</span>}
+              </BotonAccion>
+            </Pista>
+          )}
+          <BotonAccion onClick={abrirAlta} icono={<Mas className="h-4 w-4" />}>
+            <span className="hidden sm:inline">Nueva cuenta</span>
+          </BotonAccion>
+        </div>
       }
     >
       {error && (
@@ -381,6 +485,13 @@ export default function EquipoPage() {
                     </span>
                   </th>
                   <th className="px-4 py-2.5 t-etiqueta">Estado</th>
+                  {conChat && (
+                    <th className="px-4 py-2.5 t-etiqueta">
+                      <Pista texto="Quién atiende el chat de clientes. Supervisor o administrador entra como jefe (ve todo y los reportes); gestor o pagos, como asesor (recibe chats).">
+                        <span className="cursor-help">Chat</span>
+                      </Pista>
+                    </th>
+                  )}
                   <th className="px-4 py-2.5" />
                 </tr>
               </thead>
@@ -401,6 +512,7 @@ export default function EquipoPage() {
                               {p.email}
                               {yo && <span className="rounded bg-oro-100 px-1.5 py-0.5 text-xs font-bold text-oro-700">Tú</span>}
                             </p>
+                            {p.disponibilidad && !bloqueado && <EstadoAhora p={p} />}
                             {p.rol === "pagos" && (
                               <div className="mt-1.5 flex flex-wrap items-center gap-1">
                                 {BANCOS_TARJETA.map((b) => {
@@ -486,6 +598,30 @@ export default function EquipoPage() {
                       <td className="px-4 py-3">
                         <Estado valor={bloqueado ? "bloqueado" : "activo"} etiqueta={bloqueado ? "Bloqueado" : "Activo"} />
                       </td>
+                      {conChat && (
+                        <td className="px-4 py-3">
+                          <Interruptor
+                            activo={p.atiende_chat}
+                            deshabilitado={!puedeChat(p) || guardando === p.id || sincronizando}
+                            onCambio={() => alternarChat(p)}
+                            etiqueta={`${p.email} atiende el chat`}
+                            pista={
+                              bloqueado
+                                ? "Bloqueado: no entra al chat"
+                                : !puedeChat(p)
+                                  ? "Solo el administrador, o el supervisor con los gestores de su sede"
+                                  : p.atiende_chat
+                                    ? "Sacar del chat"
+                                    : "Invitar al chat"
+                            }
+                          />
+                          {p.atiende_chat && !bloqueado && (
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              {p.rol === "supervisor" || p.rol === "admin" ? "Jefe" : "Asesor"}
+                            </span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-right">
                         <Pista
                           texto={
@@ -644,5 +780,56 @@ export default function EquipoPage() {
       {ventanaConfirmar}
       <Tostada mensaje={ok} onCerrar={() => setOk("")} />
     </Shell>
+  );
+}
+
+/** Estado de trabajo de la persona (migración 070) y desde cuándo. */
+function EstadoAhora({ p }) {
+  const e = ESTADOS[p.disponibilidad] || ESTADOS.desconectado;
+  const d = p.disponibilidad_desde ? new Date(p.disponibilidad_desde) : null;
+  const hoy = d && d.toDateString() === new Date().toDateString();
+  const desde = d
+    ? hoy
+      ? `desde las ${d.toLocaleTimeString("es-PE", { hour: "numeric", minute: "2-digit" })}`
+      : `desde el ${d.toLocaleDateString("es-PE", { day: "numeric", month: "short" })}`
+    : "";
+  return (
+    <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span
+        className={cn(
+          "h-2 w-2 shrink-0 rounded-full",
+          p.disponibilidad === "desconectado" ? "bg-muted-foreground/40" : e.punto,
+        )}
+      />
+      <span className="font-semibold text-foreground/80">{e.texto}</span>
+      {desde && <span>· {desde}</span>}
+    </p>
+  );
+}
+
+/** Interruptor de sí/no (role="switch"), con su pista. */
+function Interruptor({ activo, deshabilitado, onCambio, etiqueta, pista }) {
+  return (
+    <Pista texto={pista}>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={Boolean(activo)}
+        aria-label={etiqueta}
+        disabled={deshabilitado}
+        onClick={onCambio}
+        className={cn(
+          "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marca-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          activo ? "bg-emerald-600" : "bg-muted-foreground/30",
+        )}
+      >
+        <span
+          className={cn(
+            "inline-block h-5 w-5 rounded-full bg-white shadow transition-transform",
+            activo ? "translate-x-[22px]" : "translate-x-0.5",
+          )}
+        />
+      </button>
+    </Pista>
   );
 }

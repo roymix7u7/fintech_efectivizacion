@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@supabase/supabase-js";
+import { olvidarChat } from "@/components/cliente/soporte";
 
 /**
  * Sesión del CLIENTE en la web (registro, ingreso y Mi cuenta).
@@ -55,6 +56,9 @@ export function tiempoRestante() {
 }
 
 export async function cerrarSesionCliente() {
+  // El chat también se olvida: el siguiente en esta PC no ve la
+  // conversación del anterior.
+  olvidarChat();
   try {
     await supabaseCliente().auth.signOut();
   } catch {}

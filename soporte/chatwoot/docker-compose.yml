@@ -1,0 +1,77 @@
+# Chatwoot: la bandeja de atención al cliente.
+#
+# Basado en el docker-compose.production.yaml oficial, con tres cambios:
+#   · versión fija, para que un "latest" nuevo no cambie nada sin aviso;
+#   · puerto 3200 en la PC (el 3000 es del panel en desarrollo);
+#   · Postgres y Redis no se publican fuera de Docker: solo los usa Chatwoot.
+#
+# Las claves viven en .env (no se sube al repo). Ver README.md.
+
+x-base: &base
+  image: chatwoot/chatwoot:v4.19.1
+  env_file: .env
+  volumes:
+    - storage_data:/app/storage
+    # Correos de cuenta e invitación en español (copias de las vistas de
+    # v4.19.1). Al subir de versión, compáralas con las nuevas.
+    - ./plantillas/devise/mailer/_confirmation_body.html.erb:/app/app/views/devise/mailer/_confirmation_body.html.erb:ro
+    - ./plantillas/devise/mailer/confirmation_instructions.html.erb:/app/app/views/devise/mailer/confirmation_instructions.html.erb:ro
+    # La carpeta enterprise tiene su propia copia (agrega SSO, que no se
+    # usa) y manda sobre la anterior: se reemplaza por la misma.
+    - ./plantillas/devise/mailer/confirmation_instructions.html.erb:/app/enterprise/app/views/devise/mailer/confirmation_instructions.html.erb:ro
+    - ./plantillas/devise/mailer/reset_password_instructions.html.erb:/app/app/views/devise/mailer/reset_password_instructions.html.erb:ro
+    - ./plantillas/devise/mailer/password_change.html.erb:/app/app/views/devise/mailer/password_change.html.erb:ro
+    - ./plantillas/locales/zz_altoque.yml:/app/config/locales/zz_altoque.yml:ro
+    # Tareas propias que se corren con rails runner (ver README).
+    - ./tareas:/altoque/tareas:ro
+
+services:
+  rails:
+    <<: *base
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "127.0.0.1:3200:3000"
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    entrypoint: docker/entrypoints/rails.sh
+    command: ["bundle", "exec", "rails", "s", "-p", "3000", "-b", "0.0.0.0"]
+    restart: unless-stopped
+
+  sidekiq:
+    <<: *base
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", 'redis-server --requirepass "$$REDIS_PASSWORD"']
+    env_file: .env
+    volumes:
+      - redis_data:/data
+
+volumes:
+  storage_data:
+  postgres_data:
+  redis_data:

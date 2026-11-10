@@ -123,6 +123,13 @@ export default function ClientesPage() {
     setResultado(data || { total: 0, clientes: [] });
   }, [termino, desde, hasta, filtro, buscando, fechasMal]);
 
+  // /clientes?buscar=DNI llega con la búsqueda hecha (desde la ficha del
+  // cliente en Chatwoot).
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("buscar");
+    if (q) setBusqueda(q);
+  }, []);
+
   useEffect(() => {
     getSession().then((s) => {
       if (!s) return router.push("/login");

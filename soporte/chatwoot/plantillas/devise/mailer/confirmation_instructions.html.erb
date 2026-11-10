@@ -1,0 +1,68 @@
+<%#
+  Copia en español de app/views/devise/mailer/confirmation_instructions.html.erb
+  de Chatwoot v4.19.1: la lógica es la misma, solo cambian los textos.
+  docker-compose.yml la monta encima de la original. Al actualizar
+  Chatwoot, compara con la nueva versión por si cambió la lógica.
+%>
+<%
+  brand_name = 'AlToque Perú WK'
+  recipient_name = @resource.name.presence || @resource.email
+  account_user = @resource&.account_users&.first
+  inviter = account_user&.inviter
+  account_name = account_user&.account&.name
+  invited_user = inviter.present? && @resource.unconfirmed_email.blank?
+
+  eyebrow = 'Bienvenida'
+  heading = 'Confirma tu correo para empezar'
+  intro_text = 'Solo falta confirmar tu correo para que puedas usar tu cuenta de atención al cliente.'
+  supporting_text = 'Toma solo un momento.'
+  action_text = 'Confirmar mi cuenta'
+  confirmation_params = { confirmation_token: @token }
+  confirmation_params[:route_url] = params[:redirect_url] if params[:redirect_url].present?
+  action_url = frontend_url('auth/confirmation', **confirmation_params)
+  info_title = nil
+  info_text = nil
+  detail_rows = []
+  detail_rows << ['Correo nuevo', @resource.unconfirmed_email] if @resource.unconfirmed_email.present?
+
+  if @resource.unconfirmed_email.present?
+    eyebrow = 'Cambio de correo'
+    heading = 'Confirma tu nuevo correo'
+    intro_text = 'Recibimos un pedido para cambiar el correo de tu cuenta de atención al cliente.'
+    supporting_text = 'Confirma la nueva dirección para terminar el cambio.'
+    action_text = 'Confirmar correo'
+  elsif @resource.confirmed?
+    eyebrow = 'Cuenta lista'
+    heading = 'Tu cuenta está lista'
+    intro_text = 'Tu cuenta de atención al cliente ya está activa.'
+    supporting_text = 'Usa el botón para ingresar y seguir donde te quedaste.'
+    action_text = 'Abrir mi cuenta'
+    action_url = frontend_url('auth/sign_in')
+    detail_rows = []
+  elsif invited_user
+    eyebrow = 'Invitación'
+    heading = 'Te invitaron al equipo de atención al cliente'
+    intro_text = "#{inviter.name} te invitó a atender a los clientes de #{brand_name} desde la bandeja de chats."
+    supporting_text = 'Crea tu contraseña para empezar. El enlace es personal: no lo compartas.'
+    action_text = 'Crear mi contraseña'
+    reset_password_params = { reset_password_token: @resource.send(:set_reset_password_token) }
+    reset_password_params[:route_url] = params[:redirect_url] if params[:redirect_url].present?
+    reset_password_params[:sso_account_id] = params[:sso_account_id] if params[:sso_account_id].present?
+    action_url = frontend_url('auth/password/edit', **reset_password_params)
+    detail_rows = [['Te invitó', inviter.name]]
+    detail_rows << ['Empresa', account_name] if account_name.present?
+  end
+%>
+
+<%= render partial: 'devise/mailer/confirmation_body', locals: {
+  action_text: action_text,
+  action_url: action_url,
+  detail_rows: detail_rows,
+  eyebrow: eyebrow,
+  heading: heading,
+  info_text: info_text,
+  info_title: info_title,
+  intro_text: intro_text,
+  recipient_name: recipient_name,
+  supporting_text: supporting_text
+} %>

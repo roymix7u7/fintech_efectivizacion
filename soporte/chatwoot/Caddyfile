@@ -1,0 +1,16 @@
+# Caddy: https para el chat, con certificado que se pide y renueva solo.
+# Lo usa docker-compose.servidor.yml.
+#
+# Chatwoot recibe la IP real de cada visitante en X-Forwarded-For (Caddy
+# la agrega): con eso sus límites por IP cuentan a cada persona y no a
+# todas juntas. Si se pone Cloudflare delante, hay que confiar en sus
+# IPs aquí (trusted_proxies) para no perder la IP real.
+
+chat.panel-admin-atk-mobil.com {
+	encode zstd gzip
+	reverse_proxy rails:3000
+	header {
+		Strict-Transport-Security "max-age=63072000"
+		-Server
+	}
+}

@@ -53,15 +53,13 @@ import { ElegirBanco, FotoUnica } from "@/components/cliente/sesion";
  * gestor. Si un alta quedó a medias, ese correo se retoma con un código.
  */
 const ROLES = ["admin", "supervisor", "gestor"];
+// Cuatro pantallas: datos y contraseña juntos; el código; las fotos; y
+// al final tarjetas, cuentas, comisión y activar en una sola.
 const PASOS = [
   { k: "datos", t: "Datos" },
-  { k: "acceso", t: "Acceso" },
   { k: "correo", t: "Correo" },
-  { k: "identidad", t: "Identidad" },
-  { k: "tarjetas", t: "Tarjetas" },
-  { k: "cuentas", t: "Cuentas" },
-  { k: "comision", t: "Comisión" },
-  { k: "activar", t: "Activar" },
+  { k: "identidad", t: "Fotos" },
+  { k: "activar", t: "Tarjetas y activar" },
 ];
 const VACIO = {
   tipo_documento: "dni",
@@ -110,7 +108,7 @@ export default function AltaPresencialPage() {
       session={session}
       titulo="Nuevo cliente"
       descripcion="Registro presencial: el cliente queda activo al terminar"
-      ayuda="Llénalo con el cliente al lado y su documento en la mano. Puedes volver atrás en cualquier paso. El alta es solo tuya: el cliente no entra a ninguna cola y nada se guarda hasta «Activar»."
+      ayuda="Son 4 pasos: datos y contraseña, código del correo, fotos, y tarjetas con activar. Llénalo con el cliente al lado y su documento en la mano; puedes volver atrás. El alta es solo tuya: el cliente no entra a ninguna cola y nada se guarda hasta «Activar»."
     >
       <Alta session={session} />
     </Shell>
@@ -163,6 +161,9 @@ function Alta({ session }) {
   // Comisión con la que empieza: null es la tarifa estándar.
   const [cupones, setCupones] = useState(null);
   const [cupon, setCupon] = useState(null);
+  const [verComision, setVerComision] = useState(false);
+  const [formTarjeta, setFormTarjeta] = useState(false);
+  const [formCuenta, setFormCuenta] = useState(false);
   const [yaUsado, setYaUsado] = useState({ email: null, dni: null });
   const verificando = useRef(false);
 
@@ -259,9 +260,10 @@ function Alta({ session }) {
   const reglas = reglasPassword(clave, confirmar);
   const errAcceso = {
     clave: cuenta || claveDespues ? null : validarPassword(clave, confirmar),
-    acepta: acepta
-      ? null
-      : "El cliente debe aceptar los términos y la política de privacidad.",
+    acepta:
+      cuenta || acepta
+        ? null
+        : "El cliente debe aceptar los términos y la política de privacidad.",
   };
   const fallas = (o) => Object.values(o).filter(Boolean);
   // Un alta anterior quedó a medias con este correo: se retoma.
@@ -282,40 +284,22 @@ function Alta({ session }) {
   function siguiente() {
     const k = PASOS[paso].k;
     if (k === "datos") {
-      if (fallas(errDatos).length) return setIntento(true);
-      // Ya confirmó el correo: el acceso ya está hecho.
-      return ir(cuenta ? 3 : 1);
+      if (fallas(errDatos).length || fallas(errAcceso).length)
+        return setIntento(true);
+      // Ya confirmó el correo: no hay que volver a mandar el código.
+      return cuenta ? ir(2) : enviarCodigo();
     }
-    if (k === "acceso") return enviarCodigo();
     if (k === "identidad") {
       if (!fotosCompletas(fotos))
         return setAviso({ tono: "atencion", texto: "Faltan fotos por tomar." });
-      return ir(4);
+      return ir(3);
     }
-    if (k === "tarjetas") {
-      if (tarjetaEscrita)
-        return setAviso({
-          tono: "atencion",
-          texto: "Agrega la tarjeta que escribiste o límpiala antes de seguir.",
-        });
-      return ir(5);
-    }
-    if (k === "cuentas") {
-      if (nuevaCuenta.numero)
-        return setAviso({
-          tono: "atencion",
-          texto: "Agrega la cuenta que escribiste o bórrala antes de seguir.",
-        });
-      return ir(6);
-    }
-    if (k === "comision") return ir(7);
   }
 
   function atras() {
     const k = PASOS[paso].k;
-    // Con el correo confirmado no se vuelve a "Acceso": ya está hecho.
+    // Con el correo confirmado no se vuelve al código: ya está hecho.
     if (k === "identidad") return ir(0);
-    if (k === "correo") return ir(1);
     ir(Math.max(0, paso - 1));
   }
 
@@ -368,7 +352,7 @@ function Alta({ session }) {
       setCodigo("");
       setCodigoError("");
       setEspera(60);
-      ir(2);
+      ir(1);
     } finally {
       setTrabajando(false);
     }
@@ -434,7 +418,7 @@ function Alta({ session }) {
             () => {},
           );
       setCuenta({ userId: uid });
-      ir(3);
+      ir(2);
     } finally {
       verificando.current = false;
       setTrabajando(false);
@@ -462,18 +446,32 @@ function Alta({ session }) {
         : null,
     frente: nuevaTarjeta.frente ? null : "Falta la foto de la tarjeta.",
   };
+  /** Pasa la tarjeta escrita a la lista. Devuelve la lista nueva o null si falta algo. */
   function agregarTarjeta() {
-    if (fallas(errTarjeta).length) return setIntento(true);
-    setTarjetas((l) => [
-      ...l,
+    if (fallas(errTarjeta).length) {
+      setIntento(true);
+      return null;
+    }
+    const lista = [
+      ...tarjetas,
       {
         ...nuevaTarjeta,
         id: crypto.randomUUID(),
         nombre: (nuevaTarjeta.nombre || nombreCompleto).trim().toUpperCase(),
       },
-    ]);
+    ];
+    setTarjetas(lista);
+    // La cuenta de ahorros suele ser del mismo banco: se deja elegido.
+    if (
+      BANCOS_PRINCIPALES.includes(nuevaTarjeta.banco) &&
+      !nuevaCuenta.numero &&
+      !cuentas.some((c) => c.banco === nuevaTarjeta.banco)
+    )
+      setNuevaCuenta((c) => ({ ...c, banco: nuevaTarjeta.banco }));
     setNuevaTarjeta(TARJETA_VACIA);
+    setFormTarjeta(false);
     setIntento(false);
+    return lista;
   }
 
   // ── Cuentas ──
@@ -490,10 +488,16 @@ function Alta({ session }) {
           : null),
   };
   function agregarCuenta() {
-    if (fallas(errCuenta).length) return setIntento(true);
-    setCuentas((l) => [...l, { ...nuevaCuenta, id: crypto.randomUUID() }]);
+    if (fallas(errCuenta).length) {
+      setIntento(true);
+      return null;
+    }
+    const lista = [...cuentas, { ...nuevaCuenta, id: crypto.randomUUID() }];
+    setCuentas(lista);
     setNuevaCuenta((c) => ({ ...CUENTA_VACIA, banco: c.banco }));
+    setFormCuenta(false);
     setIntento(false);
+    return lista;
   }
   // Tarjetas de banco principal sin cuenta de ahorros de ese banco.
   const sinDonde = [
@@ -510,8 +514,27 @@ function Alta({ session }) {
 
   // ── Activar: sube las fotos y registra todo de una vez ──
   async function activar() {
-    setTrabajando(true);
     setAviso(null);
+    // Lo que quedó escrito sin pulsar "Agregar" también entra.
+    let tarjetas_ = tarjetas;
+    let cuentas_ = cuentas;
+    if (tarjetaEscrita) {
+      tarjetas_ = agregarTarjeta();
+      if (!tarjetas_)
+        return setAviso({
+          tono: "atencion",
+          texto: "Completa la tarjeta que empezaste o pulsa «Limpiar».",
+        });
+    }
+    if (nuevaCuenta.numero) {
+      cuentas_ = agregarCuenta();
+      if (!cuentas_)
+        return setAviso({
+          tono: "atencion",
+          texto: "Corrige la cuenta que empezaste o bórrala.",
+        });
+    }
+    setTrabajando(true);
     const hecho = { ...progreso };
     const marcar = (k, v = true) => {
       hecho[k] = v;
@@ -533,7 +556,7 @@ function Alta({ session }) {
           paths[k] = await subir("kyc-documentos", `${uid}/${k}.jpg`, fotos[k]);
         marcar("fotos", paths);
       }
-      for (const t of tarjetas) {
+      for (const t of tarjetas_) {
         if (hecho[`ft-${t.id}`]) continue;
         const sello = `${Date.now()}-${t.ultimos4}`;
         const frente = await subir(
@@ -575,14 +598,14 @@ function Alta({ session }) {
             foto_dni_posterior: hecho.fotos.dni_posterior,
             foto_selfie: hecho.fotos.selfie,
           },
-          p_tarjetas: tarjetas.map((t) => ({
+          p_tarjetas: tarjetas_.map((t) => ({
             banco: t.banco,
             ultimos_4: t.ultimos4,
             nombre_impreso: t.nombre,
             foto_tarjeta: hecho[`ft-${t.id}`].frente,
             foto_reverso: hecho[`ft-${t.id}`].reverso,
           })),
-          p_cuentas: cuentas.map((c) => ({
+          p_cuentas: cuentas_.map((c) => ({
             banco: c.banco,
             tipo: c.tipo,
             numero_cuenta: c.numero,
@@ -632,6 +655,9 @@ function Alta({ session }) {
     setNuevaCuenta(CUENTA_VACIA);
     setProgreso({});
     setCupon(null);
+    setVerComision(false);
+    setFormTarjeta(false);
+    setFormCuenta(false);
     setListo(null);
     setAviso(null);
     setYaUsado({ email: null, dni: null });
@@ -892,138 +918,146 @@ function Alta({ session }) {
                   />
                 </Campo>
               </div>
-            </Paso>
-          )}
-
-          {k === "acceso" && (
-            <Paso
-              titulo="Contraseña y términos"
-              indicacion="Entrégale la pantalla al cliente para que escriba su contraseña."
-            >
-              <div
-                className="grid gap-2 sm:grid-cols-2"
-                role="radiogroup"
-                aria-label="Contraseña"
-              >
-                {[
-                  [
-                    false,
-                    "La escribe ahora",
-                    "El cliente la escribe él mismo.",
-                  ],
-                  [
-                    true,
-                    "La crea después",
-                    "Con «Olvidé mi contraseña» en la app.",
-                  ],
-                ].map(([v, t, d]) => (
-                  <button
-                    key={t}
-                    type="button"
-                    role="radio"
-                    aria-checked={claveDespues === v}
-                    onClick={() => setClaveDespues(v)}
-                    className={cn(
-                      "rounded-xl border-2 p-3 text-left transition",
-                      claveDespues === v
-                        ? "border-marca-700 bg-marca-50/60"
-                        : "border-border hover:border-marca-300",
+              {!cuenta && (
+                <div className="mt-6 border-t border-border pt-5">
+                  <h3 className="font-heading text-base font-semibold text-foreground">
+                    Contraseña y términos
+                  </h3>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    Si la escribe ahora, entrégale la pantalla al cliente.
+                  </p>
+                  <div className="mt-3">
+                    <div
+                      className="grid gap-2 sm:grid-cols-2"
+                      role="radiogroup"
+                      aria-label="Contraseña"
+                    >
+                      {[
+                        [
+                          false,
+                          "La escribe ahora",
+                          "El cliente la escribe él mismo.",
+                        ],
+                        [
+                          true,
+                          "La crea después",
+                          "Con «Olvidé mi contraseña» en la app.",
+                        ],
+                      ].map(([v, t, d]) => (
+                        <button
+                          key={t}
+                          type="button"
+                          role="radio"
+                          aria-checked={claveDespues === v}
+                          onClick={() => setClaveDespues(v)}
+                          className={cn(
+                            "rounded-xl border-2 p-3 text-left transition",
+                            claveDespues === v
+                              ? "border-marca-700 bg-marca-50/60"
+                              : "border-border hover:border-marca-300",
+                          )}
+                        >
+                          <span className="block font-semibold text-foreground">
+                            {t}
+                          </span>
+                          <span className="block text-chico text-muted-foreground">
+                            {d}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {!claveDespues && (
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <Campo etiqueta="Contraseña" htmlFor="clave">
+                          <EntradaClave
+                            id="clave"
+                            valor={clave}
+                            onCambio={setClave}
+                          />
+                        </Campo>
+                        <Campo
+                          etiqueta="Repítela"
+                          htmlFor="confirmar"
+                          error={
+                            confirmar && !reglas.match ? "No coinciden." : null
+                          }
+                          extra={
+                            confirmar && reglas.match ? (
+                              <span className="font-semibold text-emerald-700">
+                                Coinciden ✓
+                              </span>
+                            ) : null
+                          }
+                        >
+                          <EntradaClave
+                            id="confirmar"
+                            valor={confirmar}
+                            onCambio={setConfirmar}
+                          />
+                        </Campo>
+                        <div className="sm:col-span-2">
+                          <ReglasClave reglas={reglas} />
+                          {intento && errAcceso.clave && (
+                            <p className="mt-1 text-chico font-semibold text-red-700">
+                              {errAcceso.clave}
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     )}
-                  >
-                    <span className="block font-semibold text-foreground">
-                      {t}
-                    </span>
-                    <span className="block text-chico text-muted-foreground">
-                      {d}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              {!claveDespues && (
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <Campo etiqueta="Contraseña" htmlFor="clave">
-                    <EntradaClave
-                      id="clave"
-                      valor={clave}
-                      onCambio={setClave}
-                    />
-                  </Campo>
-                  <Campo
-                    etiqueta="Repítela"
-                    htmlFor="confirmar"
-                    error={confirmar && !reglas.match ? "No coinciden." : null}
-                    extra={
-                      confirmar && reglas.match ? (
-                        <span className="font-semibold text-emerald-700">
-                          Coinciden ✓
+                    <div className="mt-5 space-y-2.5 rounded-xl bg-muted/40 p-4">
+                      <label className="flex cursor-pointer items-start gap-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={acepta}
+                          onChange={(e) => setAcepta(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 accent-marca-700"
+                        />
+                        <span>
+                          El cliente leyó y acepta los{" "}
+                          <a
+                            href="/terminos"
+                            target="_blank"
+                            rel="noopener"
+                            className="font-semibold underline"
+                          >
+                            Términos
+                          </a>{" "}
+                          y la{" "}
+                          <a
+                            href="/privacidad"
+                            target="_blank"
+                            rel="noopener"
+                            className="font-semibold underline"
+                          >
+                            Política de privacidad
+                          </a>
+                          .
                         </span>
-                      ) : null
-                    }
-                  >
-                    <EntradaClave
-                      id="confirmar"
-                      valor={confirmar}
-                      onCambio={setConfirmar}
-                    />
-                  </Campo>
-                  <div className="sm:col-span-2">
-                    <ReglasClave reglas={reglas} />
-                    {intento && errAcceso.clave && (
-                      <p className="mt-1 text-chico font-semibold text-red-700">
-                        {errAcceso.clave}
-                      </p>
-                    )}
+                      </label>
+                      {intento && errAcceso.acepta && (
+                        <p className="text-chico font-semibold text-red-700">
+                          {errAcceso.acepta}
+                        </p>
+                      )}
+                      <label className="flex cursor-pointer items-start gap-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={promos}
+                          onChange={(e) => setPromos(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 accent-marca-700"
+                        />
+                        <span>
+                          Quiere recibir promociones y novedades{" "}
+                          <span className="text-muted-foreground">
+                            (opcional)
+                          </span>
+                        </span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}
-              <div className="mt-5 space-y-2.5 rounded-xl bg-muted/40 p-4">
-                <label className="flex cursor-pointer items-start gap-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={acepta}
-                    onChange={(e) => setAcepta(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 accent-marca-700"
-                  />
-                  <span>
-                    El cliente leyó y acepta los{" "}
-                    <a
-                      href="/terminos"
-                      target="_blank"
-                      rel="noopener"
-                      className="font-semibold underline"
-                    >
-                      Términos
-                    </a>{" "}
-                    y la{" "}
-                    <a
-                      href="/privacidad"
-                      target="_blank"
-                      rel="noopener"
-                      className="font-semibold underline"
-                    >
-                      Política de privacidad
-                    </a>
-                    .
-                  </span>
-                </label>
-                {intento && errAcceso.acepta && (
-                  <p className="text-chico font-semibold text-red-700">
-                    {errAcceso.acepta}
-                  </p>
-                )}
-                <label className="flex cursor-pointer items-start gap-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={promos}
-                    onChange={(e) => setPromos(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 accent-marca-700"
-                  />
-                  <span>
-                    Quiere recibir promociones y novedades{" "}
-                    <span className="text-muted-foreground">(opcional)</span>
-                  </span>
-                </label>
-              </div>
             </Paso>
           )}
 
@@ -1093,296 +1127,309 @@ function Alta({ session }) {
             </Paso>
           )}
 
-          {k === "tarjetas" && (
-            <Paso
-              titulo="Tarjetas"
-              indicacion="Opcional. Verifica que estén a su nombre: quedarán aprobadas."
-            >
-              <Lista
-                vacio="Aún no agregas tarjetas."
-                items={tarjetas.map((t) => ({
-                  id: t.id,
-                  titulo: `${nombreBanco(t.banco)} •••• ${t.ultimos4}`,
-                  detalle: t.nombre,
-                }))}
-                onQuitar={(id) =>
-                  setTarjetas((l) => l.filter((x) => x.id !== id))
-                }
-              />
-              <div className="mt-4 space-y-4 rounded-xl border border-dashed border-border p-4">
-                <ElegirBanco
-                  bancos={ORDEN_BANCOS}
-                  valor={nuevaTarjeta.banco}
-                  onCambio={(b) => setNuevaTarjeta((t) => ({ ...t, banco: b }))}
-                />
-                {intento && errTarjeta.banco && (
-                  <p className="text-chico font-semibold text-red-700">
-                    {errTarjeta.banco}
-                  </p>
-                )}
-                <div className="grid gap-4 sm:grid-cols-[150px_1fr]">
-                  <Campo
-                    etiqueta="Últimos 4"
-                    htmlFor="ultimos4"
-                    error={err(errTarjeta, "ultimos4")}
-                  >
-                    <input
-                      id="ultimos4"
-                      inputMode="numeric"
-                      maxLength={4}
-                      value={nuevaTarjeta.ultimos4}
-                      onChange={(e) =>
-                        setNuevaTarjeta((t) => ({
-                          ...t,
-                          ultimos4: e.target.value.replace(/\D/g, ""),
-                        }))
-                      }
-                      placeholder="0000"
-                      className="campo cifras"
-                    />
-                  </Campo>
-                  <Campo
-                    etiqueta="Nombre impreso"
-                    htmlFor="nombreImpreso"
-                    error={err(errTarjeta, "nombre")}
-                  >
-                    <input
-                      id="nombreImpreso"
-                      maxLength={60}
-                      value={nuevaTarjeta.nombre}
-                      onChange={(e) =>
-                        setNuevaTarjeta((t) => ({
-                          ...t,
-                          nombre: e.target.value.toUpperCase(),
-                        }))
-                      }
-                      placeholder={nombreCompleto.toUpperCase()}
-                      className="campo"
-                    />
-                  </Campo>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <FotoUnica
-                    id="tarjeta-frente"
-                    forma="tarjeta"
-                    titulo="Foto de la tarjeta"
-                    ayuda="Nombre y últimos 4 visibles."
-                    consejos={[
-                      "Tapa el resto del número.",
-                      "Nunca el código de seguridad (CVV).",
-                    ]}
-                    foto={nuevaTarjeta.frente}
-                    onCambio={(f) =>
-                      setNuevaTarjeta((t) => ({ ...t, frente: f }))
-                    }
-                  />
-                  <FotoUnica
-                    id="tarjeta-reverso"
-                    forma="tarjeta"
-                    titulo="Segunda foto"
-                    opcional
-                    ayuda="Si ayuda a verificarla."
-                    consejos={["Si es el reverso, tapa el CVV."]}
-                    foto={nuevaTarjeta.reverso}
-                    onCambio={(f) =>
-                      setNuevaTarjeta((t) => ({ ...t, reverso: f }))
-                    }
-                  />
-                </div>
-                {intento && errTarjeta.frente && (
-                  <p className="text-chico font-semibold text-red-700">
-                    {errTarjeta.frente}
-                  </p>
-                )}
-                <div className="flex justify-end gap-2">
-                  {tarjetaEscrita && (
-                    <BotonAccion
-                      tono="neutro"
-                      tamano="chico"
-                      onClick={() => setNuevaTarjeta(TARJETA_VACIA)}
-                    >
-                      Limpiar
-                    </BotonAccion>
-                  )}
-                  <BotonAccion tamano="chico" onClick={agregarTarjeta}>
-                    + Agregar tarjeta
-                  </BotonAccion>
-                </div>
-              </div>
-            </Paso>
-          )}
-
-          {k === "cuentas" && (
-            <Paso
-              titulo="Cuentas para depósito"
-              indicacion="Opcional. Solo cuentas a su nombre."
-            >
-              {sinDonde.length > 0 && (
-                <p className="mb-3 rounded-lg bg-oro-50 px-3 py-2 text-sm text-oro-700">
-                  Para operar con su tarjeta {sinDonde.join(" y ")} necesita su
-                  cuenta de ahorros de ese banco.
-                </p>
-              )}
-              <Lista
-                vacio="Aún no agregas cuentas."
-                items={cuentas.map((c) => ({
-                  id: c.id,
-                  titulo: `${c.tipo === "interbancaria" ? "CCI" : "Ahorros"} ${nombreBanco(c.banco)}`,
-                  detalle: c.numero,
-                }))}
-                onQuitar={(id) =>
-                  setCuentas((l) => l.filter((x) => x.id !== id))
-                }
-              />
-              <div className="mt-4 space-y-4 rounded-xl border border-dashed border-border p-4">
-                <ElegirBanco
-                  bancos={BANCOS_PRINCIPALES}
-                  valor={nuevaCuenta.banco}
-                  onCambio={(b) =>
-                    setNuevaCuenta((c) => ({ ...c, banco: b, numero: "" }))
-                  }
-                />
-                <div className="grid gap-4 sm:grid-cols-[200px_1fr]">
-                  <Campo etiqueta="Tipo">
-                    <Desplegable
-                      variante="panel"
-                      valor={nuevaCuenta.tipo}
-                      onCambio={(v) =>
-                        setNuevaCuenta((c) => ({ ...c, tipo: v, numero: "" }))
-                      }
-                      opciones={[
-                        {
-                          valor: "ahorros",
-                          texto: "Ahorros",
-                          detalle: "Recibe los depósitos",
-                        },
-                        {
-                          valor: "interbancaria",
-                          texto: "CCI",
-                          detalle: "20 dígitos",
-                        },
-                      ]}
-                    />
-                  </Campo>
-                  <Campo
-                    etiqueta={cci ? "CCI" : "Número de cuenta"}
-                    htmlFor="numeroCuenta"
-                    error={err(errCuenta, "numero")}
-                    extra={`${nuevaCuenta.numero.length}/${cci ? 20 : Math.max(...(LARGO_AHORROS[nuevaCuenta.banco] || [20]))}`}
-                  >
-                    <input
-                      id="numeroCuenta"
-                      inputMode="numeric"
-                      maxLength={20}
-                      value={nuevaCuenta.numero}
-                      onChange={(e) =>
-                        setNuevaCuenta((c) => ({
-                          ...c,
-                          numero: e.target.value.replace(/\D/g, ""),
-                        }))
-                      }
-                      placeholder={
-                        cci
-                          ? "20 dígitos"
-                          : `${(LARGO_AHORROS[nuevaCuenta.banco] || ["10 a 20"]).join(" o ")} dígitos`
-                      }
-                      className="campo cifras"
-                    />
-                  </Campo>
-                </div>
-                <div className="flex justify-end">
-                  <BotonAccion tamano="chico" onClick={agregarCuenta}>
-                    + Agregar cuenta
-                  </BotonAccion>
-                </div>
-              </div>
-            </Paso>
-          )}
-
-          {k === "comision" && (
-            <Paso
-              titulo="Comisión"
-              indicacion="Elige con qué tarifa empieza. Lo normal es la estándar."
-            >
-              <ElegirComision
-                cupones={cupones}
-                valor={cupon}
-                onCambio={setCupon}
-              />
-            </Paso>
-          )}
-
           {k === "activar" && (
             <Paso
-              titulo="Revisa y activa"
-              indicacion="Confirma con el cliente que todo esté bien."
+              titulo="Tarjetas, cuentas y activar"
+              indicacion="Tarjetas y cuentas son opcionales. Verifica que estén a su nombre: quedan aprobadas."
             >
-              <dl className="grid gap-x-6 gap-y-3 rounded-xl bg-muted/40 p-4 text-sm sm:grid-cols-2">
+              <dl className="grid gap-x-6 gap-y-3 rounded-xl bg-muted/40 p-4 text-sm sm:grid-cols-3">
                 <Fila
                   t="Cliente"
-                  v={nombreCompleto}
-                  onEditar={guardando ? null : () => ir(0)}
-                />
-                <Fila
-                  t={form.tipo_documento === "ce" ? "Carnet" : "DNI"}
-                  v={form.dni}
-                  onEditar={guardando ? null : () => ir(0)}
-                />
-                <Fila
-                  t="Celular"
-                  v={`+51 ${form.telefono}`}
+                  v={`${nombreCompleto} · ${form.tipo_documento === "ce" ? "CE" : "DNI"} ${form.dni}`}
                   onEditar={guardando ? null : () => ir(0)}
                 />
                 <Fila t="Correo" v={`${enviadoA} ✓`} />
                 <Fila
-                  t="Dirección"
-                  v={[form.direccion, form.distrito, form.provincia]
-                    .filter(Boolean)
-                    .join(", ")}
-                  onEditar={guardando ? null : () => ir(0)}
-                />
-                <Fila
                   t="Fotos de identidad"
-                  v={fotosCompletas(fotos) ? "3 de 3" : "Faltan"}
-                  onEditar={guardando ? null : () => ir(3)}
-                />
-                <Fila
-                  t="Tarjetas"
-                  v={
-                    tarjetas.length
-                      ? tarjetas
-                          .map((x) => `${x.banco} •••• ${x.ultimos4}`)
-                          .join(", ")
-                      : "Ninguna"
-                  }
-                  onEditar={guardando ? null : () => ir(4)}
-                />
-                <Fila
-                  t="Cuentas"
-                  v={
-                    cuentas.length
-                      ? cuentas
-                          .map(
-                            (x) =>
-                              `${x.tipo === "interbancaria" ? "CCI" : "Ahorros"} ${x.banco}`,
-                          )
-                          .join(", ")
-                      : "Ninguna"
-                  }
-                  onEditar={guardando ? null : () => ir(5)}
-                />
-                <Fila
-                  t="Comisión"
-                  v={
-                    cupon
-                      ? `Cupón ${cupon.nombre} · ${cupon.duracion_dias ? `${cupon.duracion_dias} días` : "sin vencimiento"}`
-                      : "Tarifa estándar"
-                  }
-                  onEditar={guardando ? null : () => ir(6)}
+                  v={fotosCompletas(fotos) ? "3 de 3 ✓" : "Faltan"}
+                  onEditar={guardando ? null : () => ir(2)}
                 />
               </dl>
+
+              <Seccion titulo="Tarjetas" extra="opcional">
+                {tarjetas.length > 0 && (
+                  <Lista
+                    vacio=""
+                    items={tarjetas.map((t) => ({
+                      id: t.id,
+                      titulo: `${nombreBanco(t.banco)} •••• ${t.ultimos4}`,
+                      detalle: t.nombre,
+                    }))}
+                    onQuitar={(id) =>
+                      setTarjetas((l) => l.filter((x) => x.id !== id))
+                    }
+                  />
+                )}
+                {formTarjeta || !tarjetas.length ? (
+                  <div
+                    className={cn(
+                      "space-y-4 rounded-xl border border-dashed border-border p-4",
+                      tarjetas.length > 0 && "mt-3",
+                    )}
+                  >
+                    <ElegirBanco
+                      bancos={ORDEN_BANCOS}
+                      valor={nuevaTarjeta.banco}
+                      onCambio={(b) =>
+                        setNuevaTarjeta((t) => ({ ...t, banco: b }))
+                      }
+                    />
+                    {intento && errTarjeta.banco && (
+                      <p className="text-chico font-semibold text-red-700">
+                        {errTarjeta.banco}
+                      </p>
+                    )}
+                    <div className="grid gap-4 sm:grid-cols-[150px_1fr]">
+                      <Campo
+                        etiqueta="Últimos 4"
+                        htmlFor="ultimos4"
+                        error={err(errTarjeta, "ultimos4")}
+                      >
+                        <input
+                          id="ultimos4"
+                          inputMode="numeric"
+                          maxLength={4}
+                          value={nuevaTarjeta.ultimos4}
+                          onChange={(e) =>
+                            setNuevaTarjeta((t) => ({
+                              ...t,
+                              ultimos4: e.target.value.replace(/\D/g, ""),
+                            }))
+                          }
+                          placeholder="0000"
+                          className="campo cifras"
+                        />
+                      </Campo>
+                      <Campo
+                        etiqueta="Nombre impreso"
+                        htmlFor="nombreImpreso"
+                        error={err(errTarjeta, "nombre")}
+                        extra="Vacío = su nombre"
+                      >
+                        <input
+                          id="nombreImpreso"
+                          maxLength={60}
+                          value={nuevaTarjeta.nombre}
+                          onChange={(e) =>
+                            setNuevaTarjeta((t) => ({
+                              ...t,
+                              nombre: e.target.value.toUpperCase(),
+                            }))
+                          }
+                          placeholder={nombreCompleto.toUpperCase()}
+                          className="campo"
+                        />
+                      </Campo>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <FotoUnica
+                        id="tarjeta-frente"
+                        forma="tarjeta"
+                        titulo="Foto de la tarjeta"
+                        ayuda="Nombre y últimos 4 visibles."
+                        consejos={[
+                          "Tapa el resto del número.",
+                          "Nunca el código de seguridad (CVV).",
+                        ]}
+                        foto={nuevaTarjeta.frente}
+                        onCambio={(f) =>
+                          setNuevaTarjeta((t) => ({ ...t, frente: f }))
+                        }
+                      />
+                      <FotoUnica
+                        id="tarjeta-reverso"
+                        forma="tarjeta"
+                        titulo="Segunda foto"
+                        opcional
+                        ayuda="Si ayuda a verificarla."
+                        consejos={["Si es el reverso, tapa el CVV."]}
+                        foto={nuevaTarjeta.reverso}
+                        onCambio={(f) =>
+                          setNuevaTarjeta((t) => ({ ...t, reverso: f }))
+                        }
+                      />
+                    </div>
+                    {intento && errTarjeta.frente && (
+                      <p className="text-chico font-semibold text-red-700">
+                        {errTarjeta.frente}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {!tarjetas.length && !tarjetaEscrita && (
+                        <span className="mr-auto text-chico text-muted-foreground">
+                          Si no trae tarjeta, déjalo vacío y activa.
+                        </span>
+                      )}
+                      {(tarjetaEscrita || tarjetas.length > 0) && (
+                        <BotonAccion
+                          tono="neutro"
+                          tamano="chico"
+                          onClick={() => {
+                            setNuevaTarjeta(TARJETA_VACIA);
+                            setFormTarjeta(false);
+                            setIntento(false);
+                          }}
+                        >
+                          {tarjetas.length ? "Cancelar" : "Limpiar"}
+                        </BotonAccion>
+                      )}
+                      <BotonAccion tamano="chico" onClick={agregarTarjeta}>
+                        + Agregar tarjeta
+                      </BotonAccion>
+                    </div>
+                  </div>
+                ) : (
+                  <BotonAgregarOtra onClick={() => setFormTarjeta(true)}>
+                    + Agregar otra tarjeta
+                  </BotonAgregarOtra>
+                )}
+              </Seccion>
+
+              <Seccion titulo="Cuentas para depósito" extra="opcional">
+                {sinDonde.length > 0 && (
+                  <p className="mb-3 rounded-lg bg-oro-50 px-3 py-2 text-sm text-oro-700">
+                    Para operar con su tarjeta {sinDonde.join(" y ")} necesita
+                    su cuenta de ahorros de ese banco.
+                  </p>
+                )}
+                {cuentas.length > 0 && (
+                  <Lista
+                    vacio=""
+                    items={cuentas.map((c) => ({
+                      id: c.id,
+                      titulo: `${c.tipo === "interbancaria" ? "CCI" : "Ahorros"} ${nombreBanco(c.banco)}`,
+                      detalle: c.numero,
+                    }))}
+                    onQuitar={(id) =>
+                      setCuentas((l) => l.filter((x) => x.id !== id))
+                    }
+                  />
+                )}
+                {formCuenta || !cuentas.length ? (
+                  <div
+                    className={cn(
+                      "space-y-4 rounded-xl border border-dashed border-border p-4",
+                      cuentas.length > 0 && "mt-3",
+                    )}
+                  >
+                    <ElegirBanco
+                      bancos={BANCOS_PRINCIPALES}
+                      valor={nuevaCuenta.banco}
+                      onCambio={(b) =>
+                        setNuevaCuenta((c) => ({ ...c, banco: b, numero: "" }))
+                      }
+                    />
+                    <div className="grid gap-4 sm:grid-cols-[200px_1fr]">
+                      <Campo etiqueta="Tipo">
+                        <Desplegable
+                          variante="panel"
+                          valor={nuevaCuenta.tipo}
+                          onCambio={(v) =>
+                            setNuevaCuenta((c) => ({
+                              ...c,
+                              tipo: v,
+                              numero: "",
+                            }))
+                          }
+                          opciones={[
+                            {
+                              valor: "ahorros",
+                              texto: "Ahorros",
+                              detalle: "Recibe los depósitos",
+                            },
+                            {
+                              valor: "interbancaria",
+                              texto: "CCI",
+                              detalle: "20 dígitos",
+                            },
+                          ]}
+                        />
+                      </Campo>
+                      <Campo
+                        etiqueta={cci ? "CCI" : "Número de cuenta"}
+                        htmlFor="numeroCuenta"
+                        error={err(errCuenta, "numero")}
+                        extra={`${nuevaCuenta.numero.length}/${cci ? 20 : Math.max(...(LARGO_AHORROS[nuevaCuenta.banco] || [20]))}`}
+                      >
+                        <input
+                          id="numeroCuenta"
+                          inputMode="numeric"
+                          maxLength={20}
+                          value={nuevaCuenta.numero}
+                          onChange={(e) =>
+                            setNuevaCuenta((c) => ({
+                              ...c,
+                              numero: e.target.value.replace(/\D/g, ""),
+                            }))
+                          }
+                          placeholder={
+                            cci
+                              ? "20 dígitos"
+                              : `${(LARGO_AHORROS[nuevaCuenta.banco] || ["10 a 20"]).join(" o ")} dígitos`
+                          }
+                          className="campo cifras"
+                        />
+                      </Campo>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      {cuentas.length > 0 && (
+                        <BotonAccion
+                          tono="neutro"
+                          tamano="chico"
+                          onClick={() => {
+                            setNuevaCuenta((c) => ({ ...c, numero: "" }));
+                            setFormCuenta(false);
+                            setIntento(false);
+                          }}
+                        >
+                          Cancelar
+                        </BotonAccion>
+                      )}
+                      <BotonAccion tamano="chico" onClick={agregarCuenta}>
+                        + Agregar cuenta
+                      </BotonAccion>
+                    </div>
+                  </div>
+                ) : (
+                  <BotonAgregarOtra onClick={() => setFormCuenta(true)}>
+                    + Agregar otra cuenta
+                  </BotonAgregarOtra>
+                )}
+              </Seccion>
+
+              <Seccion titulo="Comisión">
+                {verComision ? (
+                  <ElegirComision
+                    cupones={cupones}
+                    valor={cupon}
+                    onCambio={setCupon}
+                  />
+                ) : (
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl bg-muted/40 px-4 py-3 text-sm">
+                    <span className="min-w-0 flex-1 font-semibold text-foreground">
+                      {cupon
+                        ? `Cupón ${cupon.nombre} · ${cupon.duracion_dias ? `${cupon.duracion_dias} días` : "sin vencimiento"}`
+                        : "Tarifa estándar"}
+                    </span>
+                    {cupones?.some((c) => !c.es_default) ? (
+                      <BotonAccion
+                        tono="neutro"
+                        tamano="chico"
+                        onClick={() => setVerComision(true)}
+                      >
+                        Cambiar
+                      </BotonAccion>
+                    ) : (
+                      <span className="text-chico text-muted-foreground">
+                        No hay cupones activos
+                      </span>
+                    )}
+                  </div>
+                )}
+              </Seccion>
+
               {trabajando || guardando ? (
-                <ul className="mt-4 space-y-1.5 text-sm">
+                <ul className="mt-6 space-y-1.5 border-t border-border pt-5 text-sm">
                   {[
                     ["fotos", "Fotos de identidad"],
                     ...tarjetas.map((t) => [
@@ -1415,10 +1462,13 @@ function Alta({ session }) {
                   ))}
                 </ul>
               ) : (
-                <p className="mt-4 text-sm text-muted-foreground">
+                <p className="mt-6 border-t border-border pt-5 text-sm text-muted-foreground">
                   Al activar, la cuenta queda lista para operar
-                  {tarjetas.length ? " y sus tarjetas verificadas" : ""}. Queda
-                  registrado con tu nombre.
+                  {tarjetas.length || tarjetaEscrita
+                    ? " y sus tarjetas verificadas"
+                    : ""}
+                  . Lo que dejaste escrito sin pulsar «Agregar» también se
+                  guarda. Queda registrado con tu nombre.
                 </p>
               )}
             </Paso>
@@ -1434,7 +1484,7 @@ function Alta({ session }) {
           ) : k === "activar" ? (
             <BotonAccion
               tono="neutro"
-              onClick={() => ir(6)}
+              onClick={() => ir(2)}
               disabled={trabajando || guardando}
             >
               ← Atrás
@@ -1453,13 +1503,9 @@ function Alta({ session }) {
             </BotonAccion>
           ) : (
             <BotonAccion onClick={siguiente} cargando={trabajando}>
-              {k === "acceso"
-                ? "Enviar código a su correo"
-                : k === "tarjetas" && !tarjetas.length
-                  ? "Omitir tarjetas →"
-                  : k === "cuentas" && !cuentas.length
-                    ? "Omitir cuentas →"
-                    : "Siguiente →"}
+              {k === "datos" && !cuenta
+                ? "Enviar código a su correo →"
+                : "Siguiente →"}
             </BotonAccion>
           )}
         </div>
@@ -1468,7 +1514,7 @@ function Alta({ session }) {
   );
 }
 
-/** Los 7 pasos arriba, con el actual resaltado. */
+/** Los pasos arriba, con el actual resaltado. */
 function Pasos({ paso, cuenta }) {
   return (
     <ol
@@ -1476,7 +1522,7 @@ function Pasos({ paso, cuenta }) {
       aria-label={`Paso ${paso + 1} de ${PASOS.length}`}
     >
       {PASOS.map((p, i) => {
-        const hecho = i < paso || (cuenta && i <= 2);
+        const hecho = i < paso || (cuenta && i <= 1);
         const actual = i === paso;
         return (
           <li key={p.k} className="flex min-w-[88px] flex-1 flex-col gap-1.5">
@@ -1529,6 +1575,34 @@ function Paso({ titulo, indicacion, children }) {
       </p>
       <div className="mt-5">{children}</div>
     </section>
+  );
+}
+
+function Seccion({ titulo, extra, children }) {
+  return (
+    <section className="mt-6 border-t border-border pt-5">
+      <h3 className="mb-3 flex items-baseline gap-2 font-heading text-base font-semibold text-foreground">
+        {titulo}
+        {extra && (
+          <span className="text-chico font-normal text-muted-foreground">
+            {extra}
+          </span>
+        )}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+function BotonAgregarOtra({ onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-3 w-full rounded-xl border border-dashed border-border px-4 py-2.5 text-sm font-semibold text-marca-700 transition hover:border-marca-300 hover:bg-marca-50/40"
+    >
+      {children}
+    </button>
   );
 }
 
