@@ -507,6 +507,26 @@ else
   puts "  · no hay administrador para registrar la ficha"
 end
 
+# ── 12. Avisos al cliente cuando el asesor responde ───────────────────
+# Chatwoot avisa a la función chatwoot-avisos de Supabase, que manda la
+# notificación del navegador y deja el aviso en la campana. Va firmado con
+# AVISOS_SECRETO (el mismo que CHATWOOT_AVISOS_SECRETO en Supabase).
+#   -e AVISOS_URL=https://<proyecto>.supabase.co/functions/v1/chatwoot-avisos
+#   -e AVISOS_SECRETO=<el mismo de Supabase>
+puts "Avisos al cliente"
+avisos_url = ENV["AVISOS_URL"].to_s.strip
+avisos_secreto = ENV["AVISOS_SECRETO"].to_s.strip
+if avisos_url.empty? || avisos_secreto.empty?
+  puts "  · sin AVISOS_URL y AVISOS_SECRETO: no se tocan los avisos"
+else
+  # Uno solo: si cambió la dirección, se reemplaza el anterior.
+  account.webhooks.where("url LIKE ?", "%/functions/v1/chatwoot-avisos%").where.not(url: avisos_url).destroy_all
+  gancho = account.webhooks.find_or_initialize_by(url: avisos_url)
+  gancho.update!(name: "Avisos al cliente (Supabase)", subscriptions: ["message_created"], webhook_type: :account_type)
+  gancho.update!(secret: avisos_secreto) unless gancho.secret == avisos_secreto
+  hecho "Chatwoot avisa a #{avisos_url} (firmado)"
+end
+
 if (visitas = account.inboxes.find_by(name: VISITANTES))
   puts "Chat de visitantes: NEXT_PUBLIC_CHATWOOT_VISITANTES_TOKEN=#{visitas.channel.website_token} (es público)"
 end

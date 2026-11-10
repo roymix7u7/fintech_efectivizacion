@@ -45,6 +45,11 @@ const nextConfig = {
           },
         ],
       },
+      // Avisos del navegador: que siempre se baje la versión nueva.
+      {
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+      },
     ];
   },
 };

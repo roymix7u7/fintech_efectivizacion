@@ -2,6 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { olvidarChat } from "@/components/cliente/soporte";
+import { quitarAvisosNavegador } from "@/lib/avisosNavegador";
 
 /**
  * Sesión del CLIENTE en la web (registro, ingreso y Mi cuenta).
@@ -59,6 +60,9 @@ export async function cerrarSesionCliente() {
   // El chat también se olvida: el siguiente en esta PC no ve la
   // conversación del anterior.
   olvidarChat();
+  // Y deja de recibir los avisos del chat en este navegador (antes de
+  // cerrar la sesión: hace falta para quitarlo).
+  await quitarAvisosNavegador(supabaseCliente());
   try {
     await supabaseCliente().auth.signOut();
   } catch {}

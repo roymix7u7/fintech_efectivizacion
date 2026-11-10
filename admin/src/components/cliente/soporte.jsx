@@ -38,6 +38,13 @@ export default function ChatSoporte({ sb, usuarioId, sobreBarra, pantalla }) {
         cw.setUser(identifier, phone_number ? { ...datos, phone_number } : datos);
         cw.toggleBubbleVisibility("show");
         setListo(true);
+        // Llegó tocando "Tu asesor te respondió" (public/sw.js): se abre el chat.
+        const url = new URL(window.location.href);
+        if (url.searchParams.get("chat") === "1") {
+          url.searchParams.delete("chat");
+          window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+          cw.toggle("open");
+        }
       } catch (e) {
         // Sin chat la cuenta sigue funcionando; queda el WhatsApp.
         console.warn("Chat de atención no disponible:", e?.message || e);

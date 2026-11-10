@@ -21,6 +21,7 @@ import MarcoCuenta from "./barra";
 import MisAvisos from "./avisos";
 import MenuUsuario from "./usuario";
 import ChatSoporte from "./soporte";
+import AvisosNavegador from "./avisosNavegador";
 
 /**
  * Sesión de Mi cuenta, compartida por /cuenta y sus pantallas (nueva
@@ -296,6 +297,7 @@ export function ProveedorCuenta({ children }) {
     <CuentaCtx.Provider value={valor}>
       <Encabezado derecha={derecha} completo={estado === "activo"} />
       {contenido}
+      {usuario && estado && estado !== "bloqueado" && <AvisosNavegador sb={sb} usuarioId={usuario.id} />}
       {usuario && estado && estado !== "bloqueado" && (
         <ChatSoporte
           sb={sb}

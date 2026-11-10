@@ -72,7 +72,13 @@ export default function MisAvisos({ sb, avisos }) {
   }, [abierto]);
 
   async function leer(a) {
-    setExpandido(expandido === a.id ? null : a.id);
+    // "Tu asesor te respondió": se abre el chat directamente.
+    if (a.tipo === "chat" && window.$chatwoot) {
+      setAbierto(false);
+      window.$chatwoot.toggle("open");
+    } else {
+      setExpandido(expandido === a.id ? null : a.id);
+    }
     if (a.leida) return;
     setLeidos((l) => [...l, a.id]);
     await sb.from("notificaciones").update({ leida: true }).eq("id", a.id);
