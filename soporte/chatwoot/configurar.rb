@@ -17,6 +17,13 @@ BANDEJAS = ["Web AlToque", "App AlToque", VISITANTES].freeze
 # p. ej. "https://www.panel-admin-atk-mobil.com". Nadie más puede
 # incrustar estos chats en otra página.
 DOMINIOS = ENV.fetch("DOMINIOS", "http://localhost:3000")
+# Celular peruano: 9 dígitos que empiezan con 9; se aceptan espacios
+# ("987 654 321") y el +51 delante. Nada más largo pasa.
+CELULAR = {
+  clave: "celular",
+  patron: '/^(\+?51 ?)?9\d{2} ?\d{3} ?\d{3}$/',
+  aviso: "Escribe tu celular de 9 dígitos, empezando con 9 (ej. 987 654 321)."
+}.freeze
 
 account = Account.first or abort("No hay cuenta: crea la cuenta del administrador primero.")
 admin = account.administrators.first
@@ -62,8 +69,13 @@ BANDEJAS.each do |nombre|
       pre_chat_fields: [
         { field_type: "standard", label: "Nombre", placeholder: "Tu nombre", name: "fullName",
           type: "text", required: true, enabled: true },
-        { field_type: "standard", label: "Celular", placeholder: "+51 9XX XXX XXX", name: "phoneNumber",
-          type: "text", required: true, enabled: true },
+        # El celular estándar de Chatwoot solo pide "+" y 5 dígitos como mínimo,
+        # sin máximo. Por eso va como atributo propio, con patrón: celular
+        # peruano de 9 dígitos que empieza con 9 (acepta espacios y +51).
+        { field_type: "standard", label: "Celular", name: "phoneNumber", type: "text", required: false, enabled: false },
+        { field_type: "contact_attribute", label: "Celular", placeholder: "987 654 321", name: CELULAR[:clave],
+          type: "text", required: true, enabled: true,
+          regex_pattern: CELULAR[:patron], regex_cue: CELULAR[:aviso] },
         { field_type: "standard", label: "Correo", name: "emailAddress", type: "email", required: false, enabled: false }
       ]
     } : canal.pre_chat_form_options,
@@ -434,6 +446,18 @@ account.custom_attribute_definitions.find_or_initialize_by(
   attribute_description: "Dónde está el cliente en la web o la app (lo informa su navegador)."
 )
 hecho "Pantalla actual (contacto)"
+
+# Celular que deja el visitante en el formulario previo (ver bandejas).
+account.custom_attribute_definitions.find_or_initialize_by(
+  attribute_key: CELULAR[:clave], attribute_model: "contact_attribute"
+).update!(
+  attribute_display_name: "Celular",
+  attribute_display_type: "text",
+  regex_pattern: CELULAR[:patron],
+  regex_cue: CELULAR[:aviso],
+  attribute_description: "El que dejó el visitante antes de escribir. La ficha lo usa para buscarlo entre los clientes."
+)
+hecho "Celular (contacto)"
 
 # Por qué escribe el cliente. Lo elige el asesor en el panel derecho de
 # la conversación y sale en los reportes. (Exigirlo antes de resolver es

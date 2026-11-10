@@ -51,6 +51,9 @@ const fecha = (f, conHora = false) =>
 const ultimos4 = (n) => (n ? `•••• ${String(n).slice(-4)}` : "");
 
 /** Celular guardado de cualquier forma → los 9 dígitos. */
+/** Celular del contacto: el de Chatwoot o el que dejó en el formulario previo del chat de visitantes. */
+const celularDe = (c) => c?.phone_number || c?.custom_attributes?.celular || null;
+
 const nueveDigitos = (t) => {
   const d = String(t || "").replace(/\D/g, "");
   return d.length >= 9 ? d.slice(-9) : null;
@@ -143,8 +146,8 @@ export default function FichaCliente() {
       <Vacio
         titulo="Sin cuenta vinculada"
         detalle={
-          contacto.phone_number
-            ? `No hay ningún cliente con el celular ${contacto.phone_number}. Pídele su DNI y búscalo en el panel.`
+          celularDe(contacto)
+            ? `No hay ningún cliente con el celular ${celularDe(contacto)}. Pídele su DNI y búscalo en el panel.`
             : "Este contacto no escribió desde una cuenta de AlToque. Pídele su DNI y búscalo en el panel."
         }
       />
@@ -171,7 +174,7 @@ async function leerFicha(contacto) {
     if (error) throw error;
     perfil = data;
   }
-  const cel = nueveDigitos(contacto.phone_number);
+  const cel = nueveDigitos(celularDe(contacto));
   if (!perfil && cel) {
     const { data, error } = await supabase
       .from("perfiles_cliente")
