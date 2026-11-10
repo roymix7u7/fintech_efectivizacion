@@ -54,7 +54,7 @@ import Seguimiento, { ETAPAS, RESULTADOS } from "@/components/seguimiento";
  * tarjeta, sin operar, inactivos...) para llamarlos o mandarles un
  * recordatorio.
  */
-const ROLES = ["admin", "supervisor", "pagos"];
+const ROLES = ["admin", "supervisor", "pagos", "gestor"];
 const ESTADOS = {
   activo: { t: "Activo", c: "bg-emerald-50 text-emerald-700" },
   pendiente: { t: "En revisión", c: "bg-marca-50 text-marca-700" },
@@ -163,6 +163,8 @@ export default function ClientesPage() {
       }
       ayuda="Buscar: los 10 últimos registrados, o busca por nombre, DNI o fecha. Seguimiento: los clientes por etapa, para llamarlos o mandarles un recordatorio."
     >
+      {/* El gestor solo consulta: sin la pestaña de Seguimiento (posventa). */}
+      {session.rol !== "gestor" && (
       <div className="mb-4">
         <Segmentos
           valor={vista}
@@ -177,8 +179,9 @@ export default function ClientesPage() {
           ]}
         />
       </div>
+      )}
 
-      {vista === "seguimiento" ? (
+      {vista === "seguimiento" && session.rol !== "gestor" ? (
         <Seguimiento
           onAviso={setOk}
           onVerFicha={(dni) => {
@@ -401,6 +404,11 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
   const [tocado, setTocado] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
+  // Corregir sus datos: supervisor y administrador. El correo no (es su
+  // usuario para ingresar). El gestor solo ve.
+  const puedeEditar = rol === "admin" || rol === "supervisor";
+  const [datos, setDatos] = useState(null); // formulario de edición
+  const [tocadoDatos, setTocadoDatos] = useState(false);
 
   useEffect(() => {
     supabase
@@ -455,6 +463,52 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
       300,
     );
     setFotosTarjeta((f) => ({ ...f, [t.id]: r }));
+  }
+
+  // ── Corregir datos del cliente ──
+  function editarDatos() {
+    setDatos({
+      nombres: cliente.nombres || "",
+      apellidos: cliente.apellidos || "",
+      tipo_documento: cliente.tipo_documento || "dni",
+      dni: cliente.dni || "",
+      telefono: (cliente.telefono || "").replace(/^\+51/, ""),
+      direccion: cliente.direccion || "",
+    });
+    setTocadoDatos(false);
+    setError("");
+  }
+  const LETRAS = /^[\p{L}' .-]+$/u;
+  const fallasDatos = datos
+    ? {
+        nombres: !LETRAS.test(datos.nombres.trim()) || datos.nombres.trim().length < 2 ? "Solo letras, mínimo 2." : null,
+        apellidos: !LETRAS.test(datos.apellidos.trim()) || datos.apellidos.trim().length < 2 ? "Solo letras, mínimo 2." : null,
+        dni:
+          datos.tipo_documento === "dni"
+            ? /^\d{8}$/.test(datos.dni) ? null : "El DNI tiene 8 dígitos."
+            : /^\d{9}$/.test(datos.dni) ? null : "El carnet de extranjería tiene 9 dígitos.",
+        telefono: /^9\d{8}$/.test(datos.telefono) ? null : "9 dígitos, empieza con 9.",
+        direccion: datos.direccion.length > 200 ? "Máximo 200 caracteres." : null,
+      }
+    : {};
+  async function guardarDatos() {
+    setTocadoDatos(true);
+    if (Object.values(fallasDatos).some(Boolean)) return;
+    setGuardando(true);
+    setError("");
+    const { data, error: e } = await supabase.rpc("editar_datos_cliente", {
+      p_cliente: cliente.id,
+      p_datos: { ...datos, nombres: datos.nombres.trim(), apellidos: datos.apellidos.trim(), direccion: datos.direccion.trim() },
+    });
+    setGuardando(false);
+    if (e)
+      return setError(
+        e.code === "PGRST202"
+          ? "Falta aplicar la migración 20261110000075_directorio_gestor_y_edicion.sql en Supabase."
+          : explicarError(e, "No se pudieron guardar los datos."),
+      );
+    setDatos(null);
+    onCambio(data?.cambios ? `Datos de ${datos.nombres.trim()} actualizados.` : "No había cambios que guardar.");
   }
 
   // ── Asignar o renovar cupón ──
@@ -546,7 +600,75 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
       )}
 
       {/* Datos principales */}
-      <section className="grid gap-x-6 gap-y-3 rounded-xl border border-border p-4 sm:grid-cols-2">
+      {datos ? (
+        <section className="space-y-3 rounded-xl border border-border p-4">
+          <h3 className="font-heading text-md font-semibold">Corregir datos</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Campo etiqueta="Nombres" htmlFor="edNombres" error={tocadoDatos ? fallasDatos.nombres : null}>
+              <input id="edNombres" value={datos.nombres} maxLength={80} onChange={(e) => setDatos({ ...datos, nombres: e.target.value })} className="campo" />
+            </Campo>
+            <Campo etiqueta="Apellidos" htmlFor="edApellidos" error={tocadoDatos ? fallasDatos.apellidos : null}>
+              <input id="edApellidos" value={datos.apellidos} maxLength={80} onChange={(e) => setDatos({ ...datos, apellidos: e.target.value })} className="campo" />
+            </Campo>
+            <Campo etiqueta="Documento" htmlFor="edTipo">
+              <Desplegable
+                id="edTipo"
+                variante="panel"
+                valor={datos.tipo_documento}
+                onCambio={(v) => setDatos({ ...datos, tipo_documento: v })}
+                opciones={[
+                  { valor: "dni", texto: "DNI" },
+                  { valor: "ce", texto: "Carnet de extranjería" },
+                ]}
+              />
+            </Campo>
+            <Campo etiqueta="Número de documento" htmlFor="edDni" error={tocadoDatos ? fallasDatos.dni : null}>
+              <input
+                id="edDni"
+                inputMode="numeric"
+                value={datos.dni}
+                onChange={(e) => setDatos({ ...datos, dni: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                className="campo cifras"
+              />
+            </Campo>
+            <Campo etiqueta="Celular" htmlFor="edTelefono" error={tocadoDatos ? fallasDatos.telefono : null}>
+              <input
+                id="edTelefono"
+                inputMode="tel"
+                value={datos.telefono}
+                placeholder="987654321"
+                onChange={(e) => setDatos({ ...datos, telefono: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                className="campo cifras"
+              />
+            </Campo>
+            <Campo etiqueta="Correo" htmlFor="edCorreo">
+              <input id="edCorreo" value={cliente.usuario?.email || ""} disabled className="campo opacity-70" />
+            </Campo>
+            <Campo etiqueta="Dirección" htmlFor="edDireccion" error={tocadoDatos ? fallasDatos.direccion : null} className="sm:col-span-2">
+              <input id="edDireccion" value={datos.direccion} maxLength={200} onChange={(e) => setDatos({ ...datos, direccion: e.target.value })} className="campo" />
+            </Campo>
+          </div>
+          <p className="text-chico text-muted-foreground">
+            El correo no se cambia: es el usuario con el que el cliente ingresa. Cada cambio queda en la auditoría.
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <BotonAccion tono="neutro" tamano="chico" onClick={() => setDatos(null)} disabled={guardando}>
+              Cancelar
+            </BotonAccion>
+            <BotonAccion tamano="chico" onClick={guardarDatos} cargando={guardando}>
+              Guardar cambios
+            </BotonAccion>
+          </div>
+        </section>
+      ) : (
+      <section className="relative grid gap-x-6 gap-y-3 rounded-xl border border-border p-4 sm:grid-cols-2">
+        {puedeEditar && (
+          <div className="flex justify-end sm:col-span-2 sm:-mb-1">
+            <BotonAccion tono="neutro" tamano="chico" onClick={editarDatos}>
+              Corregir datos
+            </BotonAccion>
+          </div>
+        )}
         <Dato etiqueta="Estado">
           {estado ? (
             <span
@@ -599,6 +721,7 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
             : "Todavía no"}
         </Dato>
       </section>
+      )}
 
       {/* Cupón */}
       <section className="rounded-xl border border-border p-4">

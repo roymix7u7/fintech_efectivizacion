@@ -91,7 +91,7 @@ export const MENU = [
         titulo: "Clientes",
         enGrupo: "Directorio",
         detalle: "Buscar clientes, ver sus datos y su cupón",
-        roles: ["admin", "supervisor", "pagos"],
+        roles: ["admin", "supervisor", "pagos", "gestor"],
         icono: Lupa,
       },
       {
