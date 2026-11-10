@@ -42,7 +42,7 @@ export default function ChatSoporte({ sb, usuarioId, sobreBarra, pantalla }) {
         const url = new URL(window.location.href);
         if (url.searchParams.get("chat") === "1") {
           url.searchParams.delete("chat");
-          window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+          window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
           cw.toggle("open");
         }
       } catch (e) {

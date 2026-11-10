@@ -29,8 +29,53 @@ function desmontar() {
   actual = null;
 }
 
+/**
+ * "Atrás" cierra el chat en vez de salir de la página. En el celular el
+ * chat ocupa toda la pantalla y la gente aprieta atrás (no la X) para
+ * volver a su cuenta.
+ *
+ * Al abrirse el chat se agrega un paso al historial (misma dirección, con
+ * el estado de Next intacto). Atrás consume ese paso y cierra el chat; si
+ * se cierra con la X, se quita el paso para que el siguiente atrás haga lo
+ * de siempre.
+ */
+let atrasListo = false;
+function cerrarConAtras() {
+  if (atrasListo || typeof window === "undefined") return;
+  atrasListo = true;
+  let pasoDelChat = false;
+  let ignorarProximo = false;
+
+  window.addEventListener("chatwoot:opened", () => {
+    if (pasoDelChat) return;
+    window.history.pushState({ ...(window.history.state || {}), atkChat: true }, "");
+    pasoDelChat = true;
+  });
+  window.addEventListener("chatwoot:closed", () => {
+    if (!pasoDelChat) return;
+    pasoDelChat = false;
+    if (window.history.state?.atkChat) {
+      ignorarProximo = true;
+      window.history.back();
+    }
+  });
+  window.addEventListener("popstate", () => {
+    if (ignorarProximo) {
+      ignorarProximo = false;
+      return;
+    }
+    if (pasoDelChat) {
+      pasoDelChat = false;
+      try {
+        window.$chatwoot?.toggle("close");
+      } catch {}
+    }
+  });
+}
+
 /** Carga el chat de esa bandeja (una sola vez por pestaña) y devuelve $chatwoot. */
 export function cargarChatwoot(token, ajustes = {}) {
+  cerrarConAtras();
   if (actual?.token === token) return actual.promesa;
   if (actual) desmontar();
   const promesa = new Promise((resolve, reject) => {
