@@ -177,22 +177,19 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar, onCu
       <div className="grid min-w-0 flex-1 gap-x-6 gap-y-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_auto] md:items-start">
         {/* Cliente */}
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{nombreDe(fila.cliente) || "Cliente sin nombre"}</p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-0.5">
-              <span className="cifras">DNI {fila.cliente?.dni}</span>
+          <p className="truncate text-sm font-bold text-marca-900">{nombreDe(fila.cliente) || "Cliente sin nombre"}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+            <span className="inline-flex items-center gap-0.5 rounded-md bg-marca-50 py-0.5 pl-1.5 pr-0.5 text-marca-700 ring-1 ring-marca-100">
+              <span className="cifras font-semibold">DNI {fila.cliente?.dni}</span>
               <Copiar texto={fila.cliente?.dni} soloIcono etiqueta="Copiar DNI" />
             </span>
-            <span aria-hidden>·</span>
-            <span className="cifras font-mono">{fila.codigo}</span>
-            <span aria-hidden>·</span>
-            <span>{cuando}</span>
+            <span className="cifras font-mono font-medium text-marca-500">{fila.codigo}</span>
             {fila.porcentaje_comision != null && (
-              <>
-                <span aria-hidden>·</span>
-                <span className="cifras">{porcentaje(fila.porcentaje_comision)} %</span>
-              </>
+              <span className="cifras rounded-md bg-oro-50 px-1.5 py-0.5 font-semibold text-oro-700 ring-1 ring-oro-200">
+                {porcentaje(fila.porcentaje_comision)} %
+              </span>
             )}
+            <span className="text-muted-foreground">{cuando}</span>
           </p>
           {conChips && (
             <div className="mt-1.5 flex flex-wrap gap-1">
@@ -219,18 +216,30 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar, onCu
         {/* Dónde depositar */}
         <div className="min-w-0">
           {destino ? (
-            <>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            // Verde: la cuenta a la que se deposita. Ámbar si es CCI (último
+            // recurso, tarda más en llegar).
+            <div
+              className={cn(
+                "inline-block max-w-full rounded-lg px-3 py-1.5 ring-1",
+                destino.tipo === "interbancaria" ? "bg-oro-50 ring-oro-200" : "bg-emerald-50 ring-emerald-200",
+              )}
+            >
+              <p
+                className={cn(
+                  "text-[11px] font-bold uppercase tracking-wide",
+                  destino.tipo === "interbancaria" ? "text-oro-700" : "text-emerald-700",
+                )}
+              >
                 {estado === "pagado" ? "Pagado en" : "Depositar en"} {destino.banco} ·{" "}
                 {destino.tipo === "interbancaria" ? "CCI" : "Ahorros"}
               </p>
               <p className="flex items-center gap-1">
-                <span className="cifras font-mono text-[15px] font-semibold tracking-tight text-foreground">
+                <span className="cifras font-mono text-[15px] font-bold tracking-tight text-marca-900">
                   {agrupar(destino.numero)}
                 </span>
                 <Copiar texto={destino.numero} soloIcono etiqueta="Copiar el número de cuenta" />
               </p>
-            </>
+            </div>
           ) : cuentas.length === 0 ? (
             <p className="text-xs font-semibold text-red-700">Sin cuentas registradas: contacta al cliente antes de pagar.</p>
           ) : null}
