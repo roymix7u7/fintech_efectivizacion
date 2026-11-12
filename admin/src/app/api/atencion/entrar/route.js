@@ -8,6 +8,7 @@ import {
   plataformaConfigurada,
   claveAlAzar,
 } from "@/lib/chatwootApi";
+import { chat, chatPropioConfigurado, agentePorCorreo } from "@/lib/chatApi";
 
 /**
  * "Abrir chat de atención": deja al personal dentro de Chatwoot sin una
@@ -25,7 +26,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function POST(req) {
-  if (!chatwootConfigurado() || !plataformaConfigurada()) {
+  if (!chatPropioConfigurado() && (!chatwootConfigurado() || !plataformaConfigurada())) {
     return responder(
       { error: "La entrada desde el panel no está configurada (CHATWOOT_PLATFORM_TOKEN). Entra a Chatwoot con tu usuario y contraseña." },
       503,
@@ -41,6 +42,24 @@ export async function POST(req) {
   }
 
   const correo = (s.user.email || "").toLowerCase();
+
+  // Chat propio: un enlace de entrada de un solo uso, que caduca a los 5 minutos.
+  if (chatPropioConfigurado()) {
+    try {
+      if (!(await agentePorCorreo(correo))) {
+        return responder(
+          { error: "Todavía no estás en el chat. Pide a un supervisor que toque \"Sincronizar chat\" en Equipo." },
+          409,
+        );
+      }
+      const { url } = await chat("/sso", { metodo: "POST", cuerpo: { email: correo } });
+      if (!url) throw new Error("El chat no devolvió el enlace.");
+      return responder({ url });
+    } catch (e) {
+      return responder({ error: "No se pudo abrir el chat. " + e.message }, 502);
+    }
+  }
+
   try {
     const agentes = lista(await cw("/api/v1/accounts/:cuenta/agents"));
     const agente = agentes.find((a) => (a.email || "").toLowerCase() === correo);

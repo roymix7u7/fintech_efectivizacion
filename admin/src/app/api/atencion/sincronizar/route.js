@@ -11,6 +11,8 @@ import {
   ROL_CHATWOOT,
   DISPONIBILIDAD_CHATWOOT,
 } from "@/lib/chatwootApi";
+import { chatPropioConfigurado } from "@/lib/chatApi";
+import { sincronizarPropio } from "@/lib/chatSincronizar";
 
 /**
  * Lleva a Chatwoot lo que dice Equipo en el panel (migración 071).
@@ -61,8 +63,8 @@ async function altaSinInvitacion(correo, rol) {
 }
 
 export async function POST(req) {
-  if (!chatwootConfigurado()) {
-    return responder({ error: "El chat no está configurado en este servidor (CHATWOOT_URL y CHATWOOT_API_TOKEN)." }, 503);
+  if (!chatwootConfigurado() && !chatPropioConfigurado()) {
+    return responder({ error: "El chat no está configurado en este servidor (CHAT_URL y CHAT_API_TOKEN, o las de Chatwoot)." }, 503);
   }
   const s = await sesionDe(req);
   if (s.error) return s.error;
@@ -75,6 +77,9 @@ export async function POST(req) {
   if ((equipo || []).length && !("atiende_chat" in equipo[0])) {
     return responder({ error: "Falta aplicar en Supabase la migración 20261109000071_chat_personal.sql." }, 409);
   }
+
+  // Con el chat propio configurado, la sincronización va contra él (lib/chatSincronizar.js).
+  if (chatPropioConfigurado()) return sincronizarPropio(equipo);
 
   const r = { altas: [], invitados: [], actualizados: [], quitados: [], avisos: [] };
   try {

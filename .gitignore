@@ -13,3 +13,7 @@ supabase/.branches/
 # Llave privada de Firebase (cuenta de servicio para notificaciones):
 # se sube a Expo con eas credentials, nunca al repositorio.
 *firebase-adminsdk*.json
+
+# Copia del repositorio del chat propio (se clona en el servidor) y sus claves
+soporte/altoque-chat/codigo/
+soporte/altoque-chat/.env

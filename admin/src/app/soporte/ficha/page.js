@@ -30,13 +30,15 @@ import { Panel, Copiar } from "@/components/piezas";
 // clientes solo a estos roles (es_staff).
 const ROLES_FICHA = ["admin", "supervisor", "gestor"];
 
-const ORIGEN_CHATWOOT = (() => {
+const origenDe = (url) => {
   try {
-    return new URL(process.env.NEXT_PUBLIC_CHATWOOT_URL).origin;
+    return new URL(url).origin;
   } catch {
     return null;
   }
-})();
+};
+// Quién puede mandarle el contacto: Chatwoot y el chat propio (el que esté configurado).
+const ORIGENES_CHAT = [origenDe(process.env.NEXT_PUBLIC_CHATWOOT_URL), origenDe(process.env.NEXT_PUBLIC_CHAT_URL)].filter(Boolean);
 
 const fecha = (f, conHora = false) =>
   f
@@ -72,7 +74,7 @@ export default function FichaCliente() {
     if (prueba) setContacto({ identifier: prueba, custom_attributes: {} });
 
     const alRecibir = (e) => {
-      if (ORIGEN_CHATWOOT && e.origin !== ORIGEN_CHATWOOT) return;
+      if (ORIGENES_CHAT.length && !ORIGENES_CHAT.includes(e.origin)) return;
       let msg = e.data;
       if (typeof msg === "string") {
         try {
@@ -82,10 +84,21 @@ export default function FichaCliente() {
         }
       }
       if (msg?.event === "appContext") setContacto(msg.data?.contact || null);
+      // Chat propio: los datos vienen en el propio mensaje y el celular se llama "phone".
+      else if (msg?.event === "chat:contact") {
+        setContacto({
+          identifier: msg.identifier || null,
+          name: msg.name,
+          email: msg.email,
+          phone_number: msg.phone || null,
+          custom_attributes: msg.custom_attributes || {},
+        });
+      }
     };
     window.addEventListener("message", alRecibir);
     // Chatwoot manda el contexto al cargar; esto lo pide por si llegamos tarde.
     window.parent?.postMessage("chatwoot-dashboard-app:fetch-info", "*");
+    window.parent?.postMessage({ event: "chat:request-contact" }, "*");
     return () => window.removeEventListener("message", alRecibir);
   }, []);
 

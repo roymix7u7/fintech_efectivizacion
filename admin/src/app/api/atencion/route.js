@@ -1,12 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import { etiquetaDeSede, rangoDe, MOTIVOS, fechaLima, diaYHoraLima } from "@/lib/atencion";
+import { chatPropioConfigurado } from "@/lib/chatApi";
+import { reportePropio } from "@/lib/atencionPropio";
 
 /**
  * Reporte de Atención al cliente por sede, para el supervisor (jefe de
  * sede) y el administrador.
  *
- * Corre en el servidor porque pregunta a Chatwoot con la clave de un
- * administrador (CHATWOOT_API_TOKEN), que no puede llegar al navegador.
+ * Corre en el servidor porque pregunta al chat con la clave de un
+ * administrador, que no puede llegar al navegador. Con el chat propio
+ * configurado (CHAT_URL y CHAT_API_TOKEN) los números los arma
+ * lib/atencionPropio.js; si no, salen de Chatwoot (CHATWOOT_API_TOKEN),
+ * como siempre.
  * Quién pide se comprueba con su sesión del panel: el supervisor solo
  * recibe su sede (la de users.sede_id), sin poder pedir otra; el
  * administrador elige la sede o todas.
@@ -143,9 +148,9 @@ async function convertidos(sb, primera, condiciones) {
 }
 
 export async function GET(req) {
-  if (!CW_URL || !CW_TOKEN) {
+  if (!chatPropioConfigurado() && (!CW_URL || !CW_TOKEN)) {
     return responder(
-      { error: "El reporte no está configurado en este servidor: faltan CHATWOOT_URL y CHATWOOT_API_TOKEN.", detalle: "sin_configurar" },
+      { error: "El reporte no está configurado en este servidor: faltan CHAT_URL y CHAT_API_TOKEN (o las de Chatwoot).", detalle: "sin_configurar" },
       503,
     );
   }
@@ -186,6 +191,8 @@ export async function GET(req) {
   const etiqueta = sede ? etiquetaDeSede(sede.nombre) : null;
   const periodo = ["hoy", "7d", "30d"].includes(url.searchParams.get("periodo")) ? url.searchParams.get("periodo") : "hoy";
   const { since, until } = rangoDe(periodo);
+
+  if (chatPropioConfigurado()) return reportePropio({ sb, yo, sedes, sede, etiqueta, periodo, since, until });
 
   try {
     const [agentes, porAgente, porEtiqueta, total, abiertas, cola, paraSupervisor, reclamos] = await Promise.all([

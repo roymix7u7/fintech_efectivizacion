@@ -1,4 +1,5 @@
 import { cw, lista, responder, sesionDe, chatwootConfigurado, DISPONIBILIDAD_CHATWOOT } from "@/lib/chatwootApi";
+import { chat, chatPropioConfigurado, agentePorCorreo, DISPONIBILIDAD_CHAT } from "@/lib/chatApi";
 
 /**
  * Lleva la disponibilidad del panel (en línea / ocupado / desconectado)
@@ -13,7 +14,7 @@ import { cw, lista, responder, sesionDe, chatwootConfigurado, DISPONIBILIDAD_CHA
 export const dynamic = "force-dynamic";
 
 export async function POST(req) {
-  if (!chatwootConfigurado()) return responder({ ok: true, chatwoot: null });
+  if (!chatwootConfigurado() && !chatPropioConfigurado()) return responder({ ok: true, chatwoot: null });
   const s = await sesionDe(req);
   if (s.error) return s.error;
 
@@ -22,6 +23,20 @@ export async function POST(req) {
     s.sb.from("chat_personal").select("activo").eq("user_id", s.user.id).maybeSingle(),
   ]);
   if (!c?.activo) return responder({ ok: true, chatwoot: null }); // no atiende el chat
+
+  // Chat propio: la disponibilidad la fija el panel y nada más (el chat no
+  // desconecta a nadie por tener su pestaña cerrada).
+  if (chatPropioConfigurado()) {
+    try {
+      const agente = await agentePorCorreo(s.user.email);
+      if (!agente) return responder({ ok: true, chatwoot: null, aviso: "Todavía no está en el chat: sincroniza desde Equipo." });
+      const disponibilidad = DISPONIBILIDAD_CHAT[d?.estado] || "offline";
+      await chat(`/v1/agents/${agente.id}`, { metodo: "PATCH", cuerpo: { availability: disponibilidad } });
+      return responder({ ok: true, chatwoot: disponibilidad });
+    } catch (e) {
+      return responder({ ok: false, error: "No se pudo actualizar el chat: " + e.message }, 502);
+    }
+  }
 
   try {
     const correo = (s.user.email || "").toLowerCase();

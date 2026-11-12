@@ -1,0 +1,57 @@
+# Chat propio (AlToque Chat) en el servidor, al lado de Chatwoot.
+#
+#   git clone https://github.com/roymix7u7/altoque-chat.git codigo
+#   cp .env.example .env        # y completa los valores
+#   docker compose up -d --build
+#
+# No abre puertos: se llega a él por el Caddy que ya atiende a Chatwoot
+# (soporte/chatwoot), con el bloque que indica el README. Por eso se une a
+# la red de ese compose.
+
+services:
+  chat:
+    build: ./codigo
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      # Caddy está delante: con esto el límite por IP cuenta a cada visitante y no a todos juntos.
+      TRUST_PROXY: "1"
+      DATABASE_URL: postgres://chat:${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD en .env}@db:5432/chat
+    volumes:
+      - chat_datos:/app/server/data   # respaldos, y adjuntos si no se usa R2
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      default:
+      chatwoot:
+        aliases:
+          - altoque-chat
+
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: chat
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: chat
+    volumes:
+      - chat_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chat -d chat"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+networks:
+  # La red del compose de Chatwoot (carpeta soporte/chatwoot → "chatwoot_default").
+  # Si tu carpeta se llama distinto: docker network ls
+  chatwoot:
+    external: true
+    name: chatwoot_default
+
+volumes:
+  chat_datos:
+  chat_db:

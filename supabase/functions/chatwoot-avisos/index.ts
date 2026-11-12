@@ -4,9 +4,11 @@
  * campana de Mi cuenta (que además llega al app por el disparador de
  * notificaciones).
  *
- * La llama Chatwoot (webhook "message_created" de la cuenta, lo crea
- * configurar.rb) y firma cada llamada: aquí se comprueba la firma antes de
- * leer nada. Solo cuenta cuando un asesor escribe de verdad: no las notas
+ * La llama el chat (webhook "message_created": en Chatwoot lo crea
+ * configurar.rb; en el chat propio, soporte/altoque-chat/configurar.mjs)
+ * y firma cada llamada: aquí se comprueba la firma antes de leer nada.
+ * Los dos firman igual ("sha256=" + HMAC de "timestamp.cuerpo") y solo
+ * cambia el nombre de las cabeceras y dónde viene el cliente. Solo cuenta cuando un asesor escribe de verdad: no las notas
  * privadas, ni los saludos automáticos, ni la encuesta.
  *
  * El cliente sale del identificador del contacto, que es el id de su
@@ -60,8 +62,9 @@ function iguales(a: string, b: string) {
 }
 
 async function firmaValida(req: Request, cuerpo: string, secreto: string) {
-  const ts = req.headers.get("x-chatwoot-timestamp") ?? "";
-  const firma = req.headers.get("x-chatwoot-signature") ?? "";
+  // Chat propio: X-Timestamp y X-Signature. Chatwoot: X-Chatwoot-…
+  const ts = req.headers.get("x-timestamp") ?? req.headers.get("x-chatwoot-timestamp") ?? "";
+  const firma = req.headers.get("x-signature") ?? req.headers.get("x-chatwoot-signature") ?? "";
   const segundos = Number(ts);
   if (!Number.isFinite(segundos) || Math.abs(Date.now() / 1000 - segundos) > VENTANA_SEGUNDOS) return false;
   const esperada = `sha256=${await hmacHex(secreto, `${ts}.${cuerpo}`)}`;
@@ -107,7 +110,8 @@ Deno.serve(async (req) => {
     m.message_type === "outgoing" &&
     !m.private &&
     m.sender?.type === "user";
-  const cliente = m.conversation?.meta?.sender?.identifier;
+  // Chat propio: contact.identifier. Chatwoot: conversation.meta.sender.identifier.
+  const cliente = m.contact?.identifier ?? m.conversation?.meta?.sender?.identifier;
   if (!esDelAsesor || typeof cliente !== "string" || !UUID.test(cliente)) {
     return responder({ ok: true, omitido: true });
   }

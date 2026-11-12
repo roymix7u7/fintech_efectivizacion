@@ -101,7 +101,7 @@ export default function AtencionPage() {
             rel="noopener"
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-semibold hover:bg-muted"
           >
-            Abrir Chatwoot
+            {datos.chatPropio ? "Abrir el chat" : "Abrir Chatwoot"}
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
               <path d="M7 17 17 7M8 7h9v9" />
             </svg>

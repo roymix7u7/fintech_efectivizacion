@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { activarAvisos, avisosPosibles, permisoAvisos, renovarAvisos, yaAcepto } from "@/lib/avisosNavegador";
+import { EVENTOS } from "@/lib/chat";
 
 /**
  * "¿Te avisamos cuando tu asesor responda?" (lib/avisosNavegador.js).
@@ -47,13 +48,13 @@ export default function AvisosNavegador({ sb, usuarioId }) {
       const pendiente = permiso === "default" || (permiso === "granted" && !yaAcepto(usuarioId));
       if (pendiente && Date.now() > calladoHasta(usuarioId)) setVisible(true);
     };
-    window.addEventListener("chatwoot:opened", usar);
-    window.addEventListener("chatwoot:on-start-conversation", usar);
-    window.addEventListener("chatwoot:closed", alCerrar);
+    window.addEventListener(EVENTOS.abierto, usar);
+    window.addEventListener(EVENTOS.uso, usar);
+    window.addEventListener(EVENTOS.cerrado, alCerrar);
     return () => {
-      window.removeEventListener("chatwoot:opened", usar);
-      window.removeEventListener("chatwoot:on-start-conversation", usar);
-      window.removeEventListener("chatwoot:closed", alCerrar);
+      window.removeEventListener(EVENTOS.abierto, usar);
+      window.removeEventListener(EVENTOS.uso, usar);
+      window.removeEventListener(EVENTOS.cerrado, alCerrar);
     };
   }, [usuarioId]);
 

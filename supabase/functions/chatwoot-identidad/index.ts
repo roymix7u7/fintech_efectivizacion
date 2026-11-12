@@ -15,9 +15,15 @@
  * servicio: solo necesita ver lo suyo, y así las políticas siguen
  * mandando.
  *
- * Secretos (uno por bandeja; se copian de Chatwoot → bandeja →
- * Configuración → Validación de identidad):
- *   npx supabase secrets set CHATWOOT_HMAC_WEB=... CHATWOOT_HMAC_APP=...
+ * Sirve a los dos chats. La web dice cuál usa (proveedor: "propio" o
+ * "chatwoot", ver admin/src/lib/chat.js) y se firma con la clave de la
+ * bandeja de ese chat. Sin proveedor, Chatwoot (como antes).
+ *
+ * Secretos (uno por bandeja):
+ *   · Chatwoot (bandeja → Configuración → Validación de identidad):
+ *       npx supabase secrets set CHATWOOT_HMAC_WEB=... CHATWOOT_HMAC_APP=...
+ *   · Chat propio (Ajustes → Bandejas → Editar → Clave para firmar la identidad):
+ *       npx supabase secrets set CHAT_HMAC_WEB=... CHAT_HMAC_APP=...
  *
  * Despliegue:
  *   npx supabase functions deploy chatwoot-identidad
@@ -32,10 +38,10 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Cada canal tiene su bandeja y su token.
-const SECRETOS: Record<string, string> = {
-  web: "CHATWOOT_HMAC_WEB",
-  app: "CHATWOOT_HMAC_APP",
+// Cada canal tiene su bandeja y su token, en cada chat.
+const SECRETOS: Record<string, Record<string, string>> = {
+  chatwoot: { web: "CHATWOOT_HMAC_WEB", app: "CHATWOOT_HMAC_APP" },
+  propio: { web: "CHAT_HMAC_WEB", app: "CHAT_HMAC_APP" },
 };
 
 function responder(cuerpo: unknown, status = 200) {
@@ -81,12 +87,15 @@ Deno.serve(async (req) => {
   const anon = Deno.env.get("SUPABASE_ANON_KEY");
 
   let canal = "";
+  let proveedor = "chatwoot";
   try {
-    canal = (await req.json())?.canal ?? "";
+    const cuerpo = await req.json();
+    canal = cuerpo?.canal ?? "";
+    if (cuerpo?.proveedor === "propio") proveedor = "propio";
   } catch {
     // Sin cuerpo: se responde abajo como canal desconocido.
   }
-  const nombreSecreto = SECRETOS[canal];
+  const nombreSecreto = SECRETOS[proveedor][canal];
   if (!nombreSecreto) {
     return responder(
       { error: 'Indica el canal: "web" o "app".', detalle: "canal_invalido" },

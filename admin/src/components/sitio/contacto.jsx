@@ -4,30 +4,31 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabaseCliente } from "@/lib/cliente";
-import { chatDisponible, cargarChatwoot } from "@/lib/chatwoot";
+import { chatDisponible, cargarChat, chatActual } from "@/lib/chat";
 import { HORARIO } from "./datos";
 
 /**
  * Botón flotante de la landing: chat con un asesor.
  *
- * El chat es para quien todavía no tiene cuenta (bandeja "Visitantes web"
- * de Chatwoot). Para que no lo saturen con bots:
+ * El chat es para quien todavía no tiene cuenta (bandeja "Visitantes web").
+ * Qué chat se carga (el propio o Chatwoot) lo decide lib/chat.js.
+ * Para que no lo saturen con bots:
  *   1. El chat no se carga con la página: solo cuando alguien lo pide.
  *   2. Antes pasa la verificación de Cloudflare Turnstile, y el servidor
  *      la confirma (/api/turnstile). Una vez por pestaña.
- *   3. Chatwoot pide nombre y celular, limita mensajes por IP y solo
- *      deja mostrar el chat desde nuestros dominios.
+ *   3. El chat pide nombre y celular, limita mensajes por IP y solo
+ *      se deja mostrar desde nuestros dominios.
  *
  * WhatsApp está oculto por ahora: para volver a mostrarlo en la tarjeta,
  * MOSTRAR_WHATSAPP = true (el enlace ya llega por props desde la landing).
  *
- * Sin NEXT_PUBLIC_CHATWOOT_VISITANTES_TOKEN o la clave de Turnstile (y con
- * WhatsApp oculto) el botón no se muestra.
+ * Sin el token de la bandeja de visitantes (NEXT_PUBLIC_CHAT_VISITANTES_TOKEN,
+ * o NEXT_PUBLIC_CHATWOOT_VISITANTES_TOKEN con Chatwoot) o la clave de
+ * Turnstile (y con WhatsApp oculto) el botón no se muestra.
  */
 const MOSTRAR_WHATSAPP = false;
-const TOKEN = process.env.NEXT_PUBLIC_CHATWOOT_VISITANTES_TOKEN;
 const SITIO_TURNSTILE = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
-const CON_CHAT = chatDisponible(TOKEN) && Boolean(SITIO_TURNSTILE);
+const CON_CHAT = chatDisponible("visitantes") && Boolean(SITIO_TURNSTILE);
 const VERIFICADO = "atk-chat-verificado";
 
 let turnstileCargado = null;
@@ -91,11 +92,11 @@ export default function ContactoFlotante({ whatsapp, whatsappTexto }) {
   const abrirChat = useCallback(async () => {
     setPaso("cargando");
     try {
-      const cw = await cargarChatwoot(TOKEN, { launcherTitle: "Chatea con un asesor" });
+      const chat = await cargarChat("visitantes", { titulo: "Chatea con un asesor" });
       setChatListo(true);
       setAbierto(false);
       setPaso("opciones");
-      cw.toggle("open");
+      chat.abrir();
     } catch (e) {
       setError(e.message || "No se pudo abrir el chat. Inténtalo de nuevo en un momento.");
       setPaso("opciones");
@@ -106,7 +107,7 @@ export default function ContactoFlotante({ whatsapp, whatsappTexto }) {
     setError("");
     if (chatListo) {
       setAbierto(false);
-      return window.$chatwoot?.toggle("open");
+      return chatActual()?.abrir();
     }
     if (yaVerificado()) return abrirChat();
     setPaso("verificando");

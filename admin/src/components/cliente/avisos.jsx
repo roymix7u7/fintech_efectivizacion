@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+import { chatActual } from "@/lib/chat";
 
 /**
  * Campana de Mis avisos, en el encabezado de Mi cuenta. Los avisos los
@@ -73,9 +74,9 @@ export default function MisAvisos({ sb, avisos }) {
 
   async function leer(a) {
     // "Tu asesor te respondió": se abre el chat directamente.
-    if (a.tipo === "chat" && window.$chatwoot) {
+    if (a.tipo === "chat" && chatActual()) {
       setAbierto(false);
-      window.$chatwoot.toggle("open");
+      chatActual().abrir();
     } else {
       setExpandido(expandido === a.id ? null : a.id);
     }

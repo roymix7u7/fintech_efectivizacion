@@ -13,13 +13,15 @@
  *     la tarjeta); micrófono y ubicación, para nadie.
  *   · HSTS: el navegador solo entra por https (en local no aplica).
  */
-const CHATWOOT = (() => {
+const origenDe = (url) => {
   try {
-    return new URL(process.env.NEXT_PUBLIC_CHATWOOT_URL).origin;
+    return new URL(url).origin;
   } catch {
     return null;
   }
-})();
+};
+// Los que pueden incrustar la ficha: Chatwoot y el chat propio (el que esté configurado).
+const CHATWOOT = [origenDe(process.env.NEXT_PUBLIC_CHATWOOT_URL), origenDe(process.env.NEXT_PUBLIC_CHAT_URL)].filter(Boolean).join(" ") || null;
 
 const comunes = [
   { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
