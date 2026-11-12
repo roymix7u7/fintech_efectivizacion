@@ -14,3 +14,13 @@ chat.panel-admin-atk-mobil.com {
 		-Server
 	}
 }
+
+# Chat propio (soporte/altoque-chat)
+chat2.panel-admin-atk-mobil.com {
+	encode zstd gzip
+	reverse_proxy altoque-chat:4000
+	header {
+		Strict-Transport-Security "max-age=63072000"
+		-Server
+	}
+}
