@@ -354,6 +354,8 @@ export default function Shell({
   volver,
   contadores = {},
   completo = false,
+  barraPlegada = false,
+  encabezadoSoloMovil = false,
   children,
 }) {
   const pathname = usePathname();
@@ -443,7 +445,8 @@ export default function Shell({
   }
 
   // Plegada solo en escritorio: en el teléfono la barra es un cajón.
-  const compacta = plegado && !abierto;
+  // barraPlegada: la pantalla pide todo el ancho (el chat) y la barra queda en íconos.
+  const compacta = (plegado || barraPlegada) && !abierto;
   const cerrarCajon = () => setAbierto(false);
 
   return (
@@ -559,7 +562,7 @@ export default function Shell({
               compacta={compacta}
               icono={<Salida className="h-[18px] w-[18px]" />}
             />
-            <span className="hidden lg:block">
+            <span className={barraPlegada ? "hidden" : "hidden lg:block"}>
               <BotonBarra
                 onClick={alternarPlegado}
                 texto={plegado ? "Mostrar los nombres" : "Plegar la barra"}
@@ -580,7 +583,13 @@ export default function Shell({
 
       {/* ─────────── Contenido ─────────── */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-[60px] shrink-0 items-center gap-3 border-b border-border bg-card/90 px-4 backdrop-blur lg:px-6">
+        <header
+          className={cn(
+            "sticky top-0 z-20 flex h-[60px] shrink-0 items-center gap-3 border-b border-border bg-card/90 px-4 backdrop-blur lg:px-6",
+            // En el celular se queda siempre: ahí está el botón del menú.
+            encabezadoSoloMovil && "lg:hidden",
+          )}
+        >
           <button
             onClick={() => setAbierto(true)}
             className="-ml-1 rounded-md p-2 text-muted-foreground transition hover:bg-muted lg:hidden"

@@ -1,6 +1,7 @@
 import localFont from "next/font/local";
 import "./globals.css";
 import PantallaCarga from "@/components/pantallaCarga";
+import ChatIncrustado from "@/components/chatIncrustado";
 
 // Las mismas fuentes que la app móvil: Manrope para leer y operar,
 // Sora para títulos y cifras grandes.
@@ -44,6 +45,7 @@ export default function RootLayout({ children }) {
       <body className="font-sans antialiased">
         {children}
         <PantallaCarga />
+        <ChatIncrustado />
       </body>
     </html>
   );
