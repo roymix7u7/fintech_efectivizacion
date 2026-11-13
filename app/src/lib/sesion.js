@@ -35,6 +35,13 @@ export async function cerrarSesion() {
     await olvidarPush();
   } catch {}
 
+  // El chat también se olvida: el siguiente en este teléfono no hereda
+  // la conversación. (Carga diferida, como push: ver nota de arriba.)
+  try {
+    const { olvidarChat } = await import("./chat");
+    olvidarChat();
+  } catch {}
+
   try {
     await supabase.auth.signOut();
   } catch {}

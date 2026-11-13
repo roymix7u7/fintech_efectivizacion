@@ -129,6 +129,8 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen name="notificaciones" options={{ headerShown: false }} />
+          {/* Chat con un asesor (app/chat.js). */}
+          <Stack.Screen name="chat" options={{ headerShown: false }} />
           {/* Registrar tarjeta y agregar o editar cuenta: tareas que se
               abren encima de la lista y se terminan o cancelan, así que
               suben desde abajo como Nueva solicitud. */}

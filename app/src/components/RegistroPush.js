@@ -47,6 +47,8 @@ export default function RegistroPush() {
         else if (tipo === "kyc_observado") entrarA(router, "/en-revision");
         else if (tipo.startsWith("tarjeta")) router.dismissTo("/(tabs)/tarjetas");
         else if (tipo.startsWith("solicitud") || tipo.startsWith("pago")) router.dismissTo("/(tabs)/solicitudes");
+        // "Tu asesor te respondió": directo a la conversación.
+        else if (tipo === "chat") router.push("/chat");
         else router.push("/notificaciones");
       }
     }).then((fn) => {

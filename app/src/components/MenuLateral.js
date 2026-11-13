@@ -146,6 +146,7 @@ export default function MenuLateral({ visible, onClose, perfil }) {
       icon: "notifications-outline",
       contador: avisosSinLeer,
     },
+    { label: "Chat con un asesor", ruta: "/chat", clave: "/chat", icon: "chatbubbles-outline" },
     {
       label: "Noticias",
       ruta: "/(tabs)/noticias",
