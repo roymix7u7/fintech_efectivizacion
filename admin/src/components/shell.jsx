@@ -200,12 +200,24 @@ export const MENU = [
   },
 ];
 
+/**
+ * Pantallas a las que se llega por otro camino y no salen en la lista:
+ * el chat incrustado se abre con el botón dorado de la barra, que solo
+ * ve quien atiende el chat (components/abrirChat.jsx).
+ */
+const FUERA_DEL_MENU = [
+  { ruta: "/chat", titulo: "Chat de atención", roles: ["admin", "supervisor", "gestor", "pagos"], grupo: null, oculta: true },
+];
+
 /** Todas las pantallas en una lista, con el grupo al que pertenecen. */
-export const SECCIONES = MENU.flatMap((e) =>
-  e.items
-    ? e.items.map((s) => ({ ...s, grupo: e.grupo }))
-    : [{ ...e, grupo: null }],
-);
+export const SECCIONES = [
+  ...MENU.flatMap((e) =>
+    e.items
+      ? e.items.map((s) => ({ ...s, grupo: e.grupo }))
+      : [{ ...e, grupo: null }],
+  ),
+  ...FUERA_DEL_MENU,
+];
 
 /**
  * Con pocas pantallas los grupos estorban: a un gestor o a pagos se les
@@ -219,9 +231,12 @@ const PLANA_HASTA = 6;
  * grupo con una sola pantalla se muestra como enlace directo.
  */
 function menuDe(rol) {
+  // "visibles" son las pantallas permitidas (guardia de rutas e inicio);
+  // las ocultas se permiten pero no se listan ni cuentan.
   const visibles = SECCIONES.filter((s) => s.roles.includes(rol));
-  if (visibles.length <= PLANA_HASTA) {
-    return { visibles, entradas: visibles, agrupada: false };
+  const listadas = visibles.filter((s) => !s.oculta);
+  if (listadas.length <= PLANA_HASTA) {
+    return { visibles, entradas: listadas, agrupada: false };
   }
   const entradas = [];
   for (const e of MENU) {
@@ -338,6 +353,7 @@ export default function Shell({
   acciones,
   volver,
   contadores = {},
+  completo = false,
   children,
 }) {
   const pathname = usePathname();
@@ -621,7 +637,8 @@ export default function Shell({
           )}
         </header>
 
-        <main className="flex-1 px-4 py-5 lg:px-6">{children}</main>
+        {/* completo: la pantalla ocupa todo el espacio, sin márgenes (el chat incrustado). */}
+        <main className={completo ? "flex min-h-0 flex-1 flex-col" : "flex-1 px-4 py-5 lg:px-6"}>{children}</main>
       </div>
     </div>
   );
