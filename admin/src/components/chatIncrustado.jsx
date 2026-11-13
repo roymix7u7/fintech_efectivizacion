@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { CHAT_EN_PANEL, enlaceDelChat } from "@/lib/chatPanel";
+import { tarjetaDelCliente } from "@/lib/fichaChat";
 
 /**
  * El chat de atención, cargado una sola vez y vivo mientras dure la sesión
@@ -21,6 +22,10 @@ import { CHAT_EN_PANEL, enlaceDelChat } from "@/lib/chatPanel";
  * mensajes: el panel manda a qué sección ir (mandarAlChat) y el chat
  * informa dónde está, qué secciones puede ver esta persona y cuántos
  * mensajes y avisos tiene sin leer (useInfoChat).
+ *
+ * También le da al chat la ficha del cliente de la conversación abierta
+ * (lib/fichaChat.js): el chat la pide y la muestra en su panel lateral.
+ * Se lee con la sesión del asesor, así cada rol ve lo que la base le deja.
  *
  * Se carga cuando la barra confirma que la persona atiende el chat
  * (evento atk:chat-precargar) o al entrar a /chat. Se descarta al cerrar
@@ -79,6 +84,7 @@ export function useEstadoChat() {
 
 export default function ChatIncrustado() {
   const pathname = usePathname();
+  const router = useRouter();
   const [url, setUrl] = useState(null);
   const [caja, setCaja] = useState(null); // { top, left, width, height } del hueco
   const estado = useRef({ cargando: false, error: "" });
@@ -89,6 +95,20 @@ export default function ChatIncrustado() {
   useEffect(() => {
     const alRecibir = (e) => {
       if (!marco.current || e.source !== marco.current.contentWindow || e.origin !== ORIGEN_CHAT) return;
+      // El chat pide la ficha del cliente de la conversación abierta.
+      if (e.data?.type === "atk-chat:card-request") {
+        const id = e.data.id;
+        tarjetaDelCliente(e.data.contact)
+          .catch(() => null)
+          .then((card) => mandarAlChat({ type: "atk-chat:card", id, card }));
+        return;
+      }
+      // Un botón de la ficha lleva a una pantalla del panel (solo rutas propias).
+      if (e.data?.type === "atk-chat:open") {
+        const href = String(e.data.href || "");
+        if (/^\/[a-z0-9/_-]*$/i.test(href)) router.push(href);
+        return;
+      }
       if (e.data?.type !== "atk-chat:state") return;
       const d = e.data;
       info = {
@@ -101,7 +121,7 @@ export default function ChatIncrustado() {
     };
     window.addEventListener("message", alRecibir);
     return () => window.removeEventListener("message", alRecibir);
-  }, []);
+  }, [router]);
 
   const informar = useCallback((cambio) => {
     estado.current = { ...estado.current, ...cambio };
