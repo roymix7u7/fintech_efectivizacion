@@ -16,6 +16,12 @@ import { CHAT_EN_PANEL, enlaceDelChat } from "@/lib/chatPanel";
  * La pantalla /chat solo deja un hueco (#atk-chat-hueco) y este componente
  * coloca el marco encima, siguiendo su tamaño.
  *
+ * El chat sabe que está incrustado y no muestra su propia barra: la
+ * navegación la pone el panel (components/abrirChat.jsx). Se entienden por
+ * mensajes: el panel manda a qué sección ir (mandarAlChat) y el chat
+ * informa dónde está, qué secciones puede ver esta persona y cuántos
+ * mensajes y avisos tiene sin leer (useInfoChat).
+ *
  * Se carga cuando la barra confirma que la persona atiende el chat
  * (evento atk:chat-precargar) o al entrar a /chat. Se descarta al cerrar
  * sesión (/login): el siguiente no hereda el chat del anterior.
@@ -23,6 +29,35 @@ import { CHAT_EN_PANEL, enlaceDelChat } from "@/lib/chatPanel";
 export const HUECO = "atk-chat-hueco";
 const PRECARGAR = "atk:chat-precargar";
 const ESTADO = "atk:chat-estado";
+const INFO = "atk:chat-info";
+const ORIGEN_CHAT = (() => {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_CHAT_URL).origin;
+  } catch {
+    return null;
+  }
+})();
+
+// Lo último que informó el chat y la ventana del marco (una sola por pestaña).
+let info = null; // { route, unread, notifs, nav: [{ route, label }], user }
+let ventana = null;
+
+/** Le dice algo al chat: { type: "atk-chat:navigate", route } o { type: "atk-chat:panel", panel }. */
+export function mandarAlChat(mensaje) {
+  if (ventana && ORIGEN_CHAT) ventana.postMessage(mensaje, ORIGEN_CHAT);
+}
+
+/** Lo que el chat informa de sí mismo, o null si aún no cargó. */
+export function useInfoChat() {
+  const [valor, setValor] = useState(info);
+  useEffect(() => {
+    const alCambiar = () => setValor(info);
+    window.addEventListener(INFO, alCambiar);
+    alCambiar();
+    return () => window.removeEventListener(INFO, alCambiar);
+  }, []);
+  return valor;
+}
 
 /** La barra lo llama cuando sabe que la persona atiende el chat. */
 export function precargarChat() {
@@ -48,6 +83,25 @@ export default function ChatIncrustado() {
   const [caja, setCaja] = useState(null); // { top, left, width, height } del hueco
   const estado = useRef({ cargando: false, error: "" });
   const pidiendo = useRef(false);
+  const marco = useRef(null);
+
+  // Lo que informa el chat (solo se escucha a su ventana y a su dirección).
+  useEffect(() => {
+    const alRecibir = (e) => {
+      if (!marco.current || e.source !== marco.current.contentWindow || e.origin !== ORIGEN_CHAT) return;
+      if (e.data?.type !== "atk-chat:state") return;
+      const d = e.data;
+      info = {
+        route: String(d.route || ""),
+        unread: Number(d.unread) || 0,
+        notifs: Number(d.notifs) || 0,
+        nav: Array.isArray(d.nav) ? d.nav.slice(0, 12).map((n) => ({ route: String(n.route || ""), label: String(n.label || "").slice(0, 40) })) : [],
+      };
+      window.dispatchEvent(new CustomEvent(INFO));
+    };
+    window.addEventListener("message", alRecibir);
+    return () => window.removeEventListener("message", alRecibir);
+  }, []);
 
   const informar = useCallback((cambio) => {
     estado.current = { ...estado.current, ...cambio };
@@ -86,6 +140,9 @@ export default function ChatIncrustado() {
     if (pathname === "/login" && url) {
       setUrl(null);
       estado.current = { cargando: false, error: "" };
+      info = null;
+      ventana = null;
+      window.dispatchEvent(new CustomEvent(INFO));
     }
   }, [pathname, url]);
 
@@ -126,9 +183,16 @@ export default function ChatIncrustado() {
   const visible = Boolean(caja);
   return (
     <iframe
+      ref={(el) => {
+        marco.current = el;
+        ventana = el?.contentWindow || null;
+      }}
       src={url}
       title="Chat de atención"
-      onLoad={() => informar({ cargando: false, error: "" })}
+      onLoad={() => {
+        informar({ cargando: false, error: "" });
+        mandarAlChat({ type: "atk-chat:ping" });
+      }}
       // Sonido, portapapeles y pantalla completa para el chat.
       allow="autoplay; clipboard-read; clipboard-write; fullscreen"
       aria-hidden={!visible}
