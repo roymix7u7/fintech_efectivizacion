@@ -1,4 +1,6 @@
 import { io } from "socket.io-client";
+import { fetch as fetchExpo } from "expo/fetch";
+import { File } from "expo-file-system";
 import { supabase } from "./supabase";
 
 /**
@@ -39,7 +41,10 @@ class ErrorChat extends Error {
 async function pedir(ruta, { metodo = "GET", cuerpo, form, token } = {}) {
   let r;
   try {
-    r = await fetch(`${CHAT_URL}/api/widget${ruta}`, {
+    // Con archivos se usa el fetch de Expo: arma el formulario con los
+    // bytes ya leídos (ver enviarMensaje), sin pasar por la subida de
+    // archivos de React Native.
+    r = await (form ? fetchExpo : fetch)(`${CHAT_URL}/api/widget${ruta}`, {
       method: metodo,
       headers: {
         ...(token && { Authorization: `Bearer ${token}` }),
@@ -47,7 +52,8 @@ async function pedir(ruta, { metodo = "GET", cuerpo, form, token } = {}) {
       },
       body: form || (cuerpo ? JSON.stringify(cuerpo) : undefined),
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof ErrorChat) throw e;
     throw new ErrorChat("No hay conexión con el chat. Revisa tu internet e inténtalo de nuevo.", "sin_red");
   }
   const j = await r.json().catch(() => null);
@@ -122,7 +128,25 @@ export function enviarMensaje({ texto = "", archivos = [], pantalla }) {
     const form = new FormData();
     form.append("content", texto);
     form.append("context", JSON.stringify(contexto));
-    for (const f of archivos) form.append("files", { uri: f.uri, name: f.nombre, type: f.tipo });
+    // Cada archivo va con sus bytes leídos del teléfono. La subida por
+    // "uri" de React Native fallaba con los audios ("sin conexión") aun
+    // habiendo internet; así además se distingue un archivo ilegible de
+    // un problema de red.
+    for (const f of archivos) {
+      const archivo = new File(f.uri);
+      if (!archivo.exists || !archivo.size) throw new ErrorChat("No pudimos leer el archivo. Inténtalo otra vez.", "archivo");
+      form.append("files", {
+        name: f.nombre,
+        type: f.tipo,
+        bytes: async () => {
+          try {
+            return await archivo.bytes();
+          } catch {
+            throw new ErrorChat("No pudimos leer el archivo. Inténtalo otra vez.", "archivo");
+          }
+        },
+      });
+    }
     return pedir("/messages", { metodo: "POST", form, token });
   });
 }
