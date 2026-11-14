@@ -90,7 +90,7 @@ export async function tarjetaDelCliente(contacto) {
   const celular = contacto.phone || contacto.phone_number || contacto.custom_attributes?.celular || null;
   const columnas =
     "id, user_id, nombres, apellidos, tipo_documento, dni, telefono, created_at, fecha_validacion, " +
-    "motivo_observacion, motivo_bloqueo, tasa_comision, cupon_desde, cupon_hasta, origen";
+    "motivo_observacion, motivo_bloqueo, tasa_comision, cupon_desde, cupon_hasta, origen, bloque_id";
 
   // ── Quién es: por su cuenta (identidad firmada) o, si no, por su celular ──
   let perfil = null;
@@ -117,7 +117,7 @@ export async function tarjetaDelCliente(contacto) {
   }
   if (!perfil) return tarjetaVisitante(contacto, celular);
 
-  const [cuenta, solicitudes, tarjetas, cuentas, gestiones, reclamos] = await Promise.all([
+  const [cuenta, solicitudes, tarjetas, cuentas, gestiones, reclamos, bloque, tasasBloque, especiales] = await Promise.all([
     supabase.from("users").select("email, estado").eq("id", perfil.user_id).maybeSingle(),
     supabase
       .from("solicitudes")
@@ -129,6 +129,11 @@ export async function tarjetaDelCliente(contacto) {
     supabase.from("cuentas_bancarias").select("id, banco, tipo, numero_cuenta, activa").eq("cliente_id", perfil.id).order("created_at", { ascending: false }),
     supabase.rpc("ficha_cliente", { p_cliente: perfil.id }),
     supabase.from("reclamaciones").select("id, codigo, estado, creado_en, vence_en, respondido_en").eq("user_id", perfil.user_id).order("creado_en", { ascending: false }).limit(5),
+    // Cupón asignado (un bloque de comisiones con nombre) y sus porcentajes por banco.
+    perfil.bloque_id ? supabase.from("bloques_comision").select("nombre, es_default").eq("id", perfil.bloque_id).maybeSingle() : { data: null },
+    perfil.bloque_id ? supabase.from("bloques_comision_banco").select("banco, porcentaje, porcentaje_hoy").eq("bloque_id", perfil.bloque_id) : { data: null },
+    // Comisiones especiales de este cliente (mandan sobre el cupón en ese banco).
+    supabase.from("comisiones_cliente").select("banco, porcentaje, motivo").eq("cliente_id", perfil.id),
   ]);
   const sols = solicitudes.data || [];
   const tarj = tarjetas.data || [];
@@ -138,7 +143,14 @@ export async function tarjetaDelCliente(contacto) {
   const estado = cuenta.data?.estado;
   const nombre = `${perfil.nombres || ""} ${perfil.apellidos || ""}`.trim() || contacto.name || "Sin nombre";
   const hoy = new Date().toISOString().slice(0, 10);
-  const cupon = perfil.tasa_comision != null && perfil.cupon_hasta && perfil.cupon_hasta.slice(0, 10) >= hoy;
+  const pct = (n) => `${Number(n).toLocaleString("es-PE")} %`;
+  const vigente = !perfil.cupon_hasta || perfil.cupon_hasta.slice(0, 10) >= hoy;
+  // El cupón es el bloque asignado (si no es el general) mientras esté vigente.
+  const cupon = bloque.data && !bloque.data.es_default && vigente ? bloque.data.nombre : null;
+  const esp = especiales.data || [];
+  const tasas = cupon
+    ? [...(tasasBloque.data || [])].sort((a, b) => (a.banco === "Otros") - (b.banco === "Otros") || nombreBanco(a.banco).localeCompare(nombreBanco(b.banco)))
+    : [];
   const cuantas = (k) => sols.filter((s) => s.estado === k).length;
   const enCurso = sols.filter((s) => s.estado === "pendiente" || s.estado === "aprobado");
   const reclamosAbiertos = recl.filter((r) => !r.respondido_en);
@@ -174,7 +186,8 @@ export async function tarjetaDelCliente(contacto) {
     badges: [
       ESTADO_CUENTA[estado] || { text: estado || "Sin estado", tone: "" },
       !porTelefono && { text: "Identidad confirmada", tone: "ok" },
-      cupon && { text: `Cupón ${Number(perfil.tasa_comision).toLocaleString("es-PE")} %`, tone: "soft" },
+      cupon && { text: `Cupón ${cupon}`, tone: "soft" },
+      esp.length > 0 && { text: "Comisión especial", tone: "soft" },
     ].filter(Boolean),
     alerts,
     facts: [
@@ -182,7 +195,7 @@ export async function tarjetaDelCliente(contacto) {
       { label: "Celular", value: celularLegible(perfil.telefono), copy: nueveDigitos(perfil.telefono) || perfil.telefono },
       cuenta.data?.email && { label: "Correo", value: cuenta.data.email, copy: cuenta.data.email },
       { label: "Cliente desde", value: fecha(perfil.created_at) },
-      cupon && { label: "Comisión", value: `${Number(perfil.tasa_comision).toLocaleString("es-PE")} % hasta ${fecha(perfil.cupon_hasta)}` },
+      cupon && { label: "Cupón", value: `${cupon}${perfil.cupon_hasta ? ` hasta ${fecha(perfil.cupon_hasta)}` : ""}` },
       contacto.custom_attributes?.pantalla && { label: "Está en", value: String(contacto.custom_attributes.pantalla) },
     ].filter(Boolean),
     stats: [
@@ -192,6 +205,27 @@ export async function tarjetaDelCliente(contacto) {
     ],
     actions: [],
     sections: [
+      (tasas.length > 0 || esp.length > 0) && {
+        id: "comisiones",
+        title: "Comisiones",
+        count: esp.length + tasas.filter((t) => !esp.some((e) => e.banco === t.banco)).length,
+        empty: "",
+        items: [
+          ...esp.map((e) => ({
+            title: nombreBanco(e.banco),
+            badge: { text: pct(e.porcentaje), tone: "ok" },
+            detail: "Comisión especial de este cliente",
+            note: e.motivo || "",
+          })),
+          ...tasas
+            .filter((t) => !esp.some((e) => e.banco === t.banco))
+            .map((t) => ({
+              title: nombreBanco(t.banco),
+              badge: { text: pct(t.porcentaje), tone: "soft" },
+              detail: t.porcentaje_hoy != null ? `Depósito para hoy: ${pct(t.porcentaje_hoy)}` : `Cupón ${cupon}`,
+            })),
+        ],
+      },
       {
         id: "solicitudes",
         title: "Solicitudes",
