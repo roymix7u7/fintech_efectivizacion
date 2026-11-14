@@ -61,7 +61,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Accedemos a tus fotos para que puedas adjuntar comprobantes ya guardados en tu galería.",
-          "microphonePermission": false
+          "microphonePermission": "Usamos el micrófono solo cuando grabas un audio para enviarlo por el chat a tu asesor."
         }
       ],
       [
