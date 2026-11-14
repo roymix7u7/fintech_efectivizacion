@@ -11,12 +11,14 @@ import {
   Linking,
   AppState,
   Platform,
+  Keyboard,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as DocumentPicker from "expo-document-picker";
+import { File, Paths } from "expo-file-system";
 import {
   useAudioRecorder,
   useAudioRecorderState,
@@ -111,12 +113,18 @@ function Calificacion({ mensaje, onCalificar }) {
   );
 }
 
-/** Audio de un mensaje: se carga recién al tocarlo y se suelta al terminar o al salir. */
-function AudioMensaje({ url, mio }) {
+/**
+ * Audio de un mensaje. Al tocarlo se baja al teléfono (queda guardado para
+ * la próxima vez) y se reproduce desde ahí: tocarlo directo desde internet
+ * no sonaba en Android. Se suelta al terminar o al salir.
+ */
+function AudioMensaje({ url, mio, onError }) {
   const [sonando, setSonando] = useState(false);
+  const [cargando, setCargando] = useState(false);
   const [avance, setAvance] = useState({ actual: 0, total: 0 });
   const reproductor = useRef(null);
   const escucha = useRef(null);
+  const vivo = useRef(true);
 
   const soltar = useCallback(() => {
     escucha.current?.remove?.();
@@ -126,26 +134,47 @@ function AudioMensaje({ url, mio }) {
     } catch {}
     reproductor.current = null;
   }, []);
-  useEffect(() => soltar, [soltar]);
+  useEffect(
+    () => () => {
+      vivo.current = false;
+      soltar();
+    },
+    [soltar],
+  );
 
-  function alternar() {
+  async function alternar() {
+    if (cargando) return;
     if (reproductor.current) {
       if (sonando) reproductor.current.pause();
       else reproductor.current.play();
       return;
     }
-    const p = createAudioPlayer(url);
-    reproductor.current = p;
-    escucha.current = p.addListener("playbackStatusUpdate", (e) => {
-      setSonando(Boolean(e.playing));
-      setAvance({ actual: e.currentTime || 0, total: e.duration || 0 });
-      if (e.didJustFinish) {
-        setSonando(false);
-        setAvance((a) => ({ actual: 0, total: a.total }));
-        soltar();
-      }
-    });
-    p.play();
+    setCargando(true);
+    try {
+      const nombre = `chat-${String(url).split("/").pop().split("?")[0].replace(/[^A-Za-z0-9._-]/g, "_")}`;
+      const archivo = new File(Paths.cache, nombre);
+      if (!archivo.exists || !archivo.size) await File.downloadFileAsync(url, archivo, { idempotent: true });
+      if (!vivo.current) return;
+      // Por el altavoz y aunque el teléfono esté en silencio, como una nota de voz.
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      const p = createAudioPlayer(archivo.uri);
+      reproductor.current = p;
+      escucha.current = p.addListener("playbackStatusUpdate", (e) => {
+        setSonando(Boolean(e.playing));
+        setAvance({ actual: e.currentTime || 0, total: e.duration || 0 });
+        if (e.didJustFinish) {
+          setSonando(false);
+          setAvance((x) => ({ actual: 0, total: x.total }));
+          soltar();
+        }
+      });
+      p.play();
+    } catch {
+      soltar();
+      onError?.();
+    } finally {
+      if (vivo.current) setCargando(false);
+    }
   }
 
   const color = mio ? colors.white : colors.navy;
@@ -157,7 +186,7 @@ function AudioMensaje({ url, mio }) {
       escala={0.98}
       style={[s.audio, mio ? s.burbujaMia : s.burbujaSuya]}
     >
-      <Ionicons name={sonando ? "pause" : "play"} size={20} color={color} />
+      {cargando ? <ActivityIndicator size="small" color={color} /> : <Ionicons name={sonando ? "pause" : "play"} size={20} color={color} />}
       <View style={[s.audioRiel, { backgroundColor: mio ? colors.navyLight : colors.track }]}>
         <View style={[s.audioAvance, { width: `${fraccion * 100}%`, backgroundColor: mio ? colors.gold : colors.navy }]} />
       </View>
@@ -186,6 +215,7 @@ export default function ChatScreen() {
   const [hoja, setHoja] = useState(false);
   const [viendo, setViendo] = useState(null);
   const [grabando, setGrabando] = useState(false);
+  const [teclado, setTeclado] = useState(false);
   const avisoEscribiendo = useRef(0);
   const temporizador = useRef(null);
 
@@ -255,6 +285,17 @@ export default function ChatScreen() {
       desconectar?.();
     };
   }, [cargar, agregar]);
+
+  // Con el teclado abierto, la barra de botones del sistema queda debajo
+  // del teclado: su espacio ya no se suma bajo el campo (dejaba un hueco).
+  useEffect(() => {
+    const abre = Keyboard.addListener("keyboardDidShow", () => setTeclado(true));
+    const cierra = Keyboard.addListener("keyboardDidHide", () => setTeclado(false));
+    return () => {
+      abre.remove();
+      cierra.remove();
+    };
+  }, []);
 
   function alEscribir(valor) {
     setTexto(valor);
@@ -388,7 +429,7 @@ export default function ChatScreen() {
                   <Image source={{ uri: a.data_url }} style={s.foto} resizeMode="cover" />
                 </Toque>
               ) : a.file_type === "audio" ? (
-                <AudioMensaje key={a.id} url={a.data_url} mio={mio} />
+                <AudioMensaje key={a.id} url={a.data_url} mio={mio} onError={() => mostrar("No pudimos reproducir el audio. Inténtalo otra vez.", "error")} />
               ) : (
                 <Toque key={a.id} onPress={() => Linking.openURL(a.data_url).catch(() => {})} accessibilityLabel={`Abrir ${a.file_name}`} style={s.archivo}>
                   <View style={s.archivoIcono}>
@@ -513,7 +554,7 @@ export default function ChatScreen() {
             <Text style={s.cerrada}>Esta conversación se cerró. Si escribes, abrimos una nueva.</Text>
           ) : null}
 
-          <View style={[s.redactor, { paddingBottom: Math.max(insets.bottom, space.md) }]}>
+          <View style={[s.redactor, { paddingBottom: teclado ? space.sm : Math.max(insets.bottom, space.md) }]}>
             {bloqueado ? (
               <Text style={s.cerrada}>Por ahora no puedes enviar mensajes por el chat.</Text>
             ) : grabando ? (
