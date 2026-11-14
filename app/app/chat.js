@@ -7,15 +7,24 @@ import {
   Image,
   StyleSheet,
   KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Linking,
   AppState,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as DocumentPicker from "expo-document-picker";
+import {
+  useAudioRecorder,
+  useAudioRecorderState,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  createAudioPlayer,
+} from "expo-audio";
 import {
   abrirSesion,
   configuracion,
@@ -30,7 +39,8 @@ import { useAviso } from "../src/components/Avisos";
 import { CabeceraNoche } from "../src/components/ui/CabeceraNoche";
 import { Toque } from "../src/components/ui/Toque";
 import { BotonIcono } from "../src/components/ui/Piezas";
-import { HojaFoto } from "../src/components/ui/HojaFoto";
+import { Hoja } from "../src/components/ui/Hoja";
+import { capturarFoto, esperarCierre } from "../src/components/ui/HojaFoto";
 import { VisorImagen } from "../src/components/ui/VisorImagen";
 import { colors, fonts, radius, space, hit } from "../src/theme/tokens";
 
@@ -42,16 +52,24 @@ import { colors, fonts, radius, space, hit } from "../src/theme/tokens";
  * Los mensajes llegan en vivo mientras la pantalla está abierta; con el
  * app cerrado, la respuesta llega como notificación.
  *
- * Fotos: se toman o se eligen con la misma hoja que el DNI y los
- * comprobantes, y viajan ya reducidas (lib/imagen.js).
+ * Se puede enviar texto, fotos (reducidas con lib/imagen.js, como el DNI
+ * y los comprobantes), documentos y audios grabados aquí mismo. El
+ * micrófono se pide recién al grabar el primer audio.
+ *
+ * Teclado: con Expo 57 Android dibuja de borde a borde y la ventana ya no
+ * se achica sola, así que el KeyboardAvoidingView empuja el redactor en
+ * los dos sistemas (si algún teléfono sí la achica, la cuenta da cero).
  */
 const LUCES = [
   { color: colors.glowGold, opacity: 0.32, size: 220, top: -80, right: -90 },
   { color: colors.glowBlue, opacity: 0.7, size: 260, bottom: -170, left: -100 },
 ];
-const MAX_FOTOS = 4;
+const MAX_ADJUNTOS = 4;
+const MAX_MB = 40;
 
 const hora = (iso) => new Date(iso).toLocaleTimeString("es-PE", { hour: "numeric", minute: "2-digit" });
+const reloj = (seg) => `${Math.floor(seg / 60)}:${String(Math.floor(seg % 60)).padStart(2, "0")}`;
+const peso = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 function dia(iso) {
   const d = new Date(iso);
   const hoy = new Date();
@@ -93,6 +111,61 @@ function Calificacion({ mensaje, onCalificar }) {
   );
 }
 
+/** Audio de un mensaje: se carga recién al tocarlo y se suelta al terminar o al salir. */
+function AudioMensaje({ url, mio }) {
+  const [sonando, setSonando] = useState(false);
+  const [avance, setAvance] = useState({ actual: 0, total: 0 });
+  const reproductor = useRef(null);
+  const escucha = useRef(null);
+
+  const soltar = useCallback(() => {
+    escucha.current?.remove?.();
+    escucha.current = null;
+    try {
+      reproductor.current?.remove();
+    } catch {}
+    reproductor.current = null;
+  }, []);
+  useEffect(() => soltar, [soltar]);
+
+  function alternar() {
+    if (reproductor.current) {
+      if (sonando) reproductor.current.pause();
+      else reproductor.current.play();
+      return;
+    }
+    const p = createAudioPlayer(url);
+    reproductor.current = p;
+    escucha.current = p.addListener("playbackStatusUpdate", (e) => {
+      setSonando(Boolean(e.playing));
+      setAvance({ actual: e.currentTime || 0, total: e.duration || 0 });
+      if (e.didJustFinish) {
+        setSonando(false);
+        setAvance((a) => ({ actual: 0, total: a.total }));
+        soltar();
+      }
+    });
+    p.play();
+  }
+
+  const color = mio ? colors.white : colors.navy;
+  const fraccion = avance.total > 0 ? Math.min(1, avance.actual / avance.total) : 0;
+  return (
+    <Toque
+      onPress={alternar}
+      accessibilityLabel={sonando ? "Pausar el audio" : "Escuchar el audio"}
+      escala={0.98}
+      style={[s.audio, mio ? s.burbujaMia : s.burbujaSuya]}
+    >
+      <Ionicons name={sonando ? "pause" : "play"} size={20} color={color} />
+      <View style={[s.audioRiel, { backgroundColor: mio ? colors.navyLight : colors.track }]}>
+        <View style={[s.audioAvance, { width: `${fraccion * 100}%`, backgroundColor: mio ? colors.gold : colors.navy }]} />
+      </View>
+      <Text style={[s.audioTiempo, { color }]}>{avance.total ? reloj(sonando || avance.actual ? avance.actual : avance.total) : "Audio"}</Text>
+    </Toque>
+  );
+}
+
 export default function ChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -107,13 +180,17 @@ export default function ChatScreen() {
   const [escribiendo, setEscribiendo] = useState(false);
   const [conectado, setConectado] = useState(true);
   const [texto, setTexto] = useState("");
-  const [fotos, setFotos] = useState([]);
+  const [adjuntos, setAdjuntos] = useState([]); // { uri, nombre, tipo, clase: "foto" | "doc", peso }
   const [enviando, setEnviando] = useState(false);
   const [preparando, setPreparando] = useState(false);
-  const [hojaFoto, setHojaFoto] = useState(false);
+  const [hoja, setHoja] = useState(false);
   const [viendo, setViendo] = useState(null);
+  const [grabando, setGrabando] = useState(false);
   const avisoEscribiendo = useRef(0);
   const temporizador = useRef(null);
+
+  const grabadora = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const grabacion = useAudioRecorderState(grabadora, 500);
 
   const agregar = useCallback((m) => {
     if (!m) return;
@@ -188,25 +265,83 @@ export default function ChatScreen() {
     }
   }
 
-  async function enviar() {
-    const contenido = texto.trim();
-    if ((!contenido && !fotos.length) || enviando) return;
+  async function mandar({ contenido = "", archivos = [] }) {
     setEnviando(true);
     try {
-      const r = await enviarMensaje({
-        texto: contenido,
-        fotos: fotos.map((f, i) => ({ uri: f.uri, nombre: `foto-${Date.now()}-${i + 1}.jpg`, tipo: "image/jpeg" })),
-      });
+      const r = await enviarMensaje({ texto: contenido, archivos });
       agregar(r.message);
-      setTexto("");
-      setFotos([]);
-      avisarEscribiendo(false);
-      avisoEscribiendo.current = 0;
+      return true;
     } catch (e) {
       mostrar(e.message, "error");
+      return false;
     } finally {
       setEnviando(false);
     }
+  }
+
+  async function enviar() {
+    const contenido = texto.trim();
+    if ((!contenido && !adjuntos.length) || enviando) return;
+    if (await mandar({ contenido, archivos: adjuntos.map(({ uri, nombre, tipo }) => ({ uri, nombre, tipo })) })) {
+      setTexto("");
+      setAdjuntos([]);
+      avisarEscribiendo(false);
+      avisoEscribiendo.current = 0;
+    }
+  }
+
+  // ── Adjuntar: foto (cámara o galería) o documento ──
+  const lleno = adjuntos.length >= MAX_ADJUNTOS;
+  function abrirAdjuntar() {
+    if (lleno) return mostrar(`Puedes enviar hasta ${MAX_ADJUNTOS} archivos por mensaje.`, "info");
+    setHoja(true);
+  }
+  async function elegirFoto(desdeCamara) {
+    setHoja(false);
+    await esperarCierre();
+    const f = await capturarFoto({ desdeCamara, onPreparando: setPreparando });
+    if (f === false) return mostrar("No pudimos leer la imagen. Inténtalo otra vez.", "error");
+    if (f) setAdjuntos((l) => [...l, { uri: f.uri, nombre: `foto-${Date.now()}.jpg`, tipo: "image/jpeg", clase: "foto" }].slice(0, MAX_ADJUNTOS));
+  }
+  async function elegirDocumento() {
+    setHoja(false);
+    await esperarCierre();
+    try {
+      const r = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+      if (r.canceled || !r.assets?.[0]) return;
+      const d = r.assets[0];
+      if (d.size && d.size > MAX_MB * 1048576) return mostrar(`El archivo pesa más de ${MAX_MB} MB. Envía uno más liviano.`, "error");
+      setAdjuntos((l) =>
+        [...l, { uri: d.uri, nombre: d.name || "documento", tipo: d.mimeType || "application/octet-stream", clase: "doc", peso: d.size }].slice(0, MAX_ADJUNTOS),
+      );
+    } catch {
+      mostrar("No pudimos abrir tus archivos. Inténtalo otra vez.", "error");
+    }
+  }
+
+  // ── Audio: grabar aquí mismo y enviar ──
+  async function empezarAudio() {
+    try {
+      const permiso = await requestRecordingPermissionsAsync();
+      if (!permiso.granted) return mostrar("Para enviar un audio, permite el micrófono en los ajustes del teléfono.", "atencion");
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await grabadora.prepareToRecordAsync();
+      grabadora.record();
+      setGrabando(true);
+    } catch {
+      mostrar("No pudimos empezar a grabar. Inténtalo otra vez.", "error");
+    }
+  }
+  async function terminarAudio(enviarlo) {
+    setGrabando(false);
+    try {
+      await grabadora.stop();
+    } catch {}
+    setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+    const uri = grabadora.uri;
+    if (!enviarlo || !uri) return;
+    if ((grabacion.durationMillis || 0) < 1000) return mostrar("El audio fue muy corto. Mantén la grabación un poco más.", "info");
+    await mandar({ archivos: [{ uri, nombre: `audio-${Date.now()}.m4a`, tipo: "audio/mp4" }] });
   }
 
   // De más nuevo a más viejo (la lista va invertida), con el día donde cambia.
@@ -225,7 +360,7 @@ export default function ChatScreen() {
 
   const volver = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/inicio"));
   const fueraDeHorario = ajustes && ajustes.within_hours === false;
-  const puedeEnviar = (texto.trim().length > 0 || fotos.length > 0) && !enviando && !bloqueado;
+  const hayAlgo = texto.trim().length > 0 || adjuntos.length > 0;
 
   function fila({ item }) {
     if (item.tipo === "dia") {
@@ -238,7 +373,6 @@ export default function ChatScreen() {
     const m = item.m;
     if (m.content_type === "csat") return <Calificacion mensaje={m} onCalificar={calificar} />;
     const mio = m.message_type === "incoming";
-    const adjuntos = m.attachments || [];
     return (
       <View style={[s.mensaje, mio ? s.mensajeMio : s.mensajeSuyo]}>
         {!mio ? <Text style={s.quien}>{m.sender?.name || ajustes?.agent_name || "AlToque"}</Text> : null}
@@ -248,17 +382,24 @@ export default function ChatScreen() {
           </View>
         ) : (
           <>
-            {adjuntos.map((a) =>
+            {(m.attachments || []).map((a) =>
               a.file_type === "image" ? (
                 <Toque key={a.id} onPress={() => setViendo(a.data_url)} accessibilityLabel="Ver la foto" escala={0.98}>
                   <Image source={{ uri: a.data_url }} style={s.foto} resizeMode="cover" />
                 </Toque>
+              ) : a.file_type === "audio" ? (
+                <AudioMensaje key={a.id} url={a.data_url} mio={mio} />
               ) : (
                 <Toque key={a.id} onPress={() => Linking.openURL(a.data_url).catch(() => {})} accessibilityLabel={`Abrir ${a.file_name}`} style={s.archivo}>
-                  <Ionicons name="document-outline" size={18} color={colors.navy} />
-                  <Text style={s.archivoNombre} numberOfLines={1}>
-                    {a.file_name}
-                  </Text>
+                  <View style={s.archivoIcono}>
+                    <Ionicons name="document-text-outline" size={18} color={colors.navy} />
+                  </View>
+                  <View style={{ flexShrink: 1 }}>
+                    <Text style={s.archivoNombre} numberOfLines={1}>
+                      {a.file_name}
+                    </Text>
+                    {a.file_size ? <Text style={s.archivoPeso}>{peso(a.file_size)}</Text> : null}
+                  </View>
                 </Toque>
               ),
             )}
@@ -274,8 +415,21 @@ export default function ChatScreen() {
     );
   }
 
+  const opcion = (icono, titulo, detalle, alTocar) => (
+    <Toque onPress={alTocar} accessibilityLabel={titulo} style={s.opcion}>
+      <View style={s.opcionIcono}>
+        <Ionicons name={icono} size={21} color={colors.gold} />
+      </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={s.opcionTitulo}>{titulo}</Text>
+        <Text style={s.opcionDetalle}>{detalle}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+    </Toque>
+  );
+
   return (
-    <KeyboardAvoidingView style={s.pantalla} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView style={s.pantalla} behavior="padding">
       <StatusBar style="light" />
       <CabeceraNoche luces={LUCES} radio={28} style={s.cabecera}>
         <View style={s.barra}>
@@ -319,38 +473,41 @@ export default function ChatScreen() {
         </View>
       ) : (
         <>
-          <FlatList
-            data={filas}
-            inverted
-            keyExtractor={(x) => x.id}
-            renderItem={fila}
-            contentContainerStyle={s.lista}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-            ListHeaderComponent={
-              escribiendo ? (
-                <View style={[s.mensaje, s.mensajeSuyo]}>
-                  <View style={[s.burbuja, s.burbujaSuya]}>
-                    <Text style={s.escribiendo}>Escribiendo…</Text>
-                  </View>
-                </View>
-              ) : null
-            }
-            ListEmptyComponent={
-              // La lista va invertida: el vacío se voltea para verse derecho.
-              <View style={[s.vacio, { transform: [{ scaleY: -1 }] }]}>
-                <View style={s.vacioIcono}>
-                  <Ionicons name="chatbubbles-outline" size={26} color={colors.goldText} />
-                </View>
-                <Text style={s.vacioTitulo}>{ajustes?.welcome_title && !/hola\s*👋?$/i.test(ajustes.welcome_title) ? ajustes.welcome_title : "¿En qué te ayudamos?"}</Text>
-                <Text style={s.centroTexto}>
-                  {fueraDeHorario
-                    ? ajustes?.out_of_office_message || "Ahora estamos fuera de horario. Déjanos tu mensaje y te respondemos al volver."
-                    : "Escríbenos tu consulta. Un asesor te responde por aquí."}
-                </Text>
+          {/* Sin mensajes, la bienvenida va fuera de la lista: la lista está
+              invertida y en Android voltea lo que tiene dentro. */}
+          {filas.length === 0 ? (
+            <View style={s.centro}>
+              <View style={s.vacioIcono}>
+                <Ionicons name="chatbubbles-outline" size={26} color={colors.goldText} />
               </View>
-            }
-          />
+              <Text style={s.vacioTitulo}>¿En qué te ayudamos?</Text>
+              <Text style={s.centroTexto}>
+                {fueraDeHorario
+                  ? ajustes?.out_of_office_message || "Ahora estamos fuera de horario. Déjanos tu mensaje y te respondemos al volver."
+                  : "Escríbenos tu consulta. Un asesor te responde por aquí."}
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filas}
+              inverted
+              style={{ flex: 1 }}
+              keyExtractor={(x) => x.id}
+              renderItem={fila}
+              contentContainerStyle={s.lista}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              ListHeaderComponent={
+                escribiendo ? (
+                  <View style={[s.mensaje, s.mensajeSuyo]}>
+                    <View style={[s.burbuja, s.burbujaSuya]}>
+                      <Text style={s.escribiendo}>Escribiendo…</Text>
+                    </View>
+                  </View>
+                ) : null
+              }
+            />
+          )}
 
           {conversacion?.status === "resolved" && mensajes.length > 0 ? (
             <Text style={s.cerrada}>Esta conversación se cerró. Si escribes, abrimos una nueva.</Text>
@@ -359,19 +516,36 @@ export default function ChatScreen() {
           <View style={[s.redactor, { paddingBottom: Math.max(insets.bottom, space.md) }]}>
             {bloqueado ? (
               <Text style={s.cerrada}>Por ahora no puedes enviar mensajes por el chat.</Text>
+            ) : grabando ? (
+              <View style={s.redactorFila}>
+                <Toque onPress={() => terminarAudio(false)} accessibilityLabel="Descartar el audio" style={s.adjuntar}>
+                  <Ionicons name="trash-outline" size={21} color={colors.error} />
+                </Toque>
+                <View style={s.grabando} accessibilityLiveRegion="polite">
+                  <View style={[s.punto, { backgroundColor: colors.errorStrong }]} />
+                  <Text style={s.grabandoTexto}>Grabando {reloj((grabacion.durationMillis || 0) / 1000)}</Text>
+                </View>
+                <Toque onPress={() => terminarAudio(true)} accessibilityLabel="Enviar el audio" style={s.enviar}>
+                  <Ionicons name="arrow-up" size={22} color={colors.white} />
+                </Toque>
+              </View>
             ) : (
               <>
-                {fotos.length > 0 || preparando ? (
+                {adjuntos.length > 0 || preparando ? (
                   <View style={s.adjuntas}>
-                    {fotos.map((f, i) => (
-                      <View key={f.uri}>
-                        <Image source={{ uri: f.uri }} style={s.miniatura} />
-                        <Toque
-                          onPress={() => setFotos((l) => l.filter((_, j) => j !== i))}
-                          accessibilityLabel="Quitar la foto"
-                          hitSlop={8}
-                          style={s.quitar}
-                        >
+                    {adjuntos.map((f, i) => (
+                      <View key={f.uri} style={f.clase === "doc" ? s.docPendiente : null}>
+                        {f.clase === "foto" ? (
+                          <Image source={{ uri: f.uri }} style={s.miniatura} />
+                        ) : (
+                          <>
+                            <Ionicons name="document-text-outline" size={18} color={colors.navy} />
+                            <Text style={s.docNombre} numberOfLines={1}>
+                              {f.nombre}
+                            </Text>
+                          </>
+                        )}
+                        <Toque onPress={() => setAdjuntos((l) => l.filter((_, j) => j !== i))} accessibilityLabel="Quitar el archivo" hitSlop={8} style={s.quitar}>
                           <Ionicons name="close" size={13} color={colors.white} />
                         </Toque>
                       </View>
@@ -384,12 +558,8 @@ export default function ChatScreen() {
                   </View>
                 ) : null}
                 <View style={s.redactorFila}>
-                  <Toque
-                    onPress={() => (fotos.length >= MAX_FOTOS ? mostrar(`Puedes enviar hasta ${MAX_FOTOS} fotos por mensaje.`, "info") : setHojaFoto(true))}
-                    accessibilityLabel="Adjuntar una foto"
-                    style={s.adjuntar}
-                  >
-                    <Ionicons name="camera-outline" size={22} color={colors.navy} />
+                  <Toque onPress={abrirAdjuntar} accessibilityLabel="Adjuntar una foto o un documento" style={s.adjuntar}>
+                    <Ionicons name="add" size={24} color={colors.navy} />
                   </Toque>
                   <TextInput
                     value={texto}
@@ -401,19 +571,15 @@ export default function ChatScreen() {
                     style={s.campo}
                     accessibilityLabel="Mensaje"
                   />
-                  <Toque
-                    onPress={enviar}
-                    disabled={!puedeEnviar}
-                    accessibilityLabel="Enviar"
-                    accessibilityState={{ disabled: !puedeEnviar, busy: enviando }}
-                    style={[s.enviar, !puedeEnviar && { backgroundColor: colors.muted }]}
-                  >
-                    {enviando ? (
-                      <ActivityIndicator color={colors.white} size="small" />
-                    ) : (
-                      <Ionicons name="arrow-up" size={22} color={puedeEnviar ? colors.white : colors.disabledText} />
-                    )}
-                  </Toque>
+                  {hayAlgo || enviando ? (
+                    <Toque onPress={enviar} disabled={enviando} accessibilityLabel="Enviar" accessibilityState={{ busy: enviando }} style={s.enviar}>
+                      {enviando ? <ActivityIndicator color={colors.white} size="small" /> : <Ionicons name="arrow-up" size={22} color={colors.white} />}
+                    </Toque>
+                  ) : (
+                    <Toque onPress={empezarAudio} accessibilityLabel="Grabar un audio" style={s.enviar}>
+                      <Ionicons name="mic-outline" size={22} color={colors.white} />
+                    </Toque>
+                  )}
                 </View>
               </>
             )}
@@ -421,14 +587,13 @@ export default function ChatScreen() {
         </>
       )}
 
-      <HojaFoto
-        visible={hojaFoto}
-        titulo="Enviar una foto"
-        ayuda="Por ejemplo, tu comprobante o la pantalla donde tienes el problema."
-        onCerrar={() => setHojaFoto(false)}
-        onPreparando={setPreparando}
-        onFoto={(f) => setFotos((l) => [...l, f].slice(0, MAX_FOTOS))}
-      />
+      <Hoja visible={hoja} onCerrar={() => setHoja(false)} titulo="Adjuntar">
+        <View style={{ gap: space.sm }}>
+          {opcion("camera-outline", "Tomar foto", "Con buena luz y sin reflejos", () => elegirFoto(true))}
+          {opcion("images-outline", "Elegir de la galería", "Una foto o una captura que ya tengas", () => elegirFoto(false))}
+          {opcion("document-text-outline", "Documento", `PDF u otro archivo, hasta ${MAX_MB} MB`, elegirDocumento)}
+        </View>
+      </Hoja>
       {viendo ? <VisorImagen url={viendo} titulo="Foto del chat" onCerrar={() => setViendo(null)} /> : null}
     </KeyboardAvoidingView>
   );
@@ -445,7 +610,6 @@ const s = StyleSheet.create({
 
   centro: { flex: 1, alignItems: "center", justifyContent: "center", gap: space.sm, paddingHorizontal: space.xxxl },
   centroTexto: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.text2, textAlign: "center" },
-  vacio: { alignItems: "center", gap: space.sm, paddingHorizontal: space.xxl, paddingVertical: space.xxxl },
   vacioIcono: {
     width: 60,
     height: 60,
@@ -466,7 +630,7 @@ const s = StyleSheet.create({
   },
   reintentarTexto: { fontFamily: fonts.heavy, fontSize: 15, color: colors.white },
 
-  lista: { paddingHorizontal: space.lg, paddingVertical: space.md, gap: space.sm, flexGrow: 1 },
+  lista: { paddingHorizontal: space.lg, paddingVertical: space.md, gap: space.sm },
   dia: { alignSelf: "center", backgroundColor: colors.infoBg, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 3, marginVertical: space.xs },
   diaTexto: { fontFamily: fonts.strong, fontSize: 12, color: colors.text2 },
   mensaje: { maxWidth: "82%", gap: 3 },
@@ -486,15 +650,21 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: space.sm,
-    minHeight: hit.min,
-    maxWidth: 260,
+    minHeight: hit.button,
+    maxWidth: 270,
     paddingHorizontal: space.md,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.line,
   },
-  archivoNombre: { flexShrink: 1, fontFamily: fonts.label, fontSize: 14, color: colors.text },
+  archivoIcono: { width: 36, height: 36, borderRadius: radius.sm, backgroundColor: colors.infoBg, alignItems: "center", justifyContent: "center" },
+  archivoNombre: { fontFamily: fonts.label, fontSize: 14, color: colors.text },
+  archivoPeso: { fontFamily: fonts.label, fontSize: 12, color: colors.text3 },
+  audio: { flexDirection: "row", alignItems: "center", gap: space.sm, minHeight: hit.min, width: 220, borderRadius: radius.lg, paddingHorizontal: space.md },
+  audioRiel: { flex: 1, height: 4, borderRadius: radius.pill, overflow: "hidden" },
+  audioAvance: { height: 4, borderRadius: radius.pill },
+  audioTiempo: { fontFamily: fonts.strong, fontSize: 12, fontVariant: ["tabular-nums"] },
 
   encuesta: {
     alignSelf: "stretch",
@@ -531,9 +701,31 @@ const s = StyleSheet.create({
     color: colors.text,
   },
   enviar: { width: hit.min, height: hit.min, borderRadius: radius.md, backgroundColor: colors.navy, alignItems: "center", justifyContent: "center" },
-  adjuntas: { flexDirection: "row", gap: space.sm, paddingTop: space.xxs },
+  grabando: {
+    flex: 1,
+    minHeight: hit.min,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.errorBg,
+    paddingHorizontal: space.md,
+  },
+  grabandoTexto: { fontFamily: fonts.strong, fontSize: 15, color: colors.errorText, fontVariant: ["tabular-nums"] },
+  adjuntas: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, paddingTop: space.xs },
   miniatura: { width: 58, height: 58, borderRadius: radius.sm, backgroundColor: colors.muted },
   miniaturaCarga: { alignItems: "center", justifyContent: "center" },
+  docPendiente: {
+    height: 58,
+    maxWidth: 190,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.xs,
+    paddingHorizontal: space.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.infoBg,
+  },
+  docNombre: { flexShrink: 1, fontFamily: fonts.label, fontSize: 13, color: colors.text },
   quitar: {
     position: "absolute",
     top: -6,
@@ -545,4 +737,8 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  opcion: { minHeight: 68, borderRadius: radius.lg, backgroundColor: colors.ground, paddingHorizontal: space.lg, flexDirection: "row", alignItems: "center", gap: space.md + 2 },
+  opcionIcono: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: colors.night, alignItems: "center", justifyContent: "center" },
+  opcionTitulo: { fontFamily: fonts.heavy, fontSize: 16, color: colors.text },
+  opcionDetalle: { fontFamily: fonts.label, fontSize: 12, color: colors.text2 },
 });

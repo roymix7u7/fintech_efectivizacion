@@ -111,17 +111,18 @@ export const leerMensajes = (antes) =>
   conSesion((token) => pedir(`/messages?limit=80${antes ? `&before=${antes}` : ""}`, { token }));
 
 /**
- * Envía un mensaje. fotos: [{ uri, nombre, tipo }] ya preparadas (lib/imagen.js).
+ * Envía un mensaje. archivos: [{ uri, nombre, tipo }] (fotos ya reducidas
+ * con lib/imagen.js, documentos o un audio grabado).
  * pantalla: desde dónde escribe ("App · Solicitudes"), para que el asesor lo vea.
  */
-export function enviarMensaje({ texto = "", fotos = [], pantalla }) {
+export function enviarMensaje({ texto = "", archivos = [], pantalla }) {
   return conSesion((token) => {
     const contexto = { pagina: pantalla || "App", navegador: "App AlToque" };
-    if (!fotos.length) return pedir("/messages", { metodo: "POST", cuerpo: { content: texto, context: contexto }, token });
+    if (!archivos.length) return pedir("/messages", { metodo: "POST", cuerpo: { content: texto, context: contexto }, token });
     const form = new FormData();
     form.append("content", texto);
     form.append("context", JSON.stringify(contexto));
-    for (const f of fotos) form.append("files", { uri: f.uri, name: f.nombre, type: f.tipo });
+    for (const f of archivos) form.append("files", { uri: f.uri, name: f.nombre, type: f.tipo });
     return pedir("/messages", { metodo: "POST", form, token });
   });
 }
