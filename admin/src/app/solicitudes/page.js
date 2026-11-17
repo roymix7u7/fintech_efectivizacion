@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { firmarCampo } from "@/lib/storage";
 import { explicarError } from "@/lib/acciones";
 import { puede } from "@/lib/permisos";
+import AlertasCliente from "@/components/alertasCliente";
 import {
   tomarSiguiente,
   soltarCaso,
@@ -772,6 +773,7 @@ export default function SolicitudesPage() {
 
                 {/* Datos y acciones */}
                 <div className="min-w-0 space-y-4">
+                  <AlertasCliente key={seleccionada.cliente_id} id={seleccionada.cliente_id} />
                   <Panel titulo="Titular">
                     <p className="text-base font-semibold">{nombre}</p>
                     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">

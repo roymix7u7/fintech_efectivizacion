@@ -53,6 +53,7 @@ export const PARTES = {
     { clave: "cupon", titulo: "Asignar o quitar cupón", tipo: "accion", roles: ["admin"] },
     { clave: "especial", titulo: "Comisión especial por cliente", tipo: "accion", roles: ["admin", "supervisor"] },
     { clave: "seguimiento", titulo: "Seguimiento posventa", detalle: "Recordatorios y contactos", tipo: "vista", roles: ["admin", "supervisor", "pagos"] },
+    { clave: "lista-bloqueo", titulo: "Lista de bloqueo", detalle: "DNI, celulares y cuentas de casos de fraude", tipo: "vista", roles: ["admin", "supervisor"] },
   ],
   equipo: [
     { clave: "rendimiento", titulo: "Rendimiento del personal", detalle: "Casos resueltos de los últimos 7 días", tipo: "vista", roles: ["admin", "supervisor"] },

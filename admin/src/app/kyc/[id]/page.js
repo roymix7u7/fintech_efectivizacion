@@ -23,6 +23,7 @@ import {
   Comprobacion,
 } from "@/components/piezas";
 import Pista from "@/components/pista";
+import AlertasCliente from "@/components/alertasCliente";
 
 const BUCKET = "kyc-documentos";
 const MIN_MOTIVO = 10;
@@ -634,6 +635,9 @@ export default function KYCDetallePage() {
               )}
             </Panel>
           )}
+
+          {/* Nombre contra DNI, lista de bloqueo y datos compartidos con otros clientes. */}
+          <AlertasCliente id={params.id} />
 
           <Panel titulo="Datos declarados">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3">

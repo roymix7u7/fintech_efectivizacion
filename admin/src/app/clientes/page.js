@@ -6,6 +6,8 @@ import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
 import { puede } from "@/lib/permisos";
+import AlertasCliente from "@/components/alertasCliente";
+import ListaBloqueo from "@/components/listaBloqueo";
 import { urlsFirmadas, extraerPath } from "@/lib/storage";
 import { BANCOS_TARJETA, nombreBanco } from "@/lib/bancos";
 import { useRetraso } from "@/lib/hooks";
@@ -158,6 +160,8 @@ export default function ClientesPage() {
   if (!session) return <CargaPantalla />;
 
   const verSeguimiento = session.rol !== "gestor" && puede(session, "clientes.seguimiento");
+  // Lista de bloqueo (migración 079): supervisor y administrador.
+  const verLista = ["admin", "supervisor"].includes(session.rol) && puede(session, "clientes.lista-bloqueo");
 
   return (
     <Shell
@@ -172,24 +176,31 @@ export default function ClientesPage() {
     >
       {/* El gestor solo consulta: sin la pestaña de Seguimiento (posventa).
           El super administrador también puede quitársela a alguien. */}
-      {verSeguimiento && (
+      {(verSeguimiento || verLista) && (
       <div className="mb-4">
         <Segmentos
           valor={vista}
           onCambio={setVista}
           opciones={[
             { clave: "buscar", etiqueta: "Buscar clientes" },
-            {
-              clave: "seguimiento",
-              etiqueta: "Seguimiento",
-              pista: "Posventa: clientes sin tarjeta, sin operar o inactivos",
-            },
+            ...(verSeguimiento
+              ? [
+                  {
+                    clave: "seguimiento",
+                    etiqueta: "Seguimiento",
+                    pista: "Posventa: clientes sin tarjeta, sin operar o inactivos",
+                  },
+                ]
+              : []),
+            ...(verLista ? [{ clave: "bloqueo", etiqueta: "Lista de bloqueo", pista: "DNI, celulares y cuentas de casos de fraude" }] : []),
           ]}
         />
       </div>
       )}
 
-      {vista === "seguimiento" && verSeguimiento ? (
+      {vista === "bloqueo" && verLista ? (
+        <ListaBloqueo onAviso={setOk} puedeEditar={puede(session, "clientes.lista-bloqueo")} />
+      ) : vista === "seguimiento" && verSeguimiento ? (
         <Seguimiento
           onAviso={setOk}
           onVerFicha={(dni) => {
@@ -378,6 +389,7 @@ export default function ClientesPage() {
             cupones={cupones}
             rol={session.rol}
             permite={(parte) => puede(session, `clientes.${parte}`)}
+            puedeLista={verLista}
             onCambio={(texto) => {
               setOk(texto);
               cargar();
@@ -393,7 +405,7 @@ export default function ClientesPage() {
 
 /* ───────── Ficha del cliente ───────── */
 
-function FichaCliente({ cliente, cupones, rol, permite, onCambio }) {
+function FichaCliente({ cliente, cupones, rol, permite, puedeLista, onCambio }) {
   // Lo que trae el rol, menos lo que el super administrador le quitó
   // (pantalla Accesos, lib/catalogoPermisos.js).
   const puedeCupon = rol === "admin" && permite("cupon");
@@ -428,6 +440,8 @@ function FichaCliente({ cliente, cupones, rol, permite, onCambio }) {
   const [estadoCuenta, setEstadoCuenta] = useState(cliente.usuario?.estado);
   const [bloqueando, setBloqueando] = useState(false); // formulario abierto
   const [motivoBloqueo, setMotivoBloqueo] = useState("");
+  // Al bloquear, pasar también su DNI, celular y cuentas a la lista de bloqueo.
+  const [aLista, setALista] = useState(true);
 
   const leerAcceso = useCallback(async () => {
     const { data } = await supabase
@@ -454,8 +468,16 @@ function FichaCliente({ cliente, cupones, rol, permite, onCambio }) {
       p_bloquear: bloquear,
       p_motivo: bloquear ? texto : null,
     });
+    if (e) {
+      setGuardando(false);
+      return setError(e.code === "P0001" || e.code === "42501" ? e.message : explicarError(e, "No se pudo completar."));
+    }
+    let avisoLista = "";
+    if (bloquear && puedeLista && aLista) {
+      const { data: dl, error: el } = await supabase.rpc("bloquear_datos_cliente", { p_user: acceso.userId, p_motivo: texto });
+      avisoLista = el ? " No se pudieron pasar sus datos a la lista de bloqueo." : dl?.datos ? " Su DNI, celular y cuentas quedaron en la lista de bloqueo." : "";
+    }
     setGuardando(false);
-    if (e) return setError(e.code === "P0001" || e.code === "42501" ? e.message : explicarError(e, "No se pudo completar."));
     setBloqueando(false);
     setMotivoBloqueo("");
     // Al desbloquear vuelve a activo o a pendiente, según su identidad: se lee de nuevo.
@@ -466,7 +488,7 @@ function FichaCliente({ cliente, cupones, rol, permite, onCambio }) {
       !data?.ok
         ? "La cuenta ya estaba en ese estado."
         : bloquear
-          ? `${cliente.nombres} quedó bloqueado: ya no puede ingresar.`
+          ? `${cliente.nombres} quedó bloqueado: ya no puede ingresar.${avisoLista}`
           : `${cliente.nombres} puede ingresar de nuevo.`,
     );
   }
@@ -661,6 +683,9 @@ function FichaCliente({ cliente, cupones, rol, permite, onCambio }) {
         </p>
       )}
 
+      {/* Nombre contra DNI, lista de bloqueo y datos compartidos con otros clientes. */}
+      <AlertasCliente id={cliente.id} />
+
       {/* Datos principales */}
       {datos ? (
         <section className="space-y-3 rounded-xl border border-border p-4">
@@ -825,6 +850,15 @@ function FichaCliente({ cliente, cupones, rol, permite, onCambio }) {
                 minimo={MIN_MOTIVO_BLOQUEO}
                 placeholder="Ej: envió comprobantes que no corresponden a sus operaciones."
               />
+              {puedeLista && (
+                <label className="flex cursor-pointer items-start gap-2 text-sm">
+                  <input type="checkbox" checked={aLista} onChange={(e) => setALista(e.target.checked)} className="mt-0.5 h-4 w-4 accent-marca-700" />
+                  <span>
+                    Pasar también su DNI, celular y cuentas a la lista de bloqueo
+                    <span className="block text-chico text-muted-foreground">Así se avisa si vuelven a aparecer en otra cuenta. Déjalo marcado si es por fraude.</span>
+                  </span>
+                </label>
+              )}
               <div className="flex justify-end gap-2">
                 <BotonAccion
                   tono="neutro"
