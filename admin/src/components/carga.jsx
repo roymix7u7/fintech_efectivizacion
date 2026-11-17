@@ -1,6 +1,14 @@
 "use client";
 
+import { createContext, useContext } from "react";
 import { cn } from "@/lib/utils";
+
+/**
+ * true cuando la persona tiene la pantalla en solo lectura (lo pone Shell
+ * según sus accesos). Los botones de acción se apagan solos; los que solo
+ * sirven para mirar o moverse llevan la marca `lectura` y siguen activos.
+ */
+export const SoloLectura = createContext(false);
 
 /**
  * Bloque de carga con brillo. Se le da la forma de lo que va a
@@ -144,13 +152,16 @@ export function BotonAccion({
   tamano = "normal",
   className,
   type = "button",
+  lectura = false,
   ...resto
 }) {
+  const apagado = useContext(SoloLectura) && !lectura;
   return (
     <button
       type={type}
       {...resto}
-      disabled={cargando || resto.disabled}
+      title={apagado ? "Solo lectura: tu acceso a esta pantalla no permite cambios." : resto.title}
+      disabled={cargando || resto.disabled || apagado}
       className={cn(
         "pulsable inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg font-semibold disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none",
         TAMANOS[tamano],

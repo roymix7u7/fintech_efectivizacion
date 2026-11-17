@@ -20,7 +20,7 @@ export default function SinPendientes({ visible, titulo, texto, onCerrar }) {
       tono="exito"
       icono={<IconoCheck />}
       ancho="max-w-sm"
-      pie={<BotonAccion onClick={onCerrar}>Entendido</BotonAccion>}
+      pie={<BotonAccion lectura onClick={onCerrar}>Entendido</BotonAccion>}
     />
   );
 }

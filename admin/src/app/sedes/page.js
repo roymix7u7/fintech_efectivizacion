@@ -13,8 +13,9 @@ import { Vacio, Aviso, Dato } from "@/components/marca";
 import { Esqueleto, BotonAccion, CargaPantalla } from "@/components/carga";
 import { Campo, Dialogo, Tostada, useConfirmar } from "@/components/piezas";
 import Pista from "@/components/pista";
+import { CampoIps, aListaIps, AVISO_MIGRACION } from "@/components/accesosPersona";
 
-const VACIA = { nombre: "", ciudad: "", direccion: "", telefono: "" };
+const VACIA = { nombre: "", ciudad: "", direccion: "", telefono: "", ips: "" };
 
 /** Lo que falta o está mal en el formulario, campo por campo. */
 function validar(f, sedes, id) {
@@ -73,7 +74,15 @@ export default function SedesPage() {
   function abrir(sede) {
     setForm(
       sede
-        ? { id: sede.id, nombre: sede.nombre || "", ciudad: sede.ciudad || "", direccion: sede.direccion || "", telefono: sede.telefono || "" }
+        ? {
+            id: sede.id,
+            nombre: sede.nombre || "",
+            ciudad: sede.ciudad || "",
+            direccion: sede.direccion || "",
+            telefono: sede.telefono || "",
+            ips: (sede.ips || []).join("\n"),
+            ipsAntes: (sede.ips || []).join("\n"),
+          }
         : { id: null, ...VACIA },
     );
     setTocado({});
@@ -109,6 +118,24 @@ export default function SedesPage() {
       return setErrorForm(
         e.message.includes("duplicate") ? `Ya existe una sede llamada ${campos.nombre}.` : explicarError(e, "No se pudo guardar."),
       );
+    }
+
+    // Las IP van por su propia función: valida el formato y no deja que
+    // el administrador se quede fuera de su propia sede.
+    if ((form.ips || "") !== (form.ipsAntes || "")) {
+      setGuardando(true);
+      const { error: eIps } = await supabase.rpc("guardar_ips_sede", { p_sede: data?.id || form.id, p_ips: aListaIps(form.ips) });
+      setGuardando(false);
+      if (eIps) {
+        cargar();
+        return setErrorForm(
+          eIps.code === "PGRST202"
+            ? AVISO_MIGRACION
+            : eIps.code === "P0001" || eIps.code === "42501"
+              ? `La sede se guardó, pero sus IP no: ${eIps.message}`
+              : explicarError(eIps, "La sede se guardó, pero no se pudieron guardar sus IP."),
+        );
+      }
     }
 
     await registrarAuditoria({
@@ -341,6 +368,15 @@ export default function SedesPage() {
                 placeholder="Ej: Av. Abancay 123"
                 className="campo"
               />
+            </Campo>
+            <Campo
+              etiqueta="IP permitidas de la sede"
+              htmlFor="ipsSede"
+              opcional
+              className="sm:col-span-2"
+              ayuda="Valen para el personal que en Equipo tenga marcado «Solo desde las IP de su sede». Sin IP, esa opción no restringe."
+            >
+              <CampoIps id="ipsSede" valor={form.ips || ""} onCambio={(v) => setForm({ ...form, ips: v })} miIp={session.ip} />
             </Campo>
             <button type="submit" className="hidden" />
           </form>

@@ -22,7 +22,7 @@ export default function Conflicto({ mensaje, titulo, onCerrar, onSiguiente }) {
       icono={<Reloj className="h-5 w-5" />}
       pie={
         <>
-          <BotonAccion tono="neutro" onClick={onCerrar}>
+          <BotonAccion lectura tono="neutro" onClick={onCerrar}>
             Volver a la lista
           </BotonAccion>
           {onSiguiente && <BotonAccion onClick={onSiguiente}>Atender el siguiente</BotonAccion>}

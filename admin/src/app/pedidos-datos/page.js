@@ -390,7 +390,7 @@ export default function PedidosDatosPage() {
         }
         tono="exito"
         icono={<IconoCheck />}
-        pie={<BotonAccion onClick={() => setResultado(null)}>Entendido</BotonAccion>}
+        pie={<BotonAccion lectura onClick={() => setResultado(null)}>Entendido</BotonAccion>}
       />
     </Shell>
   );

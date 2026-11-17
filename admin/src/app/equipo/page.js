@@ -13,6 +13,7 @@ import { Vacio, Aviso, Estado } from "@/components/marca";
 import { EsqueletoFilas, BotonAccion, CargaPantalla } from "@/components/carga";
 import { Segmentos, Buscador, Barra, Leyenda, Campo, Dialogo, Tostada, Copiar, Avatar, useConfirmar, IconoCheck } from "@/components/piezas";
 import Pista from "@/components/pista";
+import AccesosPersona from "@/components/accesosPersona";
 import { BANCOS_TARJETA } from "@/lib/bancos";
 import Desplegable from "@/components/desplegable";
 import { ESTADOS } from "@/lib/disponibilidad";
@@ -66,6 +67,8 @@ export default function EquipoPage() {
   const [bancosPago, setBancosPago] = useState({});
   const [confirmar, ventanaConfirmar] = useConfirmar();
   const [sincronizando, setSincronizando] = useState(false);
+  // Persona cuyos accesos (pantallas e IP) se están configurando.
+  const [accesosDe, setAccesosDe] = useState(null);
   const router = useRouter();
 
   const cargar = useCallback(async () => {
@@ -82,7 +85,8 @@ export default function EquipoPage() {
 
     const [{ data: asignados }, { data: sedesData }, { data: rend }, { colas }] = await Promise.all([
       supabase.from("pagos_bancos").select("user_id, banco"),
-      supabase.from("sedes").select("id, nombre, activa").order("nombre"),
+      // "*" y no la lista de columnas: las IP de la sede (migración 077) llegan si ya existen.
+      supabase.from("sedes").select("*").order("nombre"),
       supabase.rpc("rendimiento_equipo", { p_dias: 7, p_sede: null }),
       estadoCola(),
     ]);
@@ -700,6 +704,13 @@ export default function EquipoPage() {
                             {bloqueado ? "Desbloquear" : "Bloquear"}
                           </BotonAccion>
                         </Pista>
+                        {esAdmin && (
+                          <Pista texto="Qué pantallas ve y desde qué red (IP) puede entrar" fin>
+                            <BotonAccion tono="neutro" tamano="chico" onClick={() => setAccesosDe(p)} className="ml-1.5 mt-1.5 sm:mt-0">
+                              Accesos
+                            </BotonAccion>
+                          </Pista>
+                        )}
                         {esAdmin && !yo && (
                           <Pista texto="Eliminar la cuenta (si ya trabajó, queda de baja y se conserva lo que hizo)" fin>
                             <BotonAccion
@@ -845,6 +856,18 @@ export default function EquipoPage() {
           ))}
         </div>
       </Dialogo>
+
+      <AccesosPersona
+        persona={accesosDe}
+        sedes={sedes}
+        miId={session.user.id}
+        miIp={session.ip}
+        onCerrar={() => setAccesosDe(null)}
+        onGuardado={(texto) => {
+          setAccesosDe(null);
+          setOk(texto);
+        }}
+      />
 
       {ventanaConfirmar}
       <Tostada mensaje={ok} onCerrar={() => setOk("")} />

@@ -193,10 +193,10 @@ export default function AuditoriaPage() {
           onChange={(e) => setFecha(e.target.value)}
           className="campo cifras h-10 w-auto"
         />
-        <BotonAccion tono={fecha === hoyISO() ? "primario" : "neutro"} tamano="chico" onClick={() => setFecha(hoyISO())}>
+        <BotonAccion lectura tono={fecha === hoyISO() ? "primario" : "neutro"} tamano="chico" onClick={() => setFecha(hoyISO())}>
           Hoy
         </BotonAccion>
-        <BotonAccion tono={fecha === hoyISO(1) ? "primario" : "neutro"} tamano="chico" onClick={() => setFecha(hoyISO(1))}>
+        <BotonAccion lectura tono={fecha === hoyISO(1) ? "primario" : "neutro"} tamano="chico" onClick={() => setFecha(hoyISO(1))}>
           Ayer
         </BotonAccion>
         {hayFiltro && (

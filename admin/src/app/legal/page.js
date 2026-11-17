@@ -397,7 +397,7 @@ export default function LegalPage() {
 
                 <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-border p-3">
                   {vigente && (
-                    <BotonAccion tono="neutro" tamano="chico" icono={<Ojo className="h-3.5 w-3.5" />} onClick={() => setViendo(vigente.id)}>
+                    <BotonAccion lectura tono="neutro" tamano="chico" icono={<Ojo className="h-3.5 w-3.5" />} onClick={() => setViendo(vigente.id)}>
                       Leer
                     </BotonAccion>
                   )}
@@ -423,7 +423,7 @@ export default function LegalPage() {
         descripcion={docViendo ? `Versión ${docViendo.version} · publicada el ${fecha(docViendo.publicado_en)}${docViendo.borrador ? " · borrador" : ""}` : ""}
         icono={<Balanza className="h-5 w-5" />}
         ancho="max-w-3xl"
-        pie={<BotonAccion onClick={() => setViendo(null)}>Cerrar</BotonAccion>}
+        pie={<BotonAccion lectura onClick={() => setViendo(null)}>Cerrar</BotonAccion>}
       >
         {docViendo?.resumen && <p className="mb-4 text-sm text-muted-foreground">{docViendo.resumen}</p>}
         <Previa contenido={docViendo?.contenido} />

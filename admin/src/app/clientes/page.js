@@ -236,7 +236,7 @@ export default function ClientesPage() {
               />
             </label>
             {(busqueda || desde || hasta) && (
-              <BotonAccion
+              <BotonAccion lectura
                 tono="neutro"
                 tamano="chico"
                 onClick={() => {
@@ -1187,7 +1187,7 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
             </p>
           </div>
           {fotos === null && (
-            <BotonAccion
+            <BotonAccion lectura
               tono="neutro"
               tamano="chico"
               icono={<Ojo className="h-3.5 w-3.5" />}

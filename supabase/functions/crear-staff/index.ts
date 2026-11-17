@@ -16,6 +16,18 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// Restricción por IP del personal (migración 077): esta función habla con
+// la base desde los servidores de Supabase, así que le pasa la IP real de
+// quien llamó, junto con la clave del servidor (secreto ATK_CLAVE_SERVIDOR).
+// Sin el secreto no manda nada y todo sigue como antes, salvo para el
+// personal que tenga IP restringida.
+function cabecerasDeIp(req: Request): Record<string, string> {
+  const clave = Deno.env.get("ATK_CLAVE_SERVIDOR");
+  if (!clave) return {};
+  const ip = (req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || (req.headers.get("x-forwarded-for") || "").split(",")[0] || "").trim();
+  return ip ? { "x-atk-clave": clave, "x-atk-ip": ip } : {};
+}
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -80,7 +92,7 @@ Deno.serve(async (req) => {
   }
 
   const comoUsuario = createClient(url!, anon!, {
-    global: { headers: { Authorization: auth } },
+    global: { headers: { Authorization: auth, ...cabecerasDeIp(req) } },
   });
   const {
     data: { user: quienLlama },

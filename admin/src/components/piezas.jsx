@@ -365,10 +365,10 @@ export function useConfirmar() {
       icono={pedido?.icono || (tono === "peligro" ? <IconoAlerta /> : tono === "atencion" ? <IconoAlerta /> : <IconoPregunta />)}
       pie={
         <>
-          <BotonAccion tono="neutro" onClick={() => responder(false)}>
+          <BotonAccion lectura tono="neutro" onClick={() => responder(false)}>
             {pedido?.cancelar || "Cancelar"}
           </BotonAccion>
-          <BotonAccion tono={tono === "peligro" ? "peligro" : tono === "exito" ? "exito" : "primario"} onClick={() => responder(true)} autoFocus>
+          <BotonAccion lectura tono={tono === "peligro" ? "peligro" : tono === "exito" ? "exito" : "primario"} onClick={() => responder(true)} autoFocus>
             {pedido?.boton || "Confirmar"}
           </BotonAccion>
         </>

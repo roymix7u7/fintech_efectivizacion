@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { etiquetaDeSede, rangoDe, MOTIVOS, fechaLima, diaYHoraLima } from "@/lib/atencion";
 import { chatPropioConfigurado } from "@/lib/chatApi";
 import { reportePropio } from "@/lib/atencionPropio";
+import { cabecerasDeIp } from "@/lib/ipCliente";
 
 /**
  * Reporte de Atención al cliente por sede, para el supervisor (jefe de
@@ -161,7 +162,7 @@ export async function GET(req) {
   if (!token) return responder({ error: "Falta la sesión." }, 401);
 
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
+    global: { headers: { Authorization: `Bearer ${token}`, ...cabecerasDeIp(req) } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const {

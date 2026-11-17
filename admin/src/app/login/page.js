@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { tomarAviso } from "@/lib/permisos";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { login, inicioDe } from "@/lib/auth";
@@ -20,6 +21,12 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  // Si la sesión se cerró sola (por ejemplo, por entrar desde otra red), se explica aquí.
+  useEffect(() => {
+    const aviso = tomarAviso();
+    if (aviso) setError(aviso);
+  }, []);
 
   const errores = {
     email: !email.trim() ? "Escribe tu correo." : !CORREO.test(email.trim()) ? "Ese correo no tiene un formato válido." : null,

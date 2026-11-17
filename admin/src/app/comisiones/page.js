@@ -899,7 +899,7 @@ function ListaCupones({
                         </BotonAccion>
                       </span>
                     ) : (
-                      <BotonAccion
+                      <BotonAccion lectura
                         tono="neutro"
                         tamano="chico"
                         onClick={() => onTarifas(c)}

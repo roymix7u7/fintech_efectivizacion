@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { cabecerasDeIp } from "@/lib/ipCliente";
 
 /**
  * Solo servidor: llamadas a la API de Chatwoot con la clave de un
@@ -85,7 +86,7 @@ export async function sesionDe(req) {
   const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return { error: responder({ error: "Falta la sesión." }, 401) };
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
+    global: { headers: { Authorization: `Bearer ${token}`, ...cabecerasDeIp(req) } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const {

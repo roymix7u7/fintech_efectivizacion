@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { fijarDisponibilidad, olvidarDisponibilidad } from "./disponibilidad";
+import { leerMiAcceso, mensajeIp, dejarAviso } from "./permisos";
 
 /** Roles que tienen panel propio. */
 export const ROLES_STAFF = ["admin", "supervisor", "gestor", "pagos"];
@@ -73,7 +74,14 @@ export async function login(email, password) {
     );
   }
 
-  enMemoria = { user: data.user, rol: userData.rol };
+  // Restricción por IP: si su cuenta está atada a una red y entra desde otra, no pasa.
+  const acceso = await leerMiAcceso();
+  if (!acceso.permitida) {
+    await supabase.auth.signOut();
+    throw new Error(mensajeIp(acceso.ip));
+  }
+
+  enMemoria = { user: data.user, rol: userData.rol, permisos: acceso.permisos, ip: acceso.ip };
   // Quien entra al panel viene a trabajar: queda en línea y empieza a
   // recibir casos. Si falla (sin migración 070, sin red), entra igual.
   olvidarDisponibilidad();
@@ -148,6 +156,15 @@ export async function getSession() {
     return null;
   }
 
-  enMemoria = { user: data.session.user, rol: userData.rol };
+  // Con la sesión ya abierta también se revisa la IP: si cambió de red, sale.
+  const acceso = await leerMiAcceso();
+  if (!acceso.permitida) {
+    enMemoria = null;
+    dejarAviso(mensajeIp(acceso.ip));
+    await supabase.auth.signOut();
+    return null;
+  }
+
+  enMemoria = { user: data.session.user, rol: userData.rol, permisos: acceso.permisos, ip: acceso.ip };
   return enMemoria;
 }

@@ -14,6 +14,8 @@ import Disponibilidad from "@/components/disponibilidad";
 import AbrirChat from "@/components/abrirChat";
 import { mostrarCarga } from "@/components/pantallaCarga";
 import { useConfirmar } from "@/components/piezas";
+import { SoloLectura } from "@/components/carga";
+import { nivelDe } from "@/lib/permisos";
 
 /**
  * Menú del panel.
@@ -231,10 +233,13 @@ const PLANA_HASTA = 6;
  * El menú tal como lo ve un rol: grupos sin pantallas desaparecen y un
  * grupo con una sola pantalla se muestra como enlace directo.
  */
-function menuDe(rol) {
+function menuDe(rol, permisos) {
+  // Una pantalla se ve si el rol la trae y el administrador no se la quitó
+  // a esta persona (lib/permisos.js).
+  const ve = (s) => s.roles.includes(rol) && nivelDe(permisos, s.ruta) !== "no";
   // "visibles" son las pantallas permitidas (guardia de rutas e inicio);
   // las ocultas se permiten pero no se listan ni cuentan.
-  const visibles = SECCIONES.filter((s) => s.roles.includes(rol));
+  const visibles = SECCIONES.filter(ve);
   const listadas = visibles.filter((s) => !s.oculta);
   if (listadas.length <= PLANA_HASTA) {
     return { visibles, entradas: listadas, agrupada: false };
@@ -242,11 +247,11 @@ function menuDe(rol) {
   const entradas = [];
   for (const e of MENU) {
     if (!e.items) {
-      if (e.roles.includes(rol)) entradas.push({ ...e, grupo: null });
+      if (ve(e)) entradas.push({ ...e, grupo: null });
       continue;
     }
     const items = e.items
-      .filter((s) => s.roles.includes(rol))
+      .filter(ve)
       .map((s) => ({ ...s, grupo: e.grupo }));
     if (items.length === 1) entradas.push(items[0]);
     else if (items.length > 1) entradas.push({ ...e, items });
@@ -361,8 +366,10 @@ export default function Shell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { visibles, entradas, agrupada } = menuDe(session.rol);
+  const { visibles, entradas, agrupada } = menuDe(session.rol, session.permisos);
   const actual = visibles.find((s) => esActiva(s.ruta, pathname));
+  // Solo lectura en esta pantalla: los botones de acción se apagan (components/carga.jsx).
+  const soloLectura = Boolean(actual) && nivelDe(session.permisos, actual.ruta) === "ver";
   const grupoActual = actual?.grupo || null;
 
   const [abierto, setAbierto] = useState(false);
@@ -641,7 +648,14 @@ export default function Shell({
         </header>
 
         {/* completo: la pantalla ocupa todo el espacio, sin márgenes (el chat incrustado). */}
-        <main className={completo ? "flex min-h-0 flex-1 flex-col" : "flex-1 px-4 py-5 lg:px-6"}>{children}</main>
+        <main className={completo ? "flex min-h-0 flex-1 flex-col" : "flex-1 px-4 py-5 lg:px-6"}>
+          {soloLectura && !completo && (
+            <p className="mb-4 rounded-lg border border-oro-300 bg-oro-50 px-3 py-2 text-sm font-medium text-oro-700">
+              Solo lectura: puedes ver esta pantalla, pero no hacer cambios. Si lo necesitas, pídeselo al administrador.
+            </p>
+          )}
+          <SoloLectura.Provider value={soloLectura}>{children}</SoloLectura.Provider>
+        </main>
       </div>
     </div>
   );
