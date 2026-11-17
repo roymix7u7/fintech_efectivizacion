@@ -90,13 +90,16 @@ export default function Inicio() {
       <div className="relative z-20 mx-auto -mt-14 max-w-3xl px-5">
         <dl className="grid grid-cols-3 divide-x divide-[#E3E9F2] rounded-3xl bg-white py-6 text-center shadow-[0_2px_4px_rgba(15,27,51,0.05),0_30px_60px_-28px_rgba(15,27,51,0.45)] sm:py-8">
           {[
-            { n: "1 %", t: "Comisión desde" },
-            { n: "1 h", t: "Depósito habitual" },
-            { n: <Contador hasta={20000} prefijo="+" />, t: "Operaciones" },
+            { pre: "Desde", n: "1 %", t: "de comisión" },
+            { pre: "Depósito en", n: "1 h", t: "normalmente" },
+            { pre: "Más de", n: <Contador hasta={50000} />, t: "operaciones" },
           ].map((x) => (
             <div key={x.t} className="flex flex-col-reverse justify-end gap-1.5 px-2">
               <dt className="text-chico text-[#626D82] sm:text-sm">{x.t}</dt>
-              <dd className="cifras font-heading text-[1.6rem] font-normal leading-none tracking-tight sm:text-5xl">
+              <dd className="font-heading text-[1.7rem] font-normal leading-none tracking-tight sm:text-5xl">
+                <span className="mb-1.5 block font-sans text-chico font-medium tracking-normal text-oro-700 sm:mb-2 sm:text-sm">
+                  {x.pre}
+                </span>
                 {x.n}
               </dd>
             </div>
@@ -398,7 +401,7 @@ export default function Inicio() {
 
               <div className="mt-8 grid grid-cols-2 gap-3 sm:gap-4">
                 {[
-                  { n: 20000, t: "operaciones" },
+                  { n: 50000, t: "operaciones" },
                   { n: 8000, t: "clientes" },
                 ].map((x) => (
                   <div
