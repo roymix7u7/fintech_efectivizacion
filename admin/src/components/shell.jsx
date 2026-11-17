@@ -13,6 +13,7 @@ import Pista from "@/components/pista";
 import Disponibilidad from "@/components/disponibilidad";
 import AbrirChat from "@/components/abrirChat";
 import { mostrarCarga } from "@/components/pantallaCarga";
+import { useConfirmar } from "@/components/piezas";
 
 /**
  * Menú del panel.
@@ -366,6 +367,7 @@ export default function Shell({
 
   const [abierto, setAbierto] = useState(false);
   const [plegado, setPlegado] = useState(leerPlegado);
+  const [confirmar, ventanaSalir] = useConfirmar();
   const [globales, setGlobales] = useState(contadoresGuardados);
   // El grupo de la pantalla abierta arranca desplegado, para que se vea
   // dónde se está sin tener que buscar.
@@ -436,7 +438,16 @@ export default function Shell({
     });
   }
 
+  // Se confirma antes: el botón queda al alcance del cursor y un clic
+  // por accidente sacaba a la persona en medio de su trabajo.
   async function salir() {
+    const seguro = await confirmar({
+      titulo: "¿Cerrar sesión?",
+      texto: "Vas a salir del panel. Para volver tendrás que ingresar otra vez.",
+      boton: "Cerrar sesión",
+      cancelar: "Seguir aquí",
+    });
+    if (!seguro) return;
     mostrarCarga("Cerrando sesión…");
     await logout();
     contadoresGuardados = {};
@@ -562,6 +573,7 @@ export default function Shell({
           </div>
         </div>
       </aside>
+      {ventanaSalir}
 
       {/* ─────────── Contenido ─────────── */}
       <div className="flex min-w-0 flex-1 flex-col">
