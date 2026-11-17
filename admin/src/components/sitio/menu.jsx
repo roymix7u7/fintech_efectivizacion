@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 import { enlaceWhatsapp } from "./datos";
 
 const ENLACES = [
-  { href: "#servicio", texto: "Servicio" },
   { href: "#comisiones", texto: "Comisiones" },
+  { href: "#servicio", texto: "Servicio" },
   { href: "#seguridad", texto: "Seguridad" },
   { href: "#nosotros", texto: "Nosotros" },
   { href: "#preguntas", texto: "Ayuda" },

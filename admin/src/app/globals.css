@@ -430,6 +430,15 @@
   animation-play-state: paused;
 }
 
+/* Filas que se deslizan de lado en celular, sin la barra a la vista. */
+.sin-barra {
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.sin-barra::-webkit-scrollbar {
+  display: none;
+}
+
 html:has(.sitio-publico) {
   scroll-behavior: smooth;
   scroll-padding-top: 84px;

@@ -40,11 +40,11 @@ export const metadata = {
 /**
  * Web pública de AlToque Perú WK.
  *
- * Sobria y centrada en la empresa: quiénes somos, cuánto cuesta, cómo
- * cuidamos el dinero y los datos de cada cliente. La app es un canal más,
- * no el centro. Lo que dice aquí tiene que coincidir con la app y con los
- * textos legales: plazos, horario, locales, comisiones y la aclaración de
- * que no estamos afiliados a ningún banco.
+ * Pensada primero para el celular: frases cortas, cifras grandes, botones
+ * anchos y la calculadora arriba, que es lo que la gente viene a ver. Lo
+ * que dice aquí tiene que coincidir con la app y con los textos legales:
+ * plazos, horario, locales, comisiones y la aclaración de que no estamos
+ * afiliados a ningún banco.
  */
 export default function Inicio() {
   return (
@@ -53,51 +53,68 @@ export default function Inicio() {
       <Animaciones />
 
       {/* ═════════════ Portada (azul noche) ═════════════ */}
-      <section className="relative isolate overflow-hidden bg-[#0B1426] pb-20 pt-40 text-white sm:pt-48 xl:pb-32">
+      <section className="relative isolate overflow-hidden bg-[#0B1426] pb-28 pt-32 text-white sm:pb-32 sm:pt-44 xl:pb-44">
         <Brillos />
         <TarjetasLados />
         <div className="relative z-10 mx-auto max-w-4xl px-5 text-center">
-          <h1 className="text-balance font-heading text-[2.6rem] font-normal leading-[1.05] tracking-[-0.03em] sm:text-6xl lg:text-[4.75rem]">
-            El efectivo que necesitas, con la{" "}
-            <span className="text-oro-500">confianza</span> que mereces.
-          </h1>
-          <p className="mx-auto mt-7 max-w-2xl text-lg leading-relaxed text-white/65">
-            Convertimos la línea de tu tarjeta de crédito en dinero en tu
-            cuenta. Comisión clara, depósito el mismo día y oficinas en Lima.
+          <p className="inline-flex items-center gap-2 rounded-full bg-white/[0.07] px-4 py-2 text-sm font-medium text-white/80 ring-1 ring-white/15 backdrop-blur">
+            <span className="h-2 w-2 rounded-full bg-oro-500" />
+            Empresa peruana · 3 locales en Lima
           </p>
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-4">
+          <h1 className="mt-6 text-balance font-heading text-[2.9rem] font-normal leading-[1.02] tracking-[-0.035em] sm:text-7xl lg:text-[5.5rem]">
+            Tu tarjeta de crédito, en{" "}
+            <span className="text-oro-500">efectivo hoy</span>.
+          </h1>
+          <p className="mx-auto mt-5 max-w-sm text-lg leading-relaxed text-white/65 sm:max-w-xl sm:text-xl">
+            Comisión desde 1 %. Depósito en tu cuenta el mismo día.
+          </p>
+          <div className="mx-auto mt-9 flex max-w-sm flex-col gap-3 sm:max-w-none sm:flex-row sm:items-center sm:justify-center sm:gap-4">
             <Link
               href="/registro"
-              className="rounded-full bg-oro-500 px-7 py-3.5 text-md font-bold text-marca-900 shadow-[0_12px_32px_-8px_rgba(232,184,0,0.6)] transition hover:bg-oro-300"
+              className="flex min-h-[54px] items-center justify-center rounded-full bg-oro-500 px-9 text-lg font-bold text-marca-900 shadow-[0_14px_36px_-8px_rgba(232,184,0,0.65)] transition hover:bg-oro-300 active:scale-[0.98]"
             >
               Empieza ahora
             </Link>
             <Link
               href="/ingresar"
-              className="group inline-flex items-center gap-1.5 text-md font-medium text-white/80 transition hover:text-white"
+              className="flex min-h-[54px] items-center justify-center rounded-full px-9 text-lg font-medium text-white ring-1 ring-white/25 transition hover:bg-white/10 active:scale-[0.98]"
             >
               Ya tengo cuenta
-              <Flecha className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </Link>
           </div>
           <TarjetasAbanico />
         </div>
       </section>
 
-      {/* ═════════════ Tarjetas y servicio (azul hielo) ═════════════ */}
-      <section className="pb-28 pt-14" aria-labelledby="titulo-tarjetas">
+      {/* Tres cifras que resumen el servicio, a caballo entre la portada y lo que sigue. */}
+      <div className="relative z-20 mx-auto -mt-14 max-w-3xl px-5">
+        <dl className="grid grid-cols-3 divide-x divide-[#E3E9F2] rounded-3xl bg-white py-6 text-center shadow-[0_2px_4px_rgba(15,27,51,0.05),0_30px_60px_-28px_rgba(15,27,51,0.45)] sm:py-8">
+          {[
+            { n: "1 %", t: "Comisión desde" },
+            { n: "1 h", t: "Depósito habitual" },
+            { n: <Contador hasta={20000} prefijo="+" />, t: "Operaciones" },
+          ].map((x) => (
+            <div key={x.t} className="flex flex-col-reverse justify-end gap-1.5 px-2">
+              <dt className="text-chico text-[#626D82] sm:text-sm">{x.t}</dt>
+              <dd className="cifras font-heading text-[1.6rem] font-normal leading-none tracking-tight sm:text-5xl">
+                {x.n}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      {/* ═════════════ Tarjetas que aceptamos ═════════════ */}
+      <section className="pb-20 pt-12 sm:pb-24" aria-labelledby="titulo-tarjetas">
         <div className="mx-auto max-w-6xl px-5 text-center">
-          <p
-            id="titulo-tarjetas"
-            className="text-sm font-medium text-[#626D82]"
-          >
+          <p id="titulo-tarjetas" className="text-sm font-medium text-[#626D82]">
             Aceptamos tarjetas de
           </p>
-          <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-12 gap-y-5">
+          <ul className="sin-barra -mx-5 mt-5 flex snap-x gap-2.5 overflow-x-auto px-5 pb-1 sm:mx-0 sm:flex-wrap sm:justify-center sm:gap-3 sm:px-0">
             {BANCOS.map((b) => (
               <li
                 key={b.nombre}
-                className="inline-flex items-center gap-2 font-heading text-2xl font-medium tracking-tight text-marca-700/70"
+                className="inline-flex shrink-0 snap-start items-center gap-2 rounded-full bg-white px-5 py-2.5 font-heading text-lg font-medium tracking-tight text-marca-700 ring-1 ring-[#E3E9F2]"
               >
                 <span
                   className="h-2 w-2 rounded-full"
@@ -107,27 +124,101 @@ export default function Inicio() {
               </li>
             ))}
           </ul>
-          <p className="mx-auto mt-7 max-w-xl text-xs text-[#8A93A6]">
+          <p className="mx-auto mt-5 max-w-xl text-xs text-[#8A93A6]">
             No estamos afiliados a ningún banco ni emisor. Los nombres solo
             indican qué tarjetas aceptamos.
           </p>
         </div>
+      </section>
 
+      {/* ═════════════ Comisiones (azul noche) ═════════════ */}
+      <section
+        id="comisiones"
+        className="relative isolate overflow-hidden bg-[#0F1B33] py-20 text-white sm:py-28"
+      >
         <div
-          id="servicio"
-          className="mx-auto mt-28 max-w-6xl scroll-mt-28 px-5"
-        >
-          <div className="grid items-center gap-12 lg:grid-cols-[1fr_1.1fr]">
+          aria-hidden
+          className="pointer-events-none absolute -left-40 top-0 -z-10 h-[560px] w-[560px] rounded-full bg-[radial-gradient(closest-side,rgba(232,184,0,0.12),transparent)]"
+        />
+        <div className="mx-auto max-w-6xl px-5">
+          <div className="relative pr-24 sm:pr-0" data-revelar>
+            <Objetos3D
+              className="absolute -top-4 right-0 h-24 w-24 sm:-top-10 sm:right-4 sm:h-40 sm:w-44"
+              objetos={[MONEDAS]}
+              chispas={[
+                { x: "0%", y: "20%", t: 14 },
+                { x: "88%", y: "70%", t: 18, retraso: 1.2 },
+              ]}
+            />
+            <Etiqueta oscura>Comisiones</Etiqueta>
+            <h2 className="mt-4 font-heading text-[2.4rem] font-normal leading-[1.05] tracking-[-0.025em] sm:text-6xl">
+              ¿Cuánto <span className="text-oro-500">recibes</span>?
+            </h2>
+            <p className="mt-3 text-lg text-white/55">Sin cargos escondidos.</p>
+          </div>
+
+          <div className="mt-10 grid items-start gap-10 lg:mt-14 lg:grid-cols-[1fr_440px] lg:gap-14">
+            <div
+              data-revelar
+              className="order-first lg:sticky lg:top-28 lg:order-last"
+            >
+              <Calculadora />
+            </div>
+
+            <div data-revelar style={{ "--retraso": "120ms" }}>
+              <div className="divide-y divide-white/10 border-y border-white/10">
+                {GRUPOS_TARIFA.map((g) => (
+                  <div
+                    key={g.bancos.join()}
+                    className="grid grid-cols-[72px_1fr_auto] items-center gap-3 py-4 sm:grid-cols-[88px_1fr_auto] sm:gap-4 sm:py-5"
+                  >
+                    <span className="cifras font-heading text-3xl font-normal tracking-tight">
+                      {g.pct.toLocaleString("es-PE")}
+                      <span className="text-oro-500">%</span>
+                    </span>
+                    <span className="font-medium text-white/90">
+                      {g.bancos.join(" · ")}
+                      {g.pctHoy && (
+                        <span className="mt-0.5 block text-chico font-normal leading-snug text-oro-300">
+                          {g.pctHoy.toLocaleString("es-PE")} % si lo quieres
+                          hoy
+                        </span>
+                      )}
+                    </span>
+                    <span className="cifras text-right text-chico leading-tight text-white/45">
+                      Mín. S/ {g.minimo}
+                      <span className="block">
+                        bajo S/ {g.limite.toLocaleString("es-PE")}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <a
+                href={enlaceWhatsapp(
+                  "Hola, quiero consultar la tasa preferencial.",
+                )}
+                target="_blank"
+                rel="noopener"
+                className="group mt-6 inline-flex min-h-[48px] items-center gap-2 font-medium text-oro-500 hover:text-oro-300"
+              >
+                ¿Operas seguido? Pide tu tasa preferencial
+                <Flecha className="h-4 w-4 shrink-0 transition group-hover:translate-x-0.5" />
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═════════════ Servicio y pasos (azul hielo) ═════════════ */}
+      <section id="servicio" className="scroll-mt-28 py-20 sm:py-28">
+        <div className="mx-auto max-w-6xl px-5">
+          <div className="grid items-center gap-8 lg:grid-cols-[1fr_1.1fr] lg:gap-12">
             <div data-revelar>
               <Etiqueta>Servicio</Etiqueta>
-              <h2 className="mt-4 text-balance font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
-                Simple, transparente y atendido por personas.
+              <h2 className="mt-4 text-balance font-heading text-[2.4rem] font-normal leading-[1.05] tracking-[-0.025em] sm:text-6xl">
+                Simple, claro y con personas reales.
               </h2>
-              <p className="mt-6 max-w-lg text-lg leading-relaxed text-[#4F5B74]">
-                Detrás de cada operación hay alguien de nuestro equipo que la
-                revisa, responde tus dudas y te atiende cara a cara en
-                nuestros locales.
-              </p>
             </div>
             <div data-revelar style={{ "--retraso": "120ms" }}>
               <Foto
@@ -135,7 +226,7 @@ export default function Inicio() {
                 ancho={1800}
                 alto={1344}
                 alt="Asesora de AlToque revisando documentos con un cliente en uno de nuestros locales"
-                proporcion="aspect-[16/10]"
+                proporcion="aspect-[4/3] sm:aspect-[16/10]"
               >
                 <Sello icono={<Persona />}>
                   Revisamos cada operación antes de depositar
@@ -143,185 +234,80 @@ export default function Inicio() {
               </Foto>
             </div>
           </div>
-          <div className="mt-14 grid gap-5 md:grid-cols-3">
+
+          <ul className="mt-8 grid gap-3 md:grid-cols-3 md:gap-5 lg:mt-14">
             {[
-              {
-                i: <Porcentaje />,
-                t: "Comisión clara",
-                d: "Desde 1 %, según tu tarjeta. Sabes cuánto recibes antes de confirmar.",
-              },
-              {
-                i: <Reloj />,
-                t: "Depósito el mismo día",
-                d: "Normalmente en menos de 1 hora, en horario de atención.",
-              },
-              {
-                i: <Persona />,
-                t: "Revisión humana",
-                d: "Nuestro equipo revisa cada operación y te atiende en persona o por WhatsApp.",
-              },
+              { i: <Porcentaje />, t: "Comisión clara", d: "La ves antes de confirmar" },
+              { i: <Reloj />, t: "El mismo día", d: "Normalmente en menos de 1 hora" },
+              { i: <Persona />, t: "Revisión humana", d: "En persona o por WhatsApp" },
             ].map((x, i) => (
-              <div
+              <li
                 key={x.t}
-                className="rounded-2xl bg-white p-8 shadow-[0_1px_2px_rgba(15,27,51,0.04),0_20px_40px_-24px_rgba(15,27,51,0.2)]"
+                className="flex items-center gap-4 rounded-2xl bg-white p-5 shadow-[0_1px_2px_rgba(15,27,51,0.04),0_20px_40px_-24px_rgba(15,27,51,0.2)] md:p-6"
                 data-revelar
                 style={{ "--retraso": `${i * 90}ms` }}
               >
-                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-marca-900 text-oro-500">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-marca-900 text-oro-500">
                   {x.i}
                 </span>
-                <h3 className="mt-6 font-heading text-xl font-normal">{x.t}</h3>
-                <p className="mt-2 leading-relaxed text-[#4F5B74]">{x.d}</p>
-              </div>
+                <span className="min-w-0">
+                  <span className="block font-heading text-lg font-normal leading-tight">
+                    {x.t}
+                  </span>
+                  <span className="mt-0.5 block text-sm text-[#626D82]">
+                    {x.d}
+                  </span>
+                </span>
+              </li>
             ))}
-          </div>
-        </div>
-      </section>
+          </ul>
 
-      {/* ═════════════ Comisiones (azul noche) ═════════════ */}
-      <section
-        id="comisiones"
-        className="relative isolate overflow-hidden bg-[#0F1B33] py-28 text-white"
-      >
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -left-40 top-0 -z-10 h-[560px] w-[560px] rounded-full bg-[radial-gradient(closest-side,rgba(232,184,0,0.12),transparent)]"
-        />
-        <div className="mx-auto grid max-w-6xl items-start gap-14 px-5 lg:grid-cols-[1fr_440px]">
-          <div data-revelar>
-            <Etiqueta oscura>Comisiones</Etiqueta>
-            <h2 className="mt-4 font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
-              Desde <span className="text-oro-500">1 %</span>.
-              <br />
-              <span className="text-white/45">Sin cargos escondidos.</span>
-            </h2>
-
-            <div className="mt-12 divide-y divide-white/10 border-y border-white/10">
-              {GRUPOS_TARIFA.map((g) => (
-                <div
-                  key={g.bancos.join()}
-                  className="grid grid-cols-[88px_1fr_auto] items-center gap-4 py-5"
-                >
-                  <span className="font-heading text-3xl font-normal tracking-tight">
-                    {g.pct.toLocaleString("es-PE")}
-                    <span className="text-oro-500">%</span>
-                  </span>
-                  <span className="font-medium text-white/90">
-                    {g.bancos.join(" · ")}
-                    {g.pctHoy && (
-                      <span className="mt-0.5 block text-chico font-normal leading-snug text-white/55">
-                        Depósito al día siguiente ·{" "}
-                        <span className="text-oro-300">
-                          {g.pctHoy.toLocaleString("es-PE")} % si lo quieres
-                          hoy
-                        </span>
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-right text-chico leading-tight text-white/45">
-                    Mín. S/ {g.minimo}
-                    <span className="block">
-                      bajo S/ {g.limite.toLocaleString("es-PE")}
-                    </span>
-                  </span>
-                </div>
-              ))}
-            </div>
-            <p className="mt-6 text-sm text-white/55">
-              ¿Operas seguido?{" "}
-              <a
-                href={enlaceWhatsapp(
-                  "Hola, quiero consultar la tasa preferencial.",
-                )}
-                target="_blank"
-                rel="noopener"
-                className="font-medium text-oro-500 underline underline-offset-4 hover:text-oro-300"
-              >
-                Pide tu tasa preferencial
-              </a>
-              .
-            </p>
-          </div>
-          <div
-            data-revelar
-            style={{ "--retraso": "120ms" }}
-            className="relative lg:sticky lg:top-28"
-          >
-            <Objetos3D
-              className="absolute -top-24 right-0 z-10 h-28 w-32 sm:-right-12 sm:-top-36 sm:h-40 sm:w-44"
-              objetos={[MONEDAS]}
-              chispas={[
-                { x: "0%", y: "20%", t: 14 },
-                { x: "88%", y: "70%", t: 18, retraso: 1.2 },
-              ]}
-            />
-            <Calculadora />
-          </div>
-        </div>
-      </section>
-
-      {/* ═════════════ Cómo funciona (azul hielo) ═════════════ */}
-      <section className="py-28">
-        <div className="mx-auto max-w-6xl px-5">
-          <div className="max-w-3xl" data-revelar>
+          <div className="mt-20 sm:mt-28" data-revelar>
             <Etiqueta>Cómo funciona</Etiqueta>
-            <h2 className="mt-4 font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
-              Cuatro pasos. Una sola vez el registro.
+            <h2 className="mt-4 font-heading text-[2.4rem] font-normal leading-[1.05] tracking-[-0.025em] sm:text-6xl">
+              Cuatro pasos.
             </h2>
-            <p className="mt-5 text-lg text-[#4F5B74]">
-              Desde esta web, la app de AlToque o en nuestros locales. Es la
-              misma cuenta.
-            </p>
           </div>
-          <ol className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <ol className="mt-8 grid gap-3 sm:grid-cols-2 sm:gap-5 lg:mt-12 lg:grid-cols-4">
             {[
-              {
-                t: "Regístrate",
-                d: "Con tu DNI y una selfie. Verificamos tu identidad.",
-              },
-              {
-                t: "Registra tu tarjeta",
-                d: "Y la cuenta de ahorros a tu nombre donde recibirás el dinero.",
-              },
-              {
-                t: "Envía tu comprobante",
-                d: "De la operación con tu tarjeta. Ves la comisión antes.",
-              },
-              {
-                t: "Recibe tu depósito",
-                d: "El mismo día, en tu cuenta. Te avisamos al instante.",
-              },
+              { t: "Regístrate", d: "Con tu DNI y una selfie." },
+              { t: "Registra tu tarjeta", d: "Y una cuenta a tu nombre." },
+              { t: "Envía tu comprobante", d: "Ves la comisión antes." },
+              { t: "Recibe tu depósito", d: "El mismo día, en tu cuenta." },
             ].map((p, i) => (
               <li
                 key={p.t}
-                className="rounded-2xl bg-white p-7 shadow-[0_1px_2px_rgba(15,27,51,0.04),0_20px_40px_-24px_rgba(15,27,51,0.2)]"
+                className="flex items-center gap-4 rounded-2xl bg-white p-5 shadow-[0_1px_2px_rgba(15,27,51,0.04),0_20px_40px_-24px_rgba(15,27,51,0.2)] lg:block lg:p-7"
                 data-revelar
                 style={{ "--retraso": `${i * 90}ms` }}
               >
-                <span className="cifras flex h-10 w-10 items-center justify-center rounded-full bg-oro-500 font-heading text-sm font-semibold text-marca-900">
-                  0{i + 1}
+                <span className="cifras flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-oro-500 font-heading text-lg font-semibold text-marca-900">
+                  {i + 1}
                 </span>
-                <h3 className="mt-6 font-heading text-xl font-normal">{p.t}</h3>
-                <p className="mt-2 leading-relaxed text-[#4F5B74]">{p.d}</p>
+                <span className="block min-w-0 lg:mt-6">
+                  <span className="block font-heading text-lg font-normal leading-tight lg:text-xl">
+                    {p.t}
+                  </span>
+                  <span className="mt-0.5 block text-sm text-[#626D82] lg:mt-2 lg:text-base">
+                    {p.d}
+                  </span>
+                </span>
               </li>
             ))}
           </ol>
           <div
-            className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3"
+            className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6"
             data-revelar
           >
             <Link
               href="/registro"
-              className="rounded-full bg-marca-900 px-7 py-3.5 font-semibold text-white transition hover:bg-marca-700"
+              className="flex min-h-[54px] items-center justify-center rounded-full bg-marca-900 px-9 text-lg font-semibold text-white transition hover:bg-marca-700 active:scale-[0.98]"
             >
               Crear mi cuenta
             </Link>
-            <Link
-              href="/ingresar"
-              className="font-semibold text-marca-900 underline underline-offset-4"
-            >
-              Ya tengo cuenta, ingresar
-            </Link>
+            <p className="text-center text-sm text-[#626D82] sm:text-left">
+              La misma cuenta sirve en la web, en la app y en nuestros locales.
+            </p>
           </div>
         </div>
       </section>
@@ -329,7 +315,7 @@ export default function Inicio() {
       {/* ═════════════ Seguridad (azul noche) ═════════════ */}
       <section
         id="seguridad"
-        className="relative isolate overflow-hidden bg-[#0B1426] py-28 text-white"
+        className="relative isolate overflow-hidden bg-[#0B1426] py-20 text-white sm:py-28"
       >
         <div
           aria-hidden
@@ -340,17 +326,13 @@ export default function Inicio() {
           className="pointer-events-none absolute bottom-[-30%] left-[-10%] -z-10 h-[600px] w-[700px] rounded-full bg-[radial-gradient(closest-side,rgba(47,86,176,0.35),transparent)]"
         />
         <div className="mx-auto max-w-6xl px-5">
-          <div className="grid items-center gap-10 lg:grid-cols-2">
+          <div className="grid items-center gap-6 lg:grid-cols-2 lg:gap-10">
             <div data-revelar>
               <Etiqueta oscura>Seguridad</Etiqueta>
-              <h2 className="mt-4 font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
+              <h2 className="mt-4 font-heading text-[2.4rem] font-normal leading-[1.05] tracking-[-0.025em] sm:text-6xl">
                 Tu dinero y tus datos,{" "}
                 <span className="text-oro-500">protegidos</span>.
               </h2>
-              <p className="mt-6 max-w-lg text-lg leading-relaxed text-white/60">
-                Cada operación pasa por controles para que solo tú puedas usar
-                tu tarjeta y recibir tu dinero.
-              </p>
             </div>
             <div
               className="relative"
@@ -362,7 +344,7 @@ export default function Inicio() {
                 className="pointer-events-none absolute left-1/2 top-1/2 h-[380px] w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(232,184,0,0.22),transparent)]"
               />
               <Objetos3D
-                className="relative mx-auto h-[250px] w-full max-w-[520px] sm:h-[340px]"
+                className="relative mx-auto h-[230px] w-full max-w-[520px] sm:h-[340px]"
                 objetos={SEGURIDAD_3D}
                 chispas={[
                   { x: "6%", y: "6%", t: 16 },
@@ -374,93 +356,77 @@ export default function Inicio() {
             </div>
           </div>
 
-          <div className="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="mt-10 grid grid-cols-2 gap-3 sm:gap-5 lg:mt-16 lg:grid-cols-3">
             {[
-              {
-                i: <Persona />,
-                t: "Identidad verificada",
-                d: "Validamos tu documento y tu rostro antes de tu primera operación.",
-              },
-              {
-                i: <Banco />,
-                t: "Solo a tu nombre",
-                d: "Depositamos únicamente en cuentas a tu nombre. Nunca a terceros.",
-              },
-              {
-                i: <Candado />,
-                t: "Documentos cifrados",
-                d: "Tus fotos se guardan privadas y cifradas, y solo las ve el equipo de verificación.",
-              },
-              {
-                i: <Lista />,
-                t: "Todo queda registrado",
-                d: "Cada revisión y cada pago quedan registrados con responsable, fecha y hora.",
-              },
-              {
-                i: <Escudo />,
-                t: "Datos protegidos",
-                d: "Tratamos tu información según la Ley N.° 29733 de Protección de Datos Personales.",
-              },
-              {
-                i: <Libro />,
-                t: "Reglas claras",
-                d: "Términos, privacidad y Libro de Reclamaciones a tu alcance, siempre.",
-              },
+              { i: <Persona />, t: "Identidad verificada" },
+              { i: <Banco />, t: "Solo a cuentas a tu nombre" },
+              { i: <Candado />, t: "Documentos cifrados" },
+              { i: <Lista />, t: "Cada paso queda registrado" },
+              { i: <Escudo />, t: "Datos según la Ley N.° 29733" },
+              { i: <Libro />, t: "Libro de Reclamaciones" },
             ].map((x, i) => (
-              <div
+              <li
                 key={x.t}
-                className="rounded-2xl bg-white/[0.04] p-8 ring-1 ring-white/10 backdrop-blur transition hover:bg-white/[0.07]"
+                className="rounded-2xl bg-white/[0.04] p-5 ring-1 ring-white/10 backdrop-blur sm:flex sm:items-center sm:gap-4 sm:p-6"
                 data-revelar
                 style={{ "--retraso": `${(i % 3) * 90}ms` }}
               >
-                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-oro-500/15 text-oro-500 ring-1 ring-oro-500/30">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-oro-500/15 text-oro-500 ring-1 ring-oro-500/30 [&_svg]:h-6 [&_svg]:w-6">
                   {x.i}
                 </span>
-                <h3 className="mt-6 font-heading text-lg font-normal">{x.t}</h3>
-                <p className="mt-2 leading-relaxed text-white/55">{x.d}</p>
-              </div>
+                <span className="mt-4 block font-heading text-base font-normal leading-snug sm:mt-0 sm:text-lg">
+                  {x.t}
+                </span>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       </section>
 
       {/* ═════════════ Nosotros (azul hielo) ═════════════ */}
-      <section id="nosotros" className="py-28">
+      <section id="nosotros" className="py-20 sm:py-28">
         <div className="mx-auto max-w-6xl px-5">
-          <div className="grid gap-14 lg:grid-cols-[1fr_1fr]">
+          <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:gap-14">
             <div data-revelar>
               <Etiqueta>Nosotros</Etiqueta>
-              <h2 className="mt-4 font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-[3.25rem]">
-                Una empresa peruana, con oficinas de verdad.
+              <h2 className="mt-4 font-heading text-[2.4rem] font-normal leading-[1.05] tracking-[-0.025em] sm:text-6xl">
+                Oficinas de verdad, en Lima.
               </h2>
-              <p className="mt-6 max-w-lg text-lg leading-relaxed text-[#4F5B74]">
-                Atendemos en persona en tres locales de Lima y por WhatsApp, de{" "}
-                {HORARIO.dias.toLowerCase()}.
+              <p className="mt-4 text-lg text-[#4F5B74]">
+                {HORARIO.dias}, {HORARIO.horas}
               </p>
 
-              <div className="mt-10 grid grid-cols-2 gap-4">
+              <div className="mt-8 grid grid-cols-2 gap-3 sm:gap-4">
                 {[
-                  { n: 20000, t: "operaciones realizadas" },
-                  { n: 8000, t: "clientes registrados" },
+                  { n: 20000, t: "operaciones" },
+                  { n: 8000, t: "clientes" },
                 ].map((x) => (
                   <div
                     key={x.t}
                     className="min-w-0 rounded-2xl bg-marca-900 p-5 text-white sm:p-6"
                   >
-                    <p className="font-heading text-[1.7rem] font-normal tracking-tight text-oro-500 sm:text-5xl">
+                    <p className="font-heading text-[1.9rem] font-normal leading-none tracking-tight text-oro-500 sm:text-5xl">
                       <Contador hasta={x.n} prefijo="+" />
                     </p>
-                    <p className="mt-1 text-white/65">{x.t}</p>
+                    <p className="mt-2 text-white/65">{x.t}</p>
                   </div>
                 ))}
               </div>
 
-              <dl className="mt-10 grid gap-x-8 gap-y-5 border-t border-[#DCE3EE] pt-8 text-sm sm:grid-cols-2">
-                <Fila t="Razón social" v={EMPRESA.razonSocial} />
-                <Fila t="RUC" v={EMPRESA.ruc} />
-                <Fila t="Domicilio legal" v={EMPRESA.domicilio} />
-                <Fila t="Horario" v={`${HORARIO.dias}, ${HORARIO.horas}`} />
-              </dl>
+              <details className="group mt-6 rounded-2xl bg-white px-5 shadow-[0_1px_2px_rgba(15,27,51,0.04)]">
+                <summary className="flex min-h-[56px] cursor-pointer list-none items-center justify-between gap-4 font-medium [&::-webkit-details-marker]:hidden">
+                  Datos de la empresa
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EFF3F9] text-marca-700 transition group-open:rotate-45 group-open:bg-oro-500 group-open:text-marca-900">
+                    <Mas className="h-4 w-4" />
+                  </span>
+                </summary>
+                <dl className="grid gap-x-8 gap-y-4 pb-5 text-sm sm:grid-cols-2">
+                  <Fila t="Razón social" v={EMPRESA.razonSocial} />
+                  <Fila t="RUC" v={EMPRESA.ruc} />
+                  <Fila t="Domicilio legal" v={EMPRESA.domicilio} />
+                  <Fila t="Horario" v={`${HORARIO.dias}, ${HORARIO.horas}`} />
+                </dl>
+              </details>
             </div>
 
             <div data-revelar style={{ "--retraso": "120ms" }}>
@@ -471,7 +437,7 @@ export default function Inicio() {
       </section>
 
       {/* ═════════════ Opiniones (azul noche) ═════════════ */}
-      <section className="relative isolate overflow-hidden bg-[#0F1B33] py-28 text-white">
+      <section className="relative isolate overflow-hidden bg-[#0F1B33] py-20 text-white sm:py-28">
         <div
           aria-hidden
           className="pointer-events-none absolute left-1/2 top-0 -z-10 h-[500px] w-[900px] -translate-x-1/2 -translate-y-1/3 rounded-full bg-[radial-gradient(closest-side,rgba(232,184,0,0.14),transparent)]"
@@ -486,20 +452,19 @@ export default function Inicio() {
                 { x: "100%", y: "55%", t: 16, retraso: 1.1 },
               ]}
             />
-            <blockquote className="mt-6 text-balance font-heading text-3xl font-normal leading-snug tracking-[-0.01em] sm:text-4xl">
+            <blockquote className="mt-10 text-balance font-heading text-2xl font-normal leading-snug tracking-[-0.01em] sm:text-4xl">
               {OPINIONES[0].texto}
             </blockquote>
-            <figcaption className="mt-8 text-white/55">
+            <figcaption className="mt-6 text-white/55">
               {OPINIONES[0].nombre}
             </figcaption>
           </figure>
-          <div className="mt-20 grid gap-5 md:grid-cols-3">
-            {OPINIONES.slice(1).map((o, i) => (
+          {/* En celular se deslizan de lado; en pantallas grandes van en fila. */}
+          <div className="sin-barra -mx-5 mt-12 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 md:mx-0 md:mt-20 md:grid md:grid-cols-3 md:gap-5 md:overflow-visible md:px-0">
+            {OPINIONES.slice(1).map((o) => (
               <figure
                 key={o.nombre}
-                className="rounded-2xl bg-white/[0.04] p-7 ring-1 ring-white/10"
-                data-revelar
-                style={{ "--retraso": `${i * 90}ms` }}
+                className="w-[82%] shrink-0 snap-center rounded-2xl bg-white/[0.04] p-6 ring-1 ring-white/10 md:w-auto md:p-7"
               >
                 <blockquote className="leading-relaxed text-white/80">
                   “{o.texto}”
@@ -514,8 +479,8 @@ export default function Inicio() {
       </section>
 
       {/* ═════════════ Preguntas (azul hielo) ═════════════ */}
-      <section id="preguntas" className="py-28">
-        <div className="mx-auto grid max-w-6xl gap-12 px-5 lg:grid-cols-[0.8fr_1.2fr]">
+      <section id="preguntas" className="py-20 sm:py-28">
+        <div className="mx-auto grid max-w-6xl gap-8 px-5 lg:grid-cols-[0.8fr_1.2fr] lg:gap-12">
           <div
             data-revelar
             className="relative pr-24 lg:sticky lg:top-28 lg:flex lg:flex-col lg:items-start lg:self-start lg:pr-0"
@@ -530,35 +495,32 @@ export default function Inicio() {
               ]}
             />
             <Etiqueta>Ayuda</Etiqueta>
-            <h2 className="mt-4 font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em]">
+            <h2 className="mt-4 font-heading text-[2.4rem] font-normal leading-[1.05] tracking-[-0.025em] sm:text-5xl">
               Preguntas frecuentes
             </h2>
-            <p className="mt-4 text-[#4F5B74]">
-              ¿Otra duda?{" "}
-              <a
-                href={enlaceWhatsapp()}
-                target="_blank"
-                rel="noopener"
-                className="font-medium text-marca-900 underline underline-offset-4"
-              >
-                Escríbenos
-              </a>
-              .
-            </p>
+            <a
+              href={enlaceWhatsapp()}
+              target="_blank"
+              rel="noopener"
+              className="group mt-3 inline-flex min-h-[48px] items-center gap-2 font-medium text-marca-900 underline underline-offset-4"
+            >
+              ¿Otra duda? Escríbenos
+              <Flecha className="h-4 w-4 transition group-hover:translate-x-0.5" />
+            </a>
           </div>
           <div className="space-y-3" data-revelar>
             {PREGUNTAS.map((q) => (
               <details
                 key={q.p}
-                className="group rounded-2xl bg-white px-6 shadow-[0_1px_2px_rgba(15,27,51,0.04)] transition open:shadow-[0_20px_40px_-24px_rgba(15,27,51,0.25)]"
+                className="group rounded-2xl bg-white px-5 shadow-[0_1px_2px_rgba(15,27,51,0.04)] transition open:shadow-[0_20px_40px_-24px_rgba(15,27,51,0.25)] sm:px-6"
               >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 font-heading text-lg font-normal [&::-webkit-details-marker]:hidden">
+                <summary className="flex min-h-[64px] cursor-pointer list-none items-center justify-between gap-5 py-4 font-heading text-lg font-normal leading-snug [&::-webkit-details-marker]:hidden">
                   {q.p}
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EFF3F9] text-marca-700 transition group-open:rotate-45 group-open:bg-oro-500 group-open:text-marca-900">
                     <Mas className="h-4 w-4" />
                   </span>
                 </summary>
-                <p className="-mt-1 pb-6 pr-10 leading-relaxed text-[#4F5B74]">
+                <p className="-mt-1 pb-6 pr-8 leading-relaxed text-[#4F5B74]">
                   {q.r}
                 </p>
               </details>
@@ -568,45 +530,35 @@ export default function Inicio() {
       </section>
 
       {/* ═════════════ Llamado final (dorado) ═════════════ */}
-      <section id="empieza" className="scroll-mt-28 px-5 pb-28">
+      <section id="empieza" className="scroll-mt-28 px-5 pb-20 sm:pb-28">
         <div
-          className="relative isolate mx-auto max-w-6xl overflow-hidden rounded-3xl bg-gradient-to-br from-[#F5D976] via-[#E8B800] to-[#C49B00] px-8 py-20 text-center text-marca-900 sm:px-16"
+          className="relative isolate mx-auto max-w-6xl overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#F5D976] via-[#E8B800] to-[#C49B00] px-6 py-16 text-center text-marca-900 sm:px-16 sm:py-24"
           data-revelar
         >
           <div
             aria-hidden
             className="pointer-events-none absolute -right-24 -top-24 -z-10 h-80 w-80 rounded-full bg-white/30 blur-3xl"
           />
-          <h2 className="mx-auto max-w-2xl text-balance font-heading text-4xl font-normal leading-[1.1] tracking-[-0.02em] sm:text-5xl">
-            Empieza hoy. Te acompañamos desde el primer paso.
+          <h2 className="mx-auto max-w-2xl text-balance font-heading text-[2.6rem] font-normal leading-[1.02] tracking-[-0.03em] sm:text-7xl">
+            Empieza hoy.
           </h2>
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-4">
+          <p className="mt-3 text-lg text-marca-900/70">
+            Te acompañamos desde el primer paso.
+          </p>
+          <div className="mx-auto mt-8 flex max-w-sm flex-col gap-3 sm:max-w-none sm:flex-row sm:items-center sm:justify-center sm:gap-4">
             <Link
               href="/registro"
-              className="rounded-full bg-marca-900 px-7 py-3.5 font-semibold text-white shadow-[0_12px_30px_-8px_rgba(15,27,51,0.5)] transition hover:bg-marca-700"
+              className="flex min-h-[54px] items-center justify-center rounded-full bg-marca-900 px-9 text-lg font-semibold text-white shadow-[0_12px_30px_-8px_rgba(15,27,51,0.5)] transition hover:bg-marca-700 active:scale-[0.98]"
             >
               Crear mi cuenta
             </Link>
-            <a
-              href={enlaceWhatsapp("Hola, quiero empezar con AlToque Perú WK.")}
-              target="_blank"
-              rel="noopener"
-              className="group inline-flex items-center gap-1.5 font-semibold text-marca-900/80 hover:text-marca-900"
-            >
-              Escríbenos por WhatsApp
-              <Flecha className="h-4 w-4 transition group-hover:translate-x-0.5" />
-            </a>
             <Link
               href="/ingresar"
-              className="group inline-flex items-center gap-1.5 font-semibold text-marca-900/80 hover:text-marca-900"
+              className="flex min-h-[54px] items-center justify-center rounded-full px-9 text-lg font-semibold text-marca-900 ring-1 ring-marca-900/30 transition hover:bg-marca-900/10 active:scale-[0.98]"
             >
               Ya tengo cuenta
-              <Flecha className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </Link>
           </div>
-          <p className="mt-8 text-sm text-marca-900/60">
-            Tu cuenta sirve aquí y en la app de AlToque.
-          </p>
         </div>
       </section>
 
