@@ -81,9 +81,11 @@ function dia(iso) {
   return d.toLocaleDateString("es-PE", { day: "numeric", month: "long" });
 }
 
-/** Encuesta al cerrar la conversación: cinco estrellas. */
+/** Encuesta al cerrar la conversación: cinco estrellas y, si quiere, un comentario. */
 function Calificacion({ mensaje, onCalificar }) {
   const [nota, setNota] = useState(mensaje.csat_rating || 0);
+  const [comentario, setComentario] = useState(mensaje.csat_comment || "");
+  const [guardado, setGuardado] = useState(mensaje.csat_comment || "");
   const [enviando, setEnviando] = useState(false);
   async function elegir(n) {
     if (enviando) return;
@@ -91,13 +93,27 @@ function Calificacion({ mensaje, onCalificar }) {
     const anterior = nota;
     setNota(n);
     try {
-      await onCalificar(mensaje.conversation_id, n);
+      await onCalificar(mensaje.conversation_id, n, guardado);
     } catch {
       setNota(anterior);
     } finally {
       setEnviando(false);
     }
   }
+  async function comentar() {
+    const texto = comentario.trim();
+    if (enviando || !nota) return;
+    setEnviando(true);
+    try {
+      await onCalificar(mensaje.conversation_id, nota, texto);
+      setGuardado(texto);
+    } catch {
+      // El botón sigue ahí para reintentar.
+    } finally {
+      setEnviando(false);
+    }
+  }
+  const pendiente = comentario.trim() !== guardado;
   return (
     <View style={s.encuesta}>
       <Text style={s.encuestaTexto}>{mensaje.content || "¿Cómo calificas la atención?"}</Text>
@@ -108,7 +124,27 @@ function Calificacion({ mensaje, onCalificar }) {
           </Toque>
         ))}
       </View>
-      {nota > 0 ? <Text style={s.encuestaGracias}>Gracias por tu calificación.</Text> : null}
+      {nota > 0 ? (
+        <>
+          <TextInput
+            value={comentario}
+            onChangeText={setComentario}
+            placeholder="Cuéntanos por qué (opcional)"
+            placeholderTextColor={colors.text3}
+            multiline
+            maxLength={1000}
+            style={s.encuestaCampo}
+            accessibilityLabel="Comentario sobre la atención"
+          />
+          {pendiente ? (
+            <Toque onPress={comentar} disabled={enviando} accessibilityLabel="Enviar comentario" accessibilityState={{ busy: enviando }} style={s.encuestaEnviar}>
+              <Text style={s.encuestaEnviarTexto}>{enviando ? "Enviando…" : "Enviar comentario"}</Text>
+            </Toque>
+          ) : (
+            <Text style={s.encuestaGracias}>{guardado ? "Gracias. Recibimos tu comentario." : "Gracias por tu calificación."}</Text>
+          )}
+        </>
+      ) : null}
     </View>
   );
 }
@@ -720,6 +756,32 @@ const s = StyleSheet.create({
   },
   encuestaTexto: { fontFamily: fonts.strong, fontSize: 15, color: colors.text, textAlign: "center" },
   estrellas: { flexDirection: "row", gap: space.sm },
+  encuestaCampo: {
+    alignSelf: "stretch",
+    minHeight: 64,
+    maxHeight: 120,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.fieldBorder,
+    backgroundColor: colors.field,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.text,
+    textAlignVertical: "top",
+  },
+  encuestaEnviar: {
+    minHeight: hit.min,
+    paddingHorizontal: space.xl,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  encuestaEnviarTexto: { fontFamily: fonts.heavy, fontSize: 14, color: colors.navy },
   encuestaGracias: { fontFamily: fonts.label, fontSize: 13, color: colors.successText },
 
   cerrada: { fontFamily: fonts.label, fontSize: 13, color: colors.text3, textAlign: "center", paddingHorizontal: space.xl, paddingVertical: space.sm },

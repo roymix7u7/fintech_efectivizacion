@@ -154,9 +154,9 @@ export function enviarMensaje({ texto = "", archivos = [], pantalla }) {
 /** El cliente vio la conversación: al asesor le sale "Visto". */
 export const marcarVisto = () => conSesion((token) => pedir("/seen", { metodo: "POST", token })).catch(() => {});
 
-/** Calificación de la atención (1 a 5), cuando el asesor cierra la conversación. */
-export const calificar = (conversacion, nota) =>
-  conSesion((token) => pedir("/csat", { metodo: "POST", cuerpo: { conversation_id: conversacion, rating: nota }, token }));
+/** Calificación de la atención (1 a 5) y comentario opcional, cuando el asesor cierra la conversación. */
+export const calificar = (conversacion, nota, comentario = "") =>
+  conSesion((token) => pedir("/csat", { metodo: "POST", cuerpo: { conversation_id: conversacion, rating: nota, comment: comentario }, token }));
 
 /**
  * Conexión en vivo. alEvento(tipo, dato) recibe:
