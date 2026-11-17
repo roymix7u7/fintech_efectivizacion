@@ -13,7 +13,7 @@ import { Vacio, Aviso, Estado } from "@/components/marca";
 import { EsqueletoFilas, BotonAccion, CargaPantalla } from "@/components/carga";
 import { Segmentos, Buscador, Barra, Leyenda, Campo, Dialogo, Tostada, Copiar, Avatar, useConfirmar, IconoCheck } from "@/components/piezas";
 import Pista from "@/components/pista";
-import AccesosPersona from "@/components/accesosPersona";
+import { puede, soloLecturaEn } from "@/lib/permisos";
 import { BANCOS_TARJETA } from "@/lib/bancos";
 import Desplegable from "@/components/desplegable";
 import { ESTADOS } from "@/lib/disponibilidad";
@@ -67,8 +67,6 @@ export default function EquipoPage() {
   const [bancosPago, setBancosPago] = useState({});
   const [confirmar, ventanaConfirmar] = useConfirmar();
   const [sincronizando, setSincronizando] = useState(false);
-  // Persona cuyos accesos (pantallas e IP) se están configurando.
-  const [accesosDe, setAccesosDe] = useState(null);
   const router = useRouter();
 
   const cargar = useCallback(async () => {
@@ -85,8 +83,7 @@ export default function EquipoPage() {
 
     const [{ data: asignados }, { data: sedesData }, { data: rend }, { colas }] = await Promise.all([
       supabase.from("pagos_bancos").select("user_id, banco"),
-      // "*" y no la lista de columnas: las IP de la sede (migración 077) llegan si ya existen.
-      supabase.from("sedes").select("*").order("nombre"),
+      supabase.from("sedes").select("id, nombre, activa").order("nombre"),
       supabase.rpc("rendimiento_equipo", { p_dias: 7, p_sede: null }),
       estadoCola(),
     ]);
@@ -452,8 +449,18 @@ export default function EquipoPage() {
 
   // Con la migración 071 aplicada, la lista trae quién atiende el chat.
   const conChat = equipo.length > 0 && "atiende_chat" in equipo[0];
+  // Recortes del super administrador (pantalla Accesos, lib/catalogoPermisos.js).
+  const lectura = soloLecturaEn(session, "equipo");
+  const permite = (parte) => puede(session, `equipo.${parte}`);
+  const verRendimiento = permite("rendimiento");
+  const puedeCrear = permite("crear");
+  const puedeBloquearPersonal = permite("bloquear");
+  const puedeRol = esAdmin && permite("rol") && !lectura;
+  const puedeBancos = esAdmin && permite("bancos") && !lectura;
+  const puedeChatParte = permite("chat") && !lectura;
+  const puedeEliminar = permite("eliminar");
   const puedeChat = (p) =>
-    p.estado !== "bloqueado" && (esAdmin || (session.rol === "supervisor" && p.rol === "gestor" && p.sede_id === miSede));
+    puedeChatParte && p.estado !== "bloqueado" && (esAdmin || (session.rol === "supervisor" && p.rol === "gestor" && p.sede_id === miSede));
   const metricasDe = (id) => rendimiento.find((r) => r.usuario_id === id);
   const cuentaRol = (r) => equipo.filter((p) => p.rol === r).length;
 
@@ -470,16 +477,18 @@ export default function EquipoPage() {
       }
       acciones={
         <div className="flex items-center gap-2">
-          {conChat && (
+          {conChat && puedeChatParte && (
             <Pista texto="Pasa al chat quién lo atiende, con su rol, sede y disponibilidad" lado="bottom">
               <BotonAccion tono="neutro" onClick={() => sincronizarChat()} disabled={sincronizando}>
                 {sincronizando ? "Sincronizando…" : <span><span className="hidden md:inline">Sincronizar </span>chat</span>}
               </BotonAccion>
             </Pista>
           )}
-          <BotonAccion onClick={abrirAlta} icono={<Mas className="h-4 w-4" />}>
-            <span className="hidden sm:inline">Nueva cuenta</span>
-          </BotonAccion>
+          {puedeCrear && (
+            <BotonAccion onClick={abrirAlta} icono={<Mas className="h-4 w-4" />}>
+              <span className="hidden sm:inline">Nueva cuenta</span>
+            </BotonAccion>
+          )}
         </div>
       }
     >
@@ -537,12 +546,14 @@ export default function EquipoPage() {
                   <th className="px-4 py-2.5 t-etiqueta">Persona</th>
                   <th className="px-4 py-2.5 t-etiqueta">Rol</th>
                   <th className="px-4 py-2.5 t-etiqueta">Sede</th>
+                  {verRendimiento && (
                   <th className="px-4 py-2.5 t-etiqueta">
                     <span className="inline-flex items-center gap-1">
                       Últimos 7 días
                       <Pista texto="Casos resueltos (solicitudes, identidades y tarjetas). Pasa el cursor sobre el número para ver el detalle." />
                     </span>
                   </th>
+                  )}
                   <th className="px-4 py-2.5 t-etiqueta">Estado</th>
                   {conChat && (
                     <th className="px-4 py-2.5 t-etiqueta">
@@ -580,14 +591,14 @@ export default function EquipoPage() {
                                   return (
                                     <button
                                       key={b}
-                                      onClick={() => esAdmin && alternarBancoPago(p, b)}
-                                      disabled={!esAdmin || guardando === p.id}
+                                      onClick={() => puedeBancos && alternarBancoPago(p, b)}
+                                      disabled={!puedeBancos || guardando === p.id}
                                       aria-pressed={activo}
-                                      title={esAdmin ? (activo ? `Quitar ${b}` : `Asignar ${b}`) : undefined}
+                                      title={puedeBancos ? (activo ? `Quitar ${b}` : `Asignar ${b}`) : undefined}
                                       className={cn(
                                         "rounded-full px-2 py-0.5 text-xs font-bold ring-1 ring-inset transition",
                                         activo ? "bg-marca-700 text-white ring-marca-700" : "bg-card text-muted-foreground ring-border hover:text-foreground",
-                                        esAdmin ? "pulsable" : "cursor-default",
+                                        puedeBancos ? "pulsable" : "cursor-default",
                                         "disabled:opacity-60",
                                       )}
                                     >
@@ -602,7 +613,7 @@ export default function EquipoPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        {esAdmin ? (
+                        {puedeRol ? (
                           <Desplegable
                             variante="panel"
                             className="h-9 w-40 py-1 text-sm"
@@ -625,7 +636,7 @@ export default function EquipoPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        {esAdmin ? (
+                        {puedeRol ? (
                           <Desplegable
                             variante="panel"
                             className="h-9 w-44 py-1 text-sm"
@@ -643,6 +654,7 @@ export default function EquipoPage() {
                           <span className="text-muted-foreground">{p.sede || "Sin sede"}</span>
                         )}
                       </td>
+                      {verRendimiento && (
                       <td className="px-4 py-3">
                         {m && Number(m.resueltas) > 0 ? (
                           <Pista
@@ -654,6 +666,7 @@ export default function EquipoPage() {
                           <span className="text-muted-foreground">—</span>
                         )}
                       </td>
+                      )}
                       <td className="px-4 py-3">
                         <Estado valor={bloqueado ? "bloqueado" : "activo"} etiqueta={bloqueado ? "Bloqueado" : "Activo"} />
                       </td>
@@ -682,6 +695,7 @@ export default function EquipoPage() {
                         </td>
                       )}
                       <td className="px-4 py-3 text-right">
+                        {puedeBloquearPersonal && (
                         <Pista
                           texto={
                             yo
@@ -704,14 +718,8 @@ export default function EquipoPage() {
                             {bloqueado ? "Desbloquear" : "Bloquear"}
                           </BotonAccion>
                         </Pista>
-                        {esAdmin && (
-                          <Pista texto="Qué pantallas ve y desde qué red (IP) puede entrar" fin>
-                            <BotonAccion tono="neutro" tamano="chico" onClick={() => setAccesosDe(p)} className="ml-1.5 mt-1.5 sm:mt-0">
-                              Accesos
-                            </BotonAccion>
-                          </Pista>
                         )}
-                        {esAdmin && !yo && (
+                        {esAdmin && !yo && puedeEliminar && (
                           <Pista texto="Eliminar la cuenta (si ya trabajó, queda de baja y se conserva lo que hizo)" fin>
                             <BotonAccion
                               tono="peligroSuave"
@@ -856,18 +864,6 @@ export default function EquipoPage() {
           ))}
         </div>
       </Dialogo>
-
-      <AccesosPersona
-        persona={accesosDe}
-        sedes={sedes}
-        miId={session.user.id}
-        miIp={session.ip}
-        onCerrar={() => setAccesosDe(null)}
-        onGuardado={(texto) => {
-          setAccesosDe(null);
-          setOk(texto);
-        }}
-      />
 
       {ventanaConfirmar}
       <Tostada mensaje={ok} onCerrar={() => setOk("")} />

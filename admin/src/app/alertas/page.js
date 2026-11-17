@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { registrarAuditoria, explicarError } from "@/lib/acciones";
+import { puede } from "@/lib/permisos";
 import { subirImagenes, borrarImagenes, urlPublica, TIPOS_ACEPTADOS } from "@/lib/imagenes";
 import { cn } from "@/lib/utils";
 import Shell, { Megafono, Cruz, Mas, Lapiz, Basura, Campana } from "@/components/shell";
@@ -284,6 +285,13 @@ export default function NoticiasPage() {
   const [alcance, setAlcance] = useState({});
   const [loading, setLoading] = useState(true);
   const [seccion, setSeccion] = useState("noticia");
+  // Recortes del super administrador (pantalla Accesos): qué secciones ve
+  // y si puede mandar el aviso al teléfono.
+  const permitidas = SECCIONES.filter((x) => puede(session, x.clave === "alerta" ? "alertas.alertas" : "alertas.noticias"));
+  const puedeNotificar = puede(session, "alertas.notificar");
+  useEffect(() => {
+    if (permitidas.length && !permitidas.some((x) => x.clave === seccion)) setSeccion(permitidas[0].clave);
+  }, [permitidas, seccion]);
   const [editando, setEditando] = useState(null); // null | "nueva" | id
   const [form, setForm] = useState(vacio("noticia"));
   const [subiendo, setSubiendo] = useState(false);
@@ -479,7 +487,7 @@ export default function NoticiasPage() {
 
       // Despues de guardar, no antes: si el guardado falla, no puede
       // haber sonado ya un aviso de algo que no existe.
-      if (form.notificar && creada?.id) await notificar(creada.id, true);
+      if (form.notificar && puedeNotificar && creada?.id) await notificar(creada.id, true);
     } else {
       const { error: e } = await supabase
         .from("alertas_sistema")
@@ -816,7 +824,7 @@ export default function NoticiasPage() {
             </Panel>
 
             {/* Notificación al teléfono */}
-            {editando === "nueva" && (
+            {editando === "nueva" && puedeNotificar && (
               <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-card p-4 shadow-panel hover:bg-muted/30">
                 <input
                   type="checkbox"
@@ -878,7 +886,7 @@ export default function NoticiasPage() {
             setSeccion(v);
             setFiltroVig("todas");
           }}
-          opciones={SECCIONES.map((x) => ({
+          opciones={permitidas.map((x) => ({
             clave: x.clave,
             etiqueta: x.titulo,
             pista: x.detalle,
@@ -991,7 +999,7 @@ export default function NoticiasPage() {
                         <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all", n.activa ? "left-[22px]" : "left-0.5")} />
                       </button>
                     </Pista>
-                    {v.texto === "En el app" && (
+                    {v.texto === "En el app" && puedeNotificar && (
                       <BotonAccion
                         tono="neutro"
                         tamano="chico"

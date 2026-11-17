@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
+import { puede } from "@/lib/permisos";
 import { cn } from "@/lib/utils";
 import Shell, { Escudo, Reloj, Basura } from "@/components/shell";
 import { Aviso, Vacio } from "@/components/marca";
@@ -58,6 +59,9 @@ export default function PedidosDatosPage() {
   const router = useRouter();
 
   const esAdmin = session?.rol === "admin";
+  // Recortes del super administrador (pantalla Accesos).
+  const puedeAtender = puede(session, "pedidos-datos.atender");
+  const puedeEliminar = puede(session, "pedidos-datos.eliminar");
 
   useEffect(() => {
     getSession().then((s) => {
@@ -236,13 +240,14 @@ export default function PedidosDatosPage() {
 
                     {abierta && esAdmin && (
                       <div className="flex shrink-0 flex-wrap items-center gap-2">
-                        {p.estado === "pendiente" && (
+                        {p.estado === "pendiente" && puedeAtender && (
                           <Pista texto="Márcalo como en proceso para que el equipo sepa que lo estás atendiendo.">
                             <BotonAccion tono="neutro" tamano="chico" cargando={accion === p.id && !eliminando} onClick={() => atender(p, "en_proceso")}>
                               Tomar
                             </BotonAccion>
                           </Pista>
                         )}
+                        {puedeAtender && (
                         <BotonAccion
                           tono="neutro"
                           tamano="chico"
@@ -253,6 +258,8 @@ export default function PedidosDatosPage() {
                         >
                           Rechazar
                         </BotonAccion>
+                        )}
+                        {puedeEliminar && (
                         <Pista texto={dinero > 0 ? "Primero hay que terminar sus solicitudes en curso." : null}>
                           <BotonAccion
                             tono="peligro"
@@ -267,6 +274,7 @@ export default function PedidosDatosPage() {
                             Eliminar cuenta
                           </BotonAccion>
                         </Pista>
+                        )}
                       </div>
                     )}
                   </li>

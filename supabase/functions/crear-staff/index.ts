@@ -27,6 +27,16 @@ function cabecerasDeIp(req: Request): Record<string, string> {
   const ip = (req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || (req.headers.get("x-forwarded-for") || "").split(",")[0] || "").trim();
   return ip ? { "x-atk-clave": clave, "x-atk-ip": ip } : {};
 }
+// Accesos del personal (migraciones 077 y 078): la base dice si quien
+// llama entra desde su red y si el super administrador no le quitó esta
+// acción. Sin la migración aplicada, todo sigue como antes.
+// deno-lint-ignore no-explicit-any
+async function accesoPermite(comoUsuario: any, clave: string): Promise<boolean> {
+  const { data, error } = await comoUsuario.rpc("acceso_permite", { p_clave: clave, p_escribir: true });
+  if (error) return error.code === "PGRST202";
+  return data !== false;
+}
+const SIN_ACCESO = "Tu acceso no permite esta acción (o estás fuera de la red autorizada). Si la necesitas, pídesela al administrador.";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -163,6 +173,9 @@ Deno.serve(async (req) => {
       },
       403,
     );
+  }
+  if (!(await accesoPermite(comoUsuario, "equipo.crear"))) {
+    return responder({ error: SIN_ACCESO, detalle: "sin_acceso" }, 403);
   }
 
   // ── Datos de entrada ──

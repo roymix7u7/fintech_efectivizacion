@@ -26,6 +26,29 @@
  */
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// Restricción por IP del personal (migración 077): esta función habla con
+// la base desde los servidores de Supabase, así que le pasa la IP real de
+// quien llamó, junto con la clave del servidor (secreto ATK_CLAVE_SERVIDOR).
+// Sin el secreto no manda nada y todo sigue como antes, salvo para el
+// personal que tenga IP restringida.
+function cabecerasDeIp(req: Request): Record<string, string> {
+  const clave = Deno.env.get("ATK_CLAVE_SERVIDOR");
+  if (!clave) return {};
+  const ip = (req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || (req.headers.get("x-forwarded-for") || "").split(",")[0] || "").trim();
+  return ip ? { "x-atk-clave": clave, "x-atk-ip": ip } : {};
+}
+
+// Accesos del personal (migraciones 077 y 078): la base dice si quien
+// llama entra desde su red y si el super administrador no le quitó esta
+// acción. Sin la migración aplicada, todo sigue como antes.
+// deno-lint-ignore no-explicit-any
+async function accesoPermite(comoUsuario: any, clave: string): Promise<boolean> {
+  const { data, error } = await comoUsuario.rpc("acceso_permite", { p_clave: clave, p_escribir: true });
+  if (error) return error.code === "PGRST202";
+  return data !== false;
+}
+const SIN_ACCESO = "Tu acceso no permite esta acción (o estás fuera de la red autorizada). Si la necesitas, pídesela al administrador.";
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -57,7 +80,7 @@ Deno.serve(async (req) => {
   const auth = req.headers.get("Authorization") ?? "";
   if (!auth.startsWith("Bearer ")) return responder({ error: "Falta la sesión." }, 401);
 
-  const comoUsuario = createClient(url, anon, { global: { headers: { Authorization: auth } } });
+  const comoUsuario = createClient(url, anon, { global: { headers: { Authorization: auth, ...cabecerasDeIp(req) } } });
   const {
     data: { user: quienLlama },
   } = await comoUsuario.auth.getUser();
@@ -68,6 +91,7 @@ Deno.serve(async (req) => {
   if (yo?.rol !== "admin" || yo?.estado !== "activo") {
     return responder({ error: "Eliminar cuentas es del administrador." }, 403);
   }
+  if (!(await accesoPermite(comoUsuario, "pedidos-datos.eliminar"))) return responder({ error: SIN_ACCESO }, 403);
 
   // ── Qué solicitud ──
   let cuerpo: { solicitud_id?: string } = {};

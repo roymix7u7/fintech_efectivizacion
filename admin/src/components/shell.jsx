@@ -201,6 +201,23 @@ export const MENU = [
       },
     ],
   },
+  {
+    grupo: "Sistema",
+    detalle: "Mantenimiento del panel",
+    icono: Candado,
+    items: [
+      {
+        ruta: "/accesos",
+        titulo: "Accesos del personal",
+        enGrupo: "Accesos",
+        detalle: "Qué ve cada persona y desde qué red entra",
+        roles: ["admin"],
+        // Solo el super administrador (tabla superadmins, migración 078).
+        soloSuperadmin: true,
+        icono: Candado,
+      },
+    ],
+  },
 ];
 
 /**
@@ -233,10 +250,10 @@ const PLANA_HASTA = 6;
  * El menú tal como lo ve un rol: grupos sin pantallas desaparecen y un
  * grupo con una sola pantalla se muestra como enlace directo.
  */
-function menuDe(rol, permisos) {
-  // Una pantalla se ve si el rol la trae y el administrador no se la quitó
-  // a esta persona (lib/permisos.js).
-  const ve = (s) => s.roles.includes(rol) && nivelDe(permisos, s.ruta) !== "no";
+function menuDe(rol, permisos, superadmin) {
+  // Una pantalla se ve si el rol la trae y el super administrador no se
+  // la quitó a esta persona (lib/permisos.js).
+  const ve = (s) => s.roles.includes(rol) && (!s.soloSuperadmin || superadmin) && nivelDe(permisos, s.ruta) !== "no";
   // "visibles" son las pantallas permitidas (guardia de rutas e inicio);
   // las ocultas se permiten pero no se listan ni cuentan.
   const visibles = SECCIONES.filter(ve);
@@ -366,7 +383,7 @@ export default function Shell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { visibles, entradas, agrupada } = menuDe(session.rol, session.permisos);
+  const { visibles, entradas, agrupada } = menuDe(session.rol, session.permisos, session.superadmin);
   const actual = visibles.find((s) => esActiva(s.ruta, pathname));
   // Solo lectura en esta pantalla: los botones de acción se apagan (components/carga.jsx).
   const soloLectura = Boolean(actual) && nivelDe(session.permisos, actual.ruta) === "ver";
@@ -548,7 +565,8 @@ export default function Shell({
         {/* Pie: el chat arriba; debajo, la cuenta (con su estado) y, a la
             derecha, salir y plegar la barra. */}
         <div className="shrink-0 border-t border-white/10 p-3">
-          <AbrirChat userId={session.user.id} compacta={compacta} />
+          {/* Sin el botón si el super administrador le quitó el chat. */}
+          {nivelDe(session.permisos, "/chat") !== "no" && <AbrirChat userId={session.user.id} compacta={compacta} />}
           <div className={cn("mt-1.5 flex flex-wrap items-center gap-0.5", compacta && "lg:flex-col lg:gap-1")}>
             <Disponibilidad
               compacta={compacta}

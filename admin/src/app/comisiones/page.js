@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
+import { puede } from "@/lib/permisos";
 import { BANCOS_TARJETA, nombreBanco } from "@/lib/bancos";
 import { cn } from "@/lib/utils";
 import Shell, { Porcentaje, Mas } from "@/components/shell";
@@ -296,6 +297,11 @@ export default function ComisionesPage() {
 
   if (!session) return <CargaPantalla />;
 
+  // Recortes del super administrador (pantalla Accesos).
+  const editaEstandar = esAdmin && puede(session, "comisiones.estandar");
+  const editaCupones = esAdmin && puede(session, "comisiones.cupones");
+  const verEspeciales = puede(session, "comisiones.especiales");
+
   const VISTAS = [
     {
       clave: "estandar",
@@ -314,7 +320,7 @@ export default function ComisionesPage() {
       cuenta: especiales.length,
       pista: "Acuerdos con un cliente en un banco.",
     },
-  ];
+  ].filter((v) => v.clave !== "especiales" || verEspeciales);
   const abrirNuevo = () => {
     setFicha({
       nombre: "",
@@ -333,7 +339,7 @@ export default function ComisionesPage() {
       descripcion="Tarifa estándar, cupones y comisiones especiales"
       ayuda="La tarifa estándar es la publicada en la web y no vence. Un cupón da otra tarifa por un tiempo: se asigna en Clientes y, al vencer, el cliente vuelve a la estándar. Una especial es un acuerdo con un cliente en un banco y gana sobre todo."
       acciones={
-        esAdmin &&
+        editaCupones &&
         vista === "cupones" && (
           <BotonAccion onClick={abrirNuevo} icono={<Mas className="h-4 w-4" />}>
             <span className="hidden sm:inline">Nuevo cupón</span>
@@ -395,7 +401,7 @@ export default function ComisionesPage() {
         estandar ? (
           <TarifaEstandar
             estandar={estandar}
-            esAdmin={esAdmin}
+            esAdmin={editaEstandar}
             onEditar={() => setEditando(estandar.id)}
           />
         ) : (
@@ -416,7 +422,7 @@ export default function ComisionesPage() {
             }
             detalle="Un cupón da otra tarifa por un tiempo. Lo asignas a un cliente desde Clientes."
             accion={
-              esAdmin &&
+              editaCupones &&
               !busqueda && (
                 <BotonAccion
                   onClick={abrirNuevo}
@@ -431,7 +437,7 @@ export default function ComisionesPage() {
           <ListaCupones
             lista={lista}
             estandar={estandar}
-            esAdmin={esAdmin}
+            esAdmin={editaCupones}
             guardando={guardando}
             onTarifas={(c) => setEditando(c.id)}
             onEditar={(c) => {
@@ -446,7 +452,7 @@ export default function ComisionesPage() {
             onActivo={cambiarActivo}
           />
         )
-      ) : especiales.length === 0 ? (
+      ) : !verEspeciales ? null : especiales.length === 0 ? (
         <Vacio
           icono={<Porcentaje />}
           titulo="Ninguna comisión especial"

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
+import { puede } from "@/lib/permisos";
 import { useIrAlDetalle } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import Shell, { Reclamo, Reloj, Correo, Check } from "@/components/shell";
@@ -304,7 +305,7 @@ export default function ReclamacionesPage() {
                 </Panel>
               </div>
 
-              {abierta.estado === "pendiente" ? (
+              {abierta.estado === "pendiente" && puede(session, "reclamaciones.responder") ? (
                 <Panel
                   titulo="Respuesta al consumidor"
                   ayuda={abierta.user_id ? "Le llega a Mis avisos en la app." : "No tiene cuenta: al guardar se abre tu correo con la respuesta ya redactada."}
@@ -333,6 +334,8 @@ export default function ReclamacionesPage() {
                     </div>
                   </div>
                 </Panel>
+              ) : abierta.estado === "pendiente" ? (
+                <Aviso tono="info">Este reclamo espera respuesta. Tu acceso no incluye responder reclamos.</Aviso>
               ) : (
                 <Panel
                   titulo="Respuesta enviada"

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
+import { puede } from "@/lib/permisos";
 import { extraerPath } from "@/lib/storage";
 import { useRetraso } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
@@ -114,7 +115,8 @@ function motivoDe(error, contexto) {
 function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar, onCuenta }) {
   const [verOtras, setVerOtras] = useState(false);
   const tomadaPorOtro = fila.marcada_por && !fila.marcada_por_mi;
-  const seleccionable = estado === "aprobado" && fila.puedo_pagar && !tomadaPorOtro;
+  // Sin onMarcar / onCuenta / onCancelar: el super administrador le quitó esa acción.
+  const seleccionable = Boolean(onMarcar) && estado === "aprobado" && fila.puedo_pagar && !tomadaPorOtro;
   const marcada = fila.marcada_por_mi;
   const cuentas = fila.cuentas || [];
   const destino = cuentas.find((c) => recibe(fila, c)) || null;
@@ -122,7 +124,7 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar, onCu
   const ningunaRecibe = cuentas.length > 0 && !destino;
   // Pagos elige en qué cuenta del cliente depositar: de ahorros o, como
   // último recurso, su CCI.
-  const puedeCambiar = estado === "aprobado" && fila.puedo_pagar && !tomadaPorOtro && "cuenta_deposito_id" in fila;
+  const puedeCambiar = Boolean(onCuenta) && estado === "aprobado" && fila.puedo_pagar && !tomadaPorOtro && "cuenta_deposito_id" in fila;
   const cuando =
     estado === "pagado"
       ? `pagada ${haceCuanto(fila.pagado_en)}${fila.pagado_por ? ` por ${fila.pagado_por}` : ""}`
@@ -315,7 +317,7 @@ function Fila({ fila, estado, ocupado, onMarcar, onComprobante, onCancelar, onCu
               </button>
             </Pista>
           )}
-          {estado === "pagado" && fila.puedo_pagar && (
+          {estado === "pagado" && fila.puedo_pagar && onCancelar && (
             <BotonAccion tono="peligroSuave" tamano="chico" onClick={() => onCancelar(fila)}>
               Cancelar envío
             </BotonAccion>
@@ -663,6 +665,10 @@ export default function PagosPage() {
   if (!session) return <CargaPantalla />;
 
   const esPagos = session.rol === "pagos";
+  // Recortes del super administrador (pantalla Accesos).
+  const puedeConfirmar = puede(session, "pagos.confirmar");
+  const puedeCancelar = puede(session, "pagos.cancelar");
+  const verHistorial = puede(session, "pagos.historial");
   // banco deja de ser undefined cuando ya llegó el resumen: antes de eso
   // no se sabe si tiene bancos y el aviso parpadearía al entrar.
   const sinBancos = esPagos && banco !== undefined && misBancos.length === 0;
@@ -694,7 +700,7 @@ export default function PagosPage() {
             onCambio={setVista}
             opciones={[
               { clave: "cola", etiqueta: "Para pagar" },
-              { clave: "historial", etiqueta: "Lotes enviados" },
+              ...(verHistorial ? [{ clave: "historial", etiqueta: "Lotes enviados" }] : []),
             ]}
           />
           {vista === "cola" && (
@@ -741,8 +747,8 @@ export default function PagosPage() {
           ))}
         </div>
 
-        {vista === "cola" ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        {vista === "cola" || !verHistorial ? (
+          <div className={cn("grid gap-4", puedeConfirmar && "lg:grid-cols-[minmax(0,1fr)_320px]")}>
             <div className="min-w-0 space-y-3">
               {bancoPropio === false && estado === "aprobado" && (
                 <Aviso tono="info">{banco} lo atiende otro compañero. Puedes ver sus solicitudes, pero no marcarlas.</Aviso>
@@ -779,13 +785,17 @@ export default function PagosPage() {
                           fila={f}
                           estado={estado}
                           ocupado={ocupados.has(f.id)}
-                          onMarcar={alternarMarca}
+                          onMarcar={puedeConfirmar ? alternarMarca : null}
                           onComprobante={verComprobante}
-                          onCuenta={cambiarCuenta}
-                          onCancelar={(x) => {
-                            setACancelar(x);
-                            setMotivo("");
-                          }}
+                          onCuenta={puedeConfirmar ? cambiarCuenta : null}
+                          onCancelar={
+                            puedeCancelar
+                              ? (x) => {
+                                  setACancelar(x);
+                                  setMotivo("");
+                                }
+                              : null
+                          }
                         />
                       </FilaConSeparador>
                     ))}
@@ -813,6 +823,7 @@ export default function PagosPage() {
             </div>
 
             {/* Lote en preparación */}
+            {puedeConfirmar && (
             <aside className="lg:sticky lg:top-[76px] lg:self-start">
               <div className="overflow-hidden rounded-xl border border-border bg-card shadow-panel">
                 <div className="flex items-center gap-2 border-b border-border bg-marca-900 px-4 py-3 text-white">
@@ -867,6 +878,7 @@ export default function PagosPage() {
                 </div>
               </div>
             </aside>
+            )}
           </div>
         ) : (
           /* ── Historial ── */
@@ -960,7 +972,7 @@ export default function PagosPage() {
                                       : "Volvió a por pagar"}
                                 </span>
 
-                                {it.puedo_cancelar && (
+                                {it.puedo_cancelar && puedeCancelar && (
                                   <BotonAccion
                                     tono="peligroSuave"
                                     tamano="chico"

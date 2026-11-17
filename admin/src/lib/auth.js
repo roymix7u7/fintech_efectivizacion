@@ -81,7 +81,7 @@ export async function login(email, password) {
     throw new Error(mensajeIp(acceso.ip));
   }
 
-  enMemoria = { user: data.user, rol: userData.rol, permisos: acceso.permisos, ip: acceso.ip };
+  enMemoria = { user: data.user, rol: userData.rol, permisos: acceso.permisos, ip: acceso.ip, superadmin: acceso.superadmin };
   // Quien entra al panel viene a trabajar: queda en línea y empieza a
   // recibir casos. Si falla (sin migración 070, sin red), entra igual.
   olvidarDisponibilidad();
@@ -165,6 +165,6 @@ export async function getSession() {
     return null;
   }
 
-  enMemoria = { user: data.session.user, rol: userData.rol, permisos: acceso.permisos, ip: acceso.ip };
+  enMemoria = { user: data.session.user, rol: userData.rol, permisos: acceso.permisos, ip: acceso.ip, superadmin: acceso.superadmin };
   return enMemoria;
 }

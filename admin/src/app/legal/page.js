@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { registrarAuditoria, explicarError } from "@/lib/acciones";
+import { puede } from "@/lib/permisos";
 import { cn } from "@/lib/utils";
 import Shell, { Balanza, Ojo, Mas } from "@/components/shell";
 import { Aviso } from "@/components/marca";
@@ -406,9 +407,11 @@ export default function LegalPage() {
                       Página pública
                     </a>
                   </Pista>
-                  <BotonAccion tamano="chico" className="ml-auto" icono={<Mas className="h-3.5 w-3.5" />} onClick={() => nuevaVersion(vigente, tipo)}>
-                    Nueva versión
-                  </BotonAccion>
+                  {puede(session, "legal.publicar") && (
+                    <BotonAccion tamano="chico" className="ml-auto" icono={<Mas className="h-3.5 w-3.5" />} onClick={() => nuevaVersion(vigente, tipo)}>
+                      Nueva versión
+                    </BotonAccion>
+                  )}
                 </div>
               </section>
             );

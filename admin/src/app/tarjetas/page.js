@@ -8,6 +8,7 @@ import { firmarCampo } from "@/lib/storage";
 import { explicarError } from "@/lib/acciones";
 import { resolverCaso, tomarCaso } from "@/lib/casos";
 import { tomarSiguiente, minutosRestantes } from "@/lib/cola";
+import { puede } from "@/lib/permisos";
 import { colorDe } from "@/lib/colores";
 import { useIrAlDetalle } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
@@ -78,6 +79,9 @@ export default function TarjetasPage() {
   // Verificar es del gestor; el supervisor mira como va el trabajo. El
   // admin conserva el mando.
   const puedeResolver = ["gestor", "admin"].includes(session?.rol);
+  // Recortes del super administrador (pantalla Accesos).
+  const puedeAprobar = puede(session, "tarjetas.aprobar");
+  const puedeRechazar = puede(session, "tarjetas.rechazar");
   const esGestor = session?.rol === "gestor";
 
   // silencioso: solo renueva la lista, sin cerrar la ficha abierta ni
@@ -574,6 +578,7 @@ export default function TarjetasPage() {
                     <Panel titulo={modoRechazo ? "Rechazar la tarjeta" : "Resolver"} tono={modoRechazo ? "peligro" : undefined}>
                       {!modoRechazo ? (
                         <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                          {puedeAprobar && (
                           <Pista
                             className="block w-full"
                             texto={ajeno ? "Otra persona tiene esta tarjeta." : !todoRevisado ? "Marca todo lo de la lista de comprobación." : null}
@@ -590,6 +595,8 @@ export default function TarjetasPage() {
                               {accion === "aprobando" ? "Verificando..." : "Verificar tarjeta"}
                             </BotonAccion>
                           </Pista>
+                          )}
+                          {puedeRechazar && (
                           <BotonAccion
                             onClick={() => setModoRechazo(true)}
                             disabled={accion !== null || Boolean(ajeno)}
@@ -599,6 +606,7 @@ export default function TarjetasPage() {
                           >
                             Rechazar
                           </BotonAccion>
+                          )}
                         </div>
                       ) : (
                         <div className="animate-aparecer space-y-3">
@@ -643,7 +651,7 @@ export default function TarjetasPage() {
                           <p className="mt-1 text-md text-red-900">{seleccionada.motivo_rechazo}</p>
                         </div>
                       )}
-                      {seleccionada.estado === "aprobado" && ["gestor", "supervisor", "admin"].includes(session?.rol) && (
+                      {seleccionada.estado === "aprobado" && ["gestor", "supervisor", "admin"].includes(session?.rol) && puede(session, "tarjetas.baja") && (
                         <div className="mt-4 border-t border-border pt-4">
                           {!modoBaja ? (
                             <div className="flex items-center gap-2">

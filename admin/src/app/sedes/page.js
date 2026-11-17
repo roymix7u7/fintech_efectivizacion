@@ -13,9 +13,9 @@ import { Vacio, Aviso, Dato } from "@/components/marca";
 import { Esqueleto, BotonAccion, CargaPantalla } from "@/components/carga";
 import { Campo, Dialogo, Tostada, useConfirmar } from "@/components/piezas";
 import Pista from "@/components/pista";
-import { CampoIps, aListaIps, AVISO_MIGRACION } from "@/components/accesosPersona";
+import { puede } from "@/lib/permisos";
 
-const VACIA = { nombre: "", ciudad: "", direccion: "", telefono: "", ips: "" };
+const VACIA = { nombre: "", ciudad: "", direccion: "", telefono: "" };
 
 /** Lo que falta o está mal en el formulario, campo por campo. */
 function validar(f, sedes, id) {
@@ -80,8 +80,6 @@ export default function SedesPage() {
             ciudad: sede.ciudad || "",
             direccion: sede.direccion || "",
             telefono: sede.telefono || "",
-            ips: (sede.ips || []).join("\n"),
-            ipsAntes: (sede.ips || []).join("\n"),
           }
         : { id: null, ...VACIA },
     );
@@ -118,24 +116,6 @@ export default function SedesPage() {
       return setErrorForm(
         e.message.includes("duplicate") ? `Ya existe una sede llamada ${campos.nombre}.` : explicarError(e, "No se pudo guardar."),
       );
-    }
-
-    // Las IP van por su propia función: valida el formato y no deja que
-    // el administrador se quede fuera de su propia sede.
-    if ((form.ips || "") !== (form.ipsAntes || "")) {
-      setGuardando(true);
-      const { error: eIps } = await supabase.rpc("guardar_ips_sede", { p_sede: data?.id || form.id, p_ips: aListaIps(form.ips) });
-      setGuardando(false);
-      if (eIps) {
-        cargar();
-        return setErrorForm(
-          eIps.code === "PGRST202"
-            ? AVISO_MIGRACION
-            : eIps.code === "P0001" || eIps.code === "42501"
-              ? `La sede se guardó, pero sus IP no: ${eIps.message}`
-              : explicarError(eIps, "La sede se guardó, pero no se pudieron guardar sus IP."),
-        );
-      }
     }
 
     await registrarAuditoria({
@@ -188,6 +168,9 @@ export default function SedesPage() {
   }
 
   const sinSede = equipo.filter((p) => !p.sede_id && p.rol !== "admin");
+  // Recortes del super administrador (pantalla Accesos).
+  const puedeCrear = puede(session, "sedes.crear");
+  const puedeEditar = puede(session, "sedes.editar");
   const activas = sedes.filter((s) => s.activa).length;
 
   return (
@@ -198,9 +181,11 @@ export default function SedesPage() {
       descripcion={`${activas} activa${activas === 1 ? "" : "s"} de ${sedes.length}`}
       ayuda="Cada sede tiene un supervisor y sus gestores. El supervisor solo ve y gestiona al personal de su sede."
       acciones={
-        <BotonAccion onClick={() => abrir(null)} icono={<Mas className="h-4 w-4" />}>
-          <span className="hidden sm:inline">Nueva sede</span>
-        </BotonAccion>
+        puedeCrear && (
+          <BotonAccion onClick={() => abrir(null)} icono={<Mas className="h-4 w-4" />}>
+            <span className="hidden sm:inline">Nueva sede</span>
+          </BotonAccion>
+        )
       }
     >
       {error && (
@@ -236,9 +221,11 @@ export default function SedesPage() {
           titulo="Sin sedes"
           detalle="Crea la primera sede y luego asígnale un supervisor y sus gestores desde Equipo."
           accion={
-            <BotonAccion onClick={() => abrir(null)} icono={<Mas className="h-4 w-4" />}>
-              Nueva sede
-            </BotonAccion>
+            puedeCrear && (
+              <BotonAccion onClick={() => abrir(null)} icono={<Mas className="h-4 w-4" />}>
+                Nueva sede
+              </BotonAccion>
+            )
           }
         />
       ) : (
@@ -286,14 +273,18 @@ export default function SedesPage() {
                 )}
 
                 <div className="mt-auto flex items-center gap-1 border-t border-border px-2 py-2">
-                  <BotonAccion tono="suave" tamano="chico" onClick={() => abrir(s)} icono={<Lapiz className="h-3.5 w-3.5" />}>
-                    Editar
-                  </BotonAccion>
-                  <Pista texto={s.activa ? "Deja de aparecer para crear cuentas nuevas" : "Volver a usar esta sede"}>
-                    <BotonAccion tono="suave" tamano="chico" onClick={() => alternarActiva(s, g.todos)}>
-                      {s.activa ? "Desactivar" : "Activar"}
-                    </BotonAccion>
-                  </Pista>
+                  {puedeEditar && (
+                    <>
+                      <BotonAccion tono="suave" tamano="chico" onClick={() => abrir(s)} icono={<Lapiz className="h-3.5 w-3.5" />}>
+                        Editar
+                      </BotonAccion>
+                      <Pista texto={s.activa ? "Deja de aparecer para crear cuentas nuevas" : "Volver a usar esta sede"}>
+                        <BotonAccion tono="suave" tamano="chico" onClick={() => alternarActiva(s, g.todos)}>
+                          {s.activa ? "Desactivar" : "Activar"}
+                        </BotonAccion>
+                      </Pista>
+                    </>
+                  )}
                   <Link href="/equipo" className="ml-auto inline-flex items-center gap-1 px-2 text-chico font-bold text-marca-600 hover:text-marca-700">
                     Ver equipo <Flecha className="h-3.5 w-3.5" />
                   </Link>
@@ -368,15 +359,6 @@ export default function SedesPage() {
                 placeholder="Ej: Av. Abancay 123"
                 className="campo"
               />
-            </Campo>
-            <Campo
-              etiqueta="IP permitidas de la sede"
-              htmlFor="ipsSede"
-              opcional
-              className="sm:col-span-2"
-              ayuda="Valen para el personal que en Equipo tenga marcado «Solo desde las IP de su sede». Sin IP, esa opción no restringe."
-            >
-              <CampoIps id="ipsSede" valor={form.ips || ""} onCambio={(v) => setForm({ ...form, ips: v })} miIp={session.ip} />
             </Campo>
             <button type="submit" className="hidden" />
           </form>

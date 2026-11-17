@@ -6,6 +6,7 @@ import Link from "next/link";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { estadoCola } from "@/lib/cola";
+import { puede } from "@/lib/permisos";
 import { cn } from "@/lib/utils";
 import Shell, { Flecha, Documento, Persona, Tarjeta, Billete, Reclamo, Escudo, Manos } from "@/components/shell";
 import { Aviso } from "@/components/marca";
@@ -209,7 +210,7 @@ export default function DashboardPage() {
       )}
 
       {/* ── Admin y supervisor: indicadores ── */}
-      {!esGestor && <ResumenGraficos esAdmin={esAdmin} />}
+      {!esGestor && puede(session, "dashboard.graficos") && <ResumenGraficos esAdmin={esAdmin} />}
     </Shell>
   );
 }

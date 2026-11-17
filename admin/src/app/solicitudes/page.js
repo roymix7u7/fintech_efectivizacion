@@ -6,6 +6,7 @@ import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { firmarCampo } from "@/lib/storage";
 import { explicarError } from "@/lib/acciones";
+import { puede } from "@/lib/permisos";
 import {
   tomarSiguiente,
   soltarCaso,
@@ -122,6 +123,9 @@ export default function SolicitudesPage() {
   // y quien atiende cada caso, pero no aprueba ni rechaza. El admin
   // conserva el mando como salida de emergencia.
   const puedeResolver = ["gestor", "admin"].includes(session?.rol);
+  // Recortes del super administrador (pantalla Accesos).
+  const puedeAprobar = puede(session, "solicitudes.aprobar");
+  const puedeRechazar = puede(session, "solicitudes.rechazar");
   const esGestor = session?.rol === "gestor";
 
   // Evita que una respuesta lenta pise a otra mas reciente cuando el
@@ -833,6 +837,7 @@ export default function SolicitudesPage() {
                     <Panel titulo={modoRechazo ? "Rechazar la solicitud" : "Resolver"} tono={modoRechazo ? "peligro" : undefined}>
                       {!modoRechazo ? (
                         <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                          {puedeAprobar && (
                           <BotonAccion
                             onClick={() => aprobar(seleccionada)}
                             cargando={accion === "aprobando"}
@@ -843,6 +848,8 @@ export default function SolicitudesPage() {
                           >
                             {accion === "aprobando" ? "Aprobando..." : "Aprobar solicitud"}
                           </BotonAccion>
+                          )}
+                          {puedeRechazar && (
                           <BotonAccion
                             onClick={() => setModoRechazo(true)}
                             disabled={accion !== null || Boolean(ajeno)}
@@ -852,6 +859,7 @@ export default function SolicitudesPage() {
                           >
                             Rechazar
                           </BotonAccion>
+                          )}
                         </div>
                       ) : (
                         <div className="animate-aparecer space-y-3">

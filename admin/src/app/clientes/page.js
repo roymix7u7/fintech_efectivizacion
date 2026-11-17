@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
+import { puede } from "@/lib/permisos";
 import { urlsFirmadas, extraerPath } from "@/lib/storage";
 import { BANCOS_TARJETA, nombreBanco } from "@/lib/bancos";
 import { useRetraso } from "@/lib/hooks";
@@ -156,6 +157,8 @@ export default function ClientesPage() {
 
   if (!session) return <CargaPantalla />;
 
+  const verSeguimiento = session.rol !== "gestor" && puede(session, "clientes.seguimiento");
+
   return (
     <Shell
       session={session}
@@ -167,8 +170,9 @@ export default function ClientesPage() {
       }
       ayuda="Buscar: los 10 últimos registrados, o busca por nombre, DNI o fecha. Seguimiento: los clientes por etapa, para llamarlos o mandarles un recordatorio."
     >
-      {/* El gestor solo consulta: sin la pestaña de Seguimiento (posventa). */}
-      {session.rol !== "gestor" && (
+      {/* El gestor solo consulta: sin la pestaña de Seguimiento (posventa).
+          El super administrador también puede quitársela a alguien. */}
+      {verSeguimiento && (
       <div className="mb-4">
         <Segmentos
           valor={vista}
@@ -185,7 +189,7 @@ export default function ClientesPage() {
       </div>
       )}
 
-      {vista === "seguimiento" && session.rol !== "gestor" ? (
+      {vista === "seguimiento" && verSeguimiento ? (
         <Seguimiento
           onAviso={setOk}
           onVerFicha={(dni) => {
@@ -373,6 +377,7 @@ export default function ClientesPage() {
             cliente={cliente}
             cupones={cupones}
             rol={session.rol}
+            permite={(parte) => puede(session, `clientes.${parte}`)}
             onCambio={(texto) => {
               setOk(texto);
               cargar();
@@ -388,9 +393,12 @@ export default function ClientesPage() {
 
 /* ───────── Ficha del cliente ───────── */
 
-function FichaCliente({ cliente, cupones, rol, onCambio }) {
-  const esAdmin = rol === "admin";
-  const puedeEspecial = rol === "admin" || rol === "supervisor";
+function FichaCliente({ cliente, cupones, rol, permite, onCambio }) {
+  // Lo que trae el rol, menos lo que el super administrador le quitó
+  // (pantalla Accesos, lib/catalogoPermisos.js).
+  const puedeCupon = rol === "admin" && permite("cupon");
+  const puedeEspecial = (rol === "admin" || rol === "supervisor") && permite("especial");
+  const verFotosPermitido = permite("fotos");
   const cuponActual = cliente.cupon;
   const asignables = cupones.filter((c) => c.activo);
   const [tarjetas, setTarjetas] = useState(null);
@@ -410,7 +418,8 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
   const [error, setError] = useState("");
   // Corregir sus datos: supervisor y administrador. El correo no (es su
   // usuario para ingresar). El gestor solo ve.
-  const puedeEditar = rol === "admin" || rol === "supervisor";
+  const puedeEditar = (rol === "admin" || rol === "supervisor") && permite("editar");
+  const puedeBloquear = (rol === "admin" || rol === "supervisor") && permite("bloquear");
   const [datos, setDatos] = useState(null); // formulario de edición
   const [tocadoDatos, setTocadoDatos] = useState(false);
   // Bloquear o desbloquear la cuenta: supervisor y administrador, igual
@@ -429,8 +438,8 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
     if (data) setAcceso({ userId: data.user_id, motivo: data.motivo_bloqueo, desde: data.bloqueado_en });
   }, [cliente.id]);
   useEffect(() => {
-    if (puedeEditar) leerAcceso();
-  }, [puedeEditar, leerAcceso]);
+    if (puedeBloquear) leerAcceso();
+  }, [puedeBloquear, leerAcceso]);
 
   async function cambiarBloqueo(bloquear) {
     const texto = motivoBloqueo.trim();
@@ -777,7 +786,7 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
       )}
 
       {/* Acceso: bloquear o desbloquear la cuenta */}
-      {puedeEditar && (
+      {puedeBloquear && (
         <section className={cn("rounded-xl border p-4", bloqueado ? "border-red-200 bg-red-50/50" : "border-border")}>
           <div className="flex flex-wrap items-start gap-3">
             <div className="min-w-0 flex-1">
@@ -843,7 +852,7 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
           <h3 className="flex-1 font-heading text-md font-semibold">
             Tarifa y cupón
           </h3>
-          {esAdmin && !asignar && (
+          {puedeCupon && !asignar && (
             <BotonAccion
               tamano="chico"
               onClick={() => {
@@ -993,7 +1002,7 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
                           ? "Rechazada"
                           : "En revisión"}
                     </span>
-                    {t.foto_tarjeta && !fotosTarjeta[t.id] && (
+                    {t.foto_tarjeta && !fotosTarjeta[t.id] && verFotosPermitido && (
                       <button
                         type="button"
                         onClick={() => verFotosTarjeta(t)}
@@ -1176,6 +1185,7 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
       )}
 
       {/* Fotos de identidad: solo al pedirlas */}
+      {verFotosPermitido && (
       <section className="rounded-xl border border-border p-4">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex-1">
@@ -1241,6 +1251,7 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
           </ul>
         )}
       </section>
+      )}
 
       {/* Etapa y contactos de posventa */}
       <section className="rounded-xl border border-border p-4">

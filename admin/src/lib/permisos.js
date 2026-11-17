@@ -1,16 +1,20 @@
 import { supabase } from "./supabase";
 
 /**
- * Accesos por pantalla y restricción por IP (migración 077).
+ * Accesos del personal (migraciones 077 y 078). Los configura el super
+ * administrador en la pantalla Accesos.
  *
  * El rol es el perfil base: decide qué pantallas existen para una
- * persona y es el tope de lo que la base de datos le entrega. Encima, el
- * administrador puede recortar persona por persona:
- *   · "no":  no ve la pantalla (ni en el menú ni escribiendo la dirección).
- *   · "ver": la ve en solo lectura (los botones de acción quedan apagados).
- *   · sin nada: como lo trae su rol ("editar").
+ * persona y es el tope de lo que la base de datos le entrega. Encima se
+ * recorta persona por persona:
+ *   · Pantalla "no":  no la ve (ni en el menú ni escribiendo la dirección).
+ *   · Pantalla "ver": la ve en solo lectura (los botones de acción se apagan).
+ *   · Parte "no":     una sección o un botón de esa pantalla deja de verse
+ *                     (catálogo en lib/catalogoPermisos.js).
+ *   · Sin nada:       como lo trae su rol.
  *
- * La clave de cada pantalla es su ruta sin la barra: "/clientes" → "clientes".
+ * Claves: la pantalla es su ruta sin la barra ("/clientes" → "clientes");
+ * una parte, "pantalla.parte" ("clientes.bloquear").
  */
 export const NIVELES = [
   { valor: "editar", texto: "Ve y edita", corto: "Edita" },
@@ -26,12 +30,30 @@ export function nivelDe(permisos, ruta) {
   return n === "no" || n === "ver" ? n : "editar";
 }
 
-const SIN_RECORTES = { permisos: {}, ip: null, restringida: false, permitida: true, disponible: false };
+/**
+ * ¿Puede usar esta pantalla o esta parte? `clave` es "clientes" o
+ * "clientes.bloquear". No mira el rol (eso lo decide cada página); solo
+ * los recortes del super administrador. Para las acciones, el solo
+ * lectura de la pantalla lo resuelve BotonAccion (components/carga.jsx).
+ */
+export function puede(session, clave) {
+  const permisos = session?.permisos;
+  if (!permisos) return true;
+  const [pantalla] = String(clave).split(".");
+  if (permisos[pantalla] === "no") return false;
+  return clave === pantalla || permisos[clave] !== "no";
+}
+
+/** ¿La pantalla está en solo lectura para esta persona? */
+export const soloLecturaEn = (session, pantalla) => session?.permisos?.[pantalla] === "ver";
+
+const SIN_RECORTES = { permisos: {}, ip: null, restringida: false, permitida: true, superadmin: false, disponible: false };
 
 /**
  * Lo que la base dice de quien tiene la sesión: sus recortes, la IP desde
- * la que lo ve y si esa IP le sirve. Si la migración todavía no está
- * aplicada (o falla la red), nadie queda fuera: se trabaja como antes.
+ * la que lo ve, si esa IP le sirve y si es super administrador. Si la
+ * migración todavía no está aplicada (o falla la red), nadie queda fuera:
+ * se trabaja como antes.
  */
 export async function leerMiAcceso() {
   try {
@@ -42,6 +64,7 @@ export async function leerMiAcceso() {
       ip: data.ip || null,
       restringida: Boolean(data.restringida),
       permitida: data.permitida !== false,
+      superadmin: Boolean(data.superadmin),
       disponible: true,
     };
   } catch {
@@ -51,7 +74,7 @@ export async function leerMiAcceso() {
 
 /** Mensaje para quien intenta entrar desde una IP que no es la suya. */
 export const mensajeIp = (ip) =>
-  `Solo puedes ingresar desde la red autorizada para tu cuenta.${ip ? ` Ahora estás conectado desde ${ip}.` : ""} Si es un error, pide al administrador que agregue esa IP en Equipo.`;
+  `Solo puedes ingresar desde la red autorizada para tu cuenta.${ip ? ` Ahora estás conectado desde ${ip}.` : ""} Si es un error, pide al administrador que agregue esa IP.`;
 
 const AVISO = "atk-aviso-salida";
 

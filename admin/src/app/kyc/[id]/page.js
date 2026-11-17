@@ -8,6 +8,7 @@ import { urlsFirmadas, extraerPath } from "@/lib/storage";
 import { actualizar, registrarAuditoria } from "@/lib/acciones";
 import { resolverCaso, tomarCaso } from "@/lib/casos";
 import { tomarSiguiente } from "@/lib/cola";
+import { puede } from "@/lib/permisos";
 import { cn } from "@/lib/utils";
 import Shell, { Check, Cruz, Candado } from "@/components/shell";
 import Visor from "@/components/visor";
@@ -348,8 +349,12 @@ export default function KYCDetallePage() {
   const tipoDoc =
     perfil?.tipo_documento === "ce" ? "Carnet de extranjería" : "DNI";
   const puedeResolver = ["gestor", "admin"].includes(session?.rol);
-  // Cerrar una cuenta es del supervisor y del administrador.
-  const puedeBloquear = ["supervisor", "admin"].includes(session?.rol);
+  // Recortes del super administrador (pantalla Accesos).
+  const puedeAprobar = puede(session, "kyc.aprobar");
+  const puedeObservar = puede(session, "kyc.observar");
+  // Cerrar una cuenta es del supervisor y del administrador (el permiso
+  // es el mismo que en Clientes).
+  const puedeBloquear = ["supervisor", "admin"].includes(session?.rol) && puede(session, "clientes.bloquear");
   const resoluble =
     puedeResolver &&
     (cliente?.estado === "pendiente" || cliente?.estado === "observado");
@@ -561,6 +566,7 @@ export default function KYCDetallePage() {
                   </div>
 
                   <div className="grid gap-2 border-t border-border pt-4 sm:grid-cols-[1fr_auto] xl:grid-cols-1 2xl:grid-cols-[1fr_auto]">
+                    {puedeAprobar && (
                     <Pista texto={faltaAprobar} className="block w-full">
                       <BotonAccion
                         onClick={aprobar}
@@ -576,6 +582,8 @@ export default function KYCDetallePage() {
                           : "Aprobar y activar cuenta"}
                       </BotonAccion>
                     </Pista>
+                    )}
+                    {puedeObservar && (
                     <BotonAccion
                       onClick={() => setModoObservar(true)}
                       disabled={accion !== null || !perfil || Boolean(ajeno)}
@@ -585,6 +593,7 @@ export default function KYCDetallePage() {
                     >
                       Observar
                     </BotonAccion>
+                    )}
                   </div>
                 </div>
               ) : (

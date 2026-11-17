@@ -30,6 +30,16 @@ function cabecerasDeIp(req: Request): Record<string, string> {
   const ip = (req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || (req.headers.get("x-forwarded-for") || "").split(",")[0] || "").trim();
   return ip ? { "x-atk-clave": clave, "x-atk-ip": ip } : {};
 }
+// Accesos del personal (migraciones 077 y 078): la base dice si quien
+// llama entra desde su red y si el super administrador no le quitó esta
+// acción. Sin la migración aplicada, todo sigue como antes.
+// deno-lint-ignore no-explicit-any
+async function accesoPermite(comoUsuario: any, clave: string): Promise<boolean> {
+  const { data, error } = await comoUsuario.rpc("acceso_permite", { p_clave: clave, p_escribir: true });
+  if (error) return error.code === "PGRST202";
+  return data !== false;
+}
+const SIN_ACCESO = "Tu acceso no permite esta acción (o estás fuera de la red autorizada). Si la necesitas, pídesela al administrador.";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -68,6 +78,7 @@ Deno.serve(async (req) => {
   if (!yo || yo.rol !== "admin" || yo.estado === "bloqueado" || yo.baja_en) {
     return responder({ error: "Solo un administrador puede eliminar cuentas del personal." }, 403);
   }
+  if (!(await accesoPermite(comoUsuario, "equipo.eliminar"))) return responder({ error: SIN_ACCESO }, 403);
 
   // ── A quién ──
   let id = "";
@@ -82,6 +93,13 @@ Deno.serve(async (req) => {
   const { data: persona } = await admin.from("users").select("email, rol").eq("id", id).maybeSingle();
   if (!persona) return responder({ error: "Esa persona ya no existe." }, 404);
   if (persona.rol === "cliente") return responder({ error: "Esta cuenta es de un cliente, no del personal." }, 400);
+
+  // La cuenta de un super administrador solo la toca otro super administrador.
+  const [{ data: esSuper }, { data: yoSuper }] = await Promise.all([
+    admin.from("superadmins").select("user_id").eq("user_id", id).maybeSingle(),
+    admin.from("superadmins").select("user_id").eq("user_id", quien.id).maybeSingle(),
+  ]);
+  if (esSuper && !yoSuper) return responder({ error: "Esta cuenta es del super administrador: solo él puede eliminarla." }, 403);
 
   if (persona.rol === "admin") {
     const { count } = await admin
