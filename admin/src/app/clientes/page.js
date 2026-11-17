@@ -25,6 +25,7 @@ import {
   Dialogo,
   Tostada,
   Copiar,
+  Motivo,
 } from "@/components/piezas";
 import {
   pct,
@@ -77,6 +78,9 @@ const FILTROS = [
 ];
 const hoyLima = () =>
   new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10);
+
+// Igual que en Verificación: el cliente lee el motivo al intentar entrar.
+const MIN_MOTIVO_BLOQUEO = 10;
 
 export default function ClientesPage() {
   const [session, setSession] = useState(sesionEnCache);
@@ -409,6 +413,54 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
   const puedeEditar = rol === "admin" || rol === "supervisor";
   const [datos, setDatos] = useState(null); // formulario de edición
   const [tocadoDatos, setTocadoDatos] = useState(false);
+  // Bloquear o desbloquear la cuenta: supervisor y administrador, igual
+  // que en Verificación (función bloquear_cliente).
+  const [acceso, setAcceso] = useState(null); // { userId, motivo, desde }
+  const [estadoCuenta, setEstadoCuenta] = useState(cliente.usuario?.estado);
+  const [bloqueando, setBloqueando] = useState(false); // formulario abierto
+  const [motivoBloqueo, setMotivoBloqueo] = useState("");
+
+  const leerAcceso = useCallback(async () => {
+    const { data } = await supabase
+      .from("perfiles_cliente")
+      .select("user_id, motivo_bloqueo, bloqueado_en")
+      .eq("id", cliente.id)
+      .maybeSingle();
+    if (data) setAcceso({ userId: data.user_id, motivo: data.motivo_bloqueo, desde: data.bloqueado_en });
+  }, [cliente.id]);
+  useEffect(() => {
+    if (puedeEditar) leerAcceso();
+  }, [puedeEditar, leerAcceso]);
+
+  async function cambiarBloqueo(bloquear) {
+    const texto = motivoBloqueo.trim();
+    if (bloquear && texto.length < MIN_MOTIVO_BLOQUEO) {
+      return setError(`Explica el motivo con al menos ${MIN_MOTIVO_BLOQUEO} caracteres: el cliente lo va a leer al intentar entrar.`);
+    }
+    if (!acceso?.userId) return setError("No se pudo identificar la cuenta de este cliente. Recarga la página.");
+    setGuardando(true);
+    setError("");
+    const { data, error: e } = await supabase.rpc("bloquear_cliente", {
+      p_id: acceso.userId,
+      p_bloquear: bloquear,
+      p_motivo: bloquear ? texto : null,
+    });
+    setGuardando(false);
+    if (e) return setError(e.code === "P0001" || e.code === "42501" ? e.message : explicarError(e, "No se pudo completar."));
+    setBloqueando(false);
+    setMotivoBloqueo("");
+    // Al desbloquear vuelve a activo o a pendiente, según su identidad: se lee de nuevo.
+    const { data: u } = await supabase.from("users").select("estado").eq("id", acceso.userId).maybeSingle();
+    setEstadoCuenta(u?.estado || (bloquear ? "bloqueado" : estadoCuenta));
+    await leerAcceso();
+    onCambio(
+      !data?.ok
+        ? "La cuenta ya estaba en ese estado."
+        : bloquear
+          ? `${cliente.nombres} quedó bloqueado: ya no puede ingresar.`
+          : `${cliente.nombres} puede ingresar de nuevo.`,
+    );
+  }
 
   useEffect(() => {
     supabase
@@ -586,7 +638,8 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
     setEspecial(null);
   }
 
-  const estado = ESTADOS[cliente.usuario?.estado];
+  const estado = ESTADOS[estadoCuenta];
+  const bloqueado = estadoCuenta === "bloqueado";
 
   return (
     <div className="space-y-5 pb-2">
@@ -721,6 +774,67 @@ function FichaCliente({ cliente, cupones, rol, onCambio }) {
             : "Todavía no"}
         </Dato>
       </section>
+      )}
+
+      {/* Acceso: bloquear o desbloquear la cuenta */}
+      {puedeEditar && (
+        <section className={cn("rounded-xl border p-4", bloqueado ? "border-red-200 bg-red-50/50" : "border-border")}>
+          <div className="flex flex-wrap items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <h3 className="font-heading text-md font-semibold">Acceso a la cuenta</h3>
+              {bloqueado ? (
+                <p className="mt-1 text-sm text-red-800">
+                  Bloqueada{acceso?.desde ? ` desde el ${fechaCorta(acceso.desde)}` : ""}: no puede ingresar al app ni a la web.
+                  {acceso?.motivo && <span className="mt-1 block text-foreground">Motivo: {acceso.motivo}</span>}
+                </p>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Puede ingresar con normalidad. Al bloquearla deja de entrar al app y a la web, y ve el motivo que escribas.
+                </p>
+              )}
+            </div>
+            {bloqueado ? (
+              <BotonAccion tamano="chico" onClick={() => cambiarBloqueo(false)} disabled={guardando}>
+                {guardando ? "Desbloqueando…" : "Desbloquear cuenta"}
+              </BotonAccion>
+            ) : (
+              !bloqueando && (
+                <BotonAccion tono="peligroSuave" tamano="chico" onClick={() => setBloqueando(true)} disabled={guardando}>
+                  Bloquear cuenta
+                </BotonAccion>
+              )
+            )}
+          </div>
+          {bloqueando && !bloqueado && (
+            <div className="mt-3 animate-aparecer space-y-3">
+              <Motivo
+                id="motivoBloqueoCliente"
+                etiqueta="Motivo del bloqueo"
+                ayuda="El cliente lo lee al intentar entrar. Queda registrado con tu nombre."
+                valor={motivoBloqueo}
+                onCambio={setMotivoBloqueo}
+                minimo={MIN_MOTIVO_BLOQUEO}
+                placeholder="Ej: envió comprobantes que no corresponden a sus operaciones."
+              />
+              <div className="flex justify-end gap-2">
+                <BotonAccion
+                  tono="neutro"
+                  tamano="chico"
+                  disabled={guardando}
+                  onClick={() => {
+                    setBloqueando(false);
+                    setMotivoBloqueo("");
+                  }}
+                >
+                  Cancelar
+                </BotonAccion>
+                <BotonAccion tono="peligro" tamano="chico" disabled={guardando} onClick={() => cambiarBloqueo(true)}>
+                  {guardando ? "Bloqueando…" : "Bloquear cuenta"}
+                </BotonAccion>
+              </div>
+            </div>
+          )}
+        </section>
       )}
 
       {/* Cupón */}
