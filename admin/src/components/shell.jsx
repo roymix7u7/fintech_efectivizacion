@@ -527,39 +527,21 @@ export default function Shell({
           )}
         </nav>
 
+        {/* Pie: el chat arriba; debajo, la cuenta (con su estado) y, a la
+            derecha, salir y plegar la barra. */}
         <div className="shrink-0 border-t border-white/10 p-3">
-          <div
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-2 py-1.5",
-              compacta && "lg:justify-center lg:px-0",
-            )}
-          >
-            <Pista
-              texto={`${session.user.email} · ${ROL_TEXTO[session.rol] || session.rol}`}
-              lado="right"
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-oro-500 text-chico font-bold text-marca-900">
-                {(session.user.email || "?").slice(0, 2).toUpperCase()}
-              </span>
-            </Pista>
-            <div className={cn("min-w-0 flex-1", compacta && "lg:hidden")}>
-              <p className="truncate text-chico font-semibold text-white/90">
-                {session.user.email}
-              </p>
-              <p className="text-xs font-semibold text-oro-500">
-                {ROL_TEXTO[session.rol] || session.rol}
-              </p>
-            </div>
-          </div>
-          <div className="mt-1">
-            <Disponibilidad compacta={compacta} />
-          </div>
           <AbrirChat userId={session.user.id} compacta={compacta} />
-          <div className={cn("mt-1 flex gap-1", compacta ? "lg:flex-col" : "")}>
+          <div className={cn("mt-1.5 flex flex-wrap items-center gap-0.5", compacta && "lg:flex-col lg:gap-1")}>
+            <Disponibilidad
+              compacta={compacta}
+              iniciales={(session.user.email || "?").slice(0, 2).toUpperCase()}
+              correo={session.user.email}
+              rol={ROL_TEXTO[session.rol] || session.rol}
+            />
             <BotonBarra
               onClick={salir}
               texto="Cerrar sesión"
-              compacta={compacta}
+              compacta
               icono={<Salida className="h-[18px] w-[18px]" />}
             />
             <span className={barraPlegada ? "hidden" : "hidden lg:block"}>

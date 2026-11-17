@@ -159,7 +159,7 @@ export default function AbrirChat({ userId, compacta }) {
   const opcion = "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition hover:bg-muted";
 
   return (
-    <div className="mt-1">
+    <div>
       <div className={cn("flex items-center gap-1", compacta && "lg:flex-col")}>
         {compacta ? (
           <Pista texto={texto} lado="right">

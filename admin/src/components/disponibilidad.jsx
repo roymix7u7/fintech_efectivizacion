@@ -14,14 +14,16 @@ import {
 } from "@/lib/disponibilidad";
 
 /**
- * Selector de disponibilidad en la barra lateral del panel, como el del
- * chat: en línea, ocupado o desconectado. Además manda la señal de "sigo
- * aquí" cada minuto mientras el panel está abierto.
+ * La cuenta en el pie de la barra lateral: iniciales, correo y rol. El
+ * estado (en línea, ocupado o desconectado) va como un punto sobre las
+ * iniciales y junto al rol, y toda la fila abre el selector para
+ * cambiarlo: así no ocupa una fila propia. Además manda la señal de
+ * "sigo aquí" cada minuto mientras el panel está abierto.
  *
- * Si la migración 070 todavía no está aplicada, no se muestra y el
- * panel funciona igual que antes.
+ * Si la migración 070 todavía no está aplicada, se ve solo la cuenta y
+ * el panel funciona igual que antes.
  */
-export default function Disponibilidad({ compacta }) {
+export default function Disponibilidad({ compacta, iniciales, correo, rol }) {
   const [actual, setActual] = useState(memoria.valor);
   const [visible, setVisible] = useState(memoria.soportado);
   const [abierto, setAbierto] = useState(false);
@@ -74,33 +76,41 @@ export default function Disponibilidad({ compacta }) {
     setAbierto(false);
   }
 
-  if (!visible || !actual) return null;
-  const e = ESTADOS[actual.estado] || ESTADOS.desconectado;
+  const conEstado = visible && actual;
+  const e = conEstado ? ESTADOS[actual.estado] || ESTADOS.desconectado : null;
+
+  const fila = (
+    <>
+      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-oro-500 text-chico font-bold text-marca-900">
+        {iniciales}
+        {e && <span className={cn("absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-marca-900", e.punto)} />}
+      </span>
+      <span className={cn("min-w-0 flex-1 text-left", compacta && "lg:hidden")}>
+        <span className="block truncate text-chico font-semibold text-white/90">{correo}</span>
+        <span className="block truncate text-xs font-semibold text-oro-500">
+          {rol}
+          {e && <span className="font-medium text-white/55"> · {e.texto}</span>}
+        </span>
+      </span>
+    </>
+  );
+  const clase = cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-1.5", compacta ? "px-2 lg:flex-none lg:justify-center lg:px-0" : "px-2");
+
+  if (!conEstado) return <div className={clase} title={compacta ? `${correo} · ${rol}` : undefined}>{fila}</div>;
 
   const boton = (
     <button
       type="button"
-      aria-label={`Tu estado: ${e.texto}. Cambiar`}
-      title={compacta ? `${e.texto} · cambiar estado` : undefined}
-      className={cn(
-        "flex h-9 items-center gap-2.5 rounded-lg text-sm font-medium text-white/80 transition hover:bg-white/5 hover:text-white",
-        compacta ? "w-9 justify-center" : "w-full px-3",
-      )}
+      aria-label={`${correo}, ${rol}. Tu estado: ${e.texto}. Cambiar`}
+      title={compacta ? `${correo} · ${rol} · ${e.texto}` : "Cambiar tu estado"}
+      className={cn(clase, "transition hover:bg-white/5")}
     >
-      <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-marca-900", e.punto)} />
-      {!compacta && (
-        <>
-          <span className="min-w-0 flex-1 truncate text-left">{e.texto}</span>
-          <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-white/40" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <path d="m7 15 5-5 5 5" />
-          </svg>
-        </>
-      )}
+      {fila}
     </button>
   );
 
   return (
-    <div className={cn(compacta ? "lg:flex lg:justify-center" : "")}>
+    <>
       <Popover.Root open={abierto} onOpenChange={setAbierto}>
         {/* Plegada, el texto va en el title: dos disparadores (pista y
             menú) sobre el mismo botón se pisan. */}
@@ -151,7 +161,7 @@ export default function Disponibilidad({ compacta }) {
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
-      {aviso && !compacta && <p className="mt-1 px-1 text-[11px] leading-snug text-oro-500">{aviso}</p>}
-    </div>
+      {aviso && !compacta && <p className="order-last w-full px-2 text-[11px] leading-snug text-oro-500">{aviso}</p>}
+    </>
   );
 }
