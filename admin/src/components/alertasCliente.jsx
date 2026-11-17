@@ -14,11 +14,14 @@ import { cn } from "@/lib/utils";
  * Solo avisa: decide el personal. `id` es el usuario o su perfil.
  * Sin la migración aplicada no muestra nada.
  */
-export default function AlertasCliente({ id, className }) {
+export default function AlertasCliente({ id, className, onIdentidad }) {
   const [datos, setDatos] = useState(null);
   const [consultando, setConsultando] = useState(false);
   const [fallo, setFallo] = useState("");
   const pedido = useRef(null);
+  // Para que la ficha pueda mostrar el resultado junto al nombre.
+  const avisar = useRef(onIdentidad);
+  avisar.current = onIdentidad;
 
   const cargar = useCallback(async () => {
     if (!id) return null;
@@ -28,6 +31,7 @@ export default function AlertasCliente({ id, className }) {
       return null;
     }
     setDatos(data);
+    avisar.current?.(data?.identidad || null);
     return data;
   }, [id]);
 
