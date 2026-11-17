@@ -390,6 +390,7 @@ export default function ClientesPage() {
             rol={session.rol}
             permite={(parte) => puede(session, `clientes.${parte}`)}
             puedeLista={verLista}
+            puedeNombreDni={["admin", "supervisor", "gestor"].includes(session.rol) && puede(session, "kyc.nombre-dni")}
             onCambio={(texto) => {
               setOk(texto);
               cargar();
@@ -405,7 +406,7 @@ export default function ClientesPage() {
 
 /* ───────── Ficha del cliente ───────── */
 
-function FichaCliente({ cliente, cupones, rol, permite, puedeLista, onCambio }) {
+function FichaCliente({ cliente, cupones, rol, permite, puedeLista, puedeNombreDni, onCambio }) {
   // Lo que trae el rol, menos lo que el super administrador le quitó
   // (pantalla Accesos, lib/catalogoPermisos.js).
   const puedeCupon = rol === "admin" && permite("cupon");
@@ -684,7 +685,11 @@ function FichaCliente({ cliente, cupones, rol, permite, puedeLista, onCambio }) 
       )}
 
       {/* Nombre contra DNI, lista de bloqueo y datos compartidos con otros clientes. */}
-      <AlertasCliente id={cliente.id} />
+      <AlertasCliente
+        id={cliente.id}
+        puedeCorregir={puedeNombreDni}
+        onCorregido={() => onCambio("Se corrigió el nombre con el del DNI.")}
+      />
 
       {/* Datos principales */}
       {datos ? (

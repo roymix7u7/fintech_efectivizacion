@@ -31,6 +31,7 @@ export const PARTES = {
   kyc: [
     { clave: "aprobar", titulo: "Aprobar identidades", tipo: "accion", roles: ["admin", "gestor"] },
     { clave: "observar", titulo: "Observar documentos", detalle: "Pedir al cliente que los reenvíe", tipo: "accion", roles: ["admin", "gestor"] },
+    { clave: "nombre-dni", titulo: "Corregir el nombre con el del DNI", detalle: "Cuando el cliente se equivocó al escribirlo. También desde Clientes", tipo: "accion", roles: ["admin", "supervisor", "gestor"] },
   ],
   tarjetas: [
     { clave: "aprobar", titulo: "Aprobar tarjetas", tipo: "accion", roles: ["admin", "gestor"] },

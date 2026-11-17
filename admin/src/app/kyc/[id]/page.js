@@ -517,7 +517,12 @@ export default function KYCDetallePage() {
                 )}
               </div>
               {/* Nombre contra DNI, lista de bloqueo y datos compartidos con otros clientes. */}
-              <AlertasCliente id={params.id} onIdentidad={setIdentidad} />
+              <AlertasCliente
+                id={params.id}
+                onIdentidad={setIdentidad}
+                puedeCorregir={["gestor", "supervisor", "admin"].includes(session.rol) && puede(session, "kyc.nombre-dni")}
+                onCorregido={() => cargar()}
+              />
             </div>
 
             {/* Qué comprobar */}
