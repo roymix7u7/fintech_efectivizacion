@@ -30,12 +30,15 @@ const MICROFONO = [origenDe(process.env.NEXT_PUBLIC_CHAT_URL), process.env.NODE_
   .filter(Boolean)
   .map((o) => `"${o}"`)
   .join(" ");
+// Para prestárselo a un marco, el navegador exige que la página que lo contiene también lo
+// tenga permitido ("self"). Ninguna pantalla del panel lo usa; solo sirve para delegarlo.
+const PERMISO_MICROFONO = MICROFONO ? `self ${MICROFONO}` : "";
 
 const comunes = [
   { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: `camera=(self), microphone=(${MICROFONO}), geolocation=(), payment=()` },
+  { key: "Permissions-Policy", value: `camera=(self), microphone=(${PERMISO_MICROFONO}), geolocation=(), payment=()` },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
 ];
 
