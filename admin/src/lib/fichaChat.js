@@ -151,6 +151,20 @@ export async function tarjetaDelCliente(contacto) {
   const tasas = cupon
     ? [...(tasasBloque.data || [])].sort((a, b) => (a.banco === "Otros") - (b.banco === "Otros") || nombreBanco(a.banco).localeCompare(nombreBanco(b.banco)))
     : [];
+  // Una fila por porcentaje: los bancos que cobran lo mismo van juntos, de menor a mayor.
+  const grupos = [];
+  const sumar = (fila) => {
+    const g = grupos.find((x) => x.porcentaje === fila.porcentaje && x.hoy === fila.hoy && x.especial === fila.especial && x.motivo === fila.motivo);
+    if (g) g.bancos.push(fila.banco);
+    else grupos.push({ ...fila, bancos: [fila.banco] });
+  };
+  for (const e of esp) sumar({ banco: nombreBanco(e.banco), porcentaje: Number(e.porcentaje), hoy: null, especial: true, motivo: e.motivo || "" });
+  for (const t of tasas) {
+    if (esp.some((e) => e.banco === t.banco)) continue;
+    sumar({ banco: nombreBanco(t.banco), porcentaje: Number(t.porcentaje), hoy: t.porcentaje_hoy == null ? null : Number(t.porcentaje_hoy), especial: false, motivo: "" });
+  }
+  grupos.sort((a, b) => b.especial - a.especial || a.porcentaje - b.porcentaje);
+
   const cuantas = (k) => sols.filter((s) => s.estado === k).length;
   const enCurso = sols.filter((s) => s.estado === "pendiente" || s.estado === "aprobado");
   const reclamosAbiertos = recl.filter((r) => !r.respondido_en);
@@ -195,7 +209,7 @@ export async function tarjetaDelCliente(contacto) {
       { label: "Celular", value: celularLegible(perfil.telefono), copy: nueveDigitos(perfil.telefono) || perfil.telefono },
       cuenta.data?.email && { label: "Correo", value: cuenta.data.email, copy: cuenta.data.email },
       { label: "Cliente desde", value: fecha(perfil.created_at) },
-      cupon && { label: "Cupón", value: `${cupon}${perfil.cupon_hasta ? ` hasta ${fecha(perfil.cupon_hasta)}` : ""}` },
+      cupon && perfil.cupon_hasta && { label: "Cupón vigente hasta", value: fecha(perfil.cupon_hasta) },
       contacto.custom_attributes?.pantalla && { label: "Está en", value: String(contacto.custom_attributes.pantalla) },
     ].filter(Boolean),
     stats: [
@@ -205,26 +219,18 @@ export async function tarjetaDelCliente(contacto) {
     ],
     actions: [],
     sections: [
-      (tasas.length > 0 || esp.length > 0) && {
+      grupos.length > 0 && {
         id: "comisiones",
-        title: "Comisiones",
-        count: esp.length + tasas.filter((t) => !esp.some((e) => e.banco === t.banco)).length,
+        title: cupon ? `Comisiones del cupón ${cupon}` : "Comisiones",
+        count: null,
+        open: true,
         empty: "",
-        items: [
-          ...esp.map((e) => ({
-            title: nombreBanco(e.banco),
-            badge: { text: pct(e.porcentaje), tone: "ok" },
-            detail: "Comisión especial de este cliente",
-            note: e.motivo || "",
-          })),
-          ...tasas
-            .filter((t) => !esp.some((e) => e.banco === t.banco))
-            .map((t) => ({
-              title: nombreBanco(t.banco),
-              badge: { text: pct(t.porcentaje), tone: "soft" },
-              detail: t.porcentaje_hoy != null ? `Depósito para hoy: ${pct(t.porcentaje_hoy)}` : `Cupón ${cupon}`,
-            })),
-        ],
+        items: grupos.map((g) => ({
+          title: g.bancos.join(" · "),
+          badge: { text: pct(g.porcentaje), tone: g.especial ? "ok" : "soft" },
+          detail: [g.especial && "Comisión especial de este cliente", g.hoy != null && `Para hoy: ${pct(g.hoy)}`].filter(Boolean).join(" · "),
+          note: g.motivo || "",
+        })),
       },
       {
         id: "solicitudes",
