@@ -8,20 +8,10 @@ import { supabase } from "@/lib/supabase";
 import { estadoCola } from "@/lib/cola";
 import { cn } from "@/lib/utils";
 import Shell, { Flecha, Documento, Persona, Tarjeta, Billete, Reclamo, Escudo, Manos } from "@/components/shell";
-import { Aviso, Estado, Vacio } from "@/components/marca";
-import { Panel, Leyenda } from "@/components/piezas";
+import { Aviso } from "@/components/marca";
+import ResumenGraficos from "@/components/resumenGraficos";
 import Pista from "@/components/pista";
 import { EsqueletoTarjetas, CargaPantalla } from "@/components/carga";
-
-const haceCuanto = (iso) => {
-  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (min < 1) return "ahora";
-  if (min < 60) return `hace ${min} min`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `hace ${h} h`;
-  const d = Math.floor(h / 24);
-  return d === 1 ? "ayer" : `hace ${d} días`;
-};
 
 export default function DashboardPage() {
   const [session, setSession] = useState(sesionEnCache);
@@ -29,8 +19,6 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [colas, setColas] = useState({});
   const [extra, setExtra] = useState({});
-  const [recientes, setRecientes] = useState([]);
-  const [equipo, setEquipo] = useState([]);
   const [mias, setMias] = useState(null);
   const router = useRouter();
 
@@ -45,7 +33,7 @@ export default function DashboardPage() {
         // debería verlo: se le muestran sus números y su cola.
         const tareas = [cargarColas()];
         if (s.rol === "gestor") tareas.push(cargarMias());
-        else tareas.push(cargarExtra(s.rol), cargarRecientes(), cargarEquipo());
+        else tareas.push(cargarExtra(s.rol));
         await Promise.all(tareas);
       })
       .finally(() => vivo && setLoading(false));
@@ -83,20 +71,6 @@ export default function DashboardPage() {
     setExtra({ activos, reclamos, pedidos, pagos });
   }
 
-  async function cargarRecientes() {
-    const { data } = await supabase
-      .from("solicitudes")
-      .select("id, codigo, banco, estado, created_at, perfiles_cliente (nombres, apellidos)")
-      .order("created_at", { ascending: false })
-      .limit(8);
-    setRecientes(data || []);
-  }
-
-  async function cargarEquipo() {
-    const { data } = await supabase.rpc("rendimiento_equipo", { p_dias: 1, p_sede: null });
-    setEquipo((data || []).filter((r) => Number(r.resueltas) > 0).sort((a, b) => b.resueltas - a.resueltas));
-  }
-
   if (!session) return loading ? <CargaPantalla /> : null;
 
   const esGestor = session.rol === "gestor";
@@ -116,7 +90,7 @@ export default function DashboardPage() {
       session={session}
       titulo="Resumen"
       descripcion={hoy.charAt(0).toUpperCase() + hoy.slice(1)}
-      ayuda="Los números se actualizan al entrar a esta pantalla. Pulsa una cola para ir a atenderla."
+      ayuda="Los números se actualizan al entrar a esta pantalla. Pulsa una cola para ir a atenderla; los indicadores de abajo se pueden ver por 7, 30 o 90 días."
     >
       {error && (
         <Aviso className="mb-4" onCerrar={() => setError("")}>
@@ -234,88 +208,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Admin y supervisor: actividad ── */}
-      {!esGestor && (
-        <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <Panel
-            titulo="Últimas solicitudes"
-            cuerpo="p-0"
-            acciones={
-              <Link href="/solicitudes" className="inline-flex items-center gap-1 text-sm font-semibold text-marca-600 hover:text-marca-700">
-                Ver todas <Flecha className="h-3.5 w-3.5" />
-              </Link>
-            }
-          >
-            {recientes.length === 0 ? (
-              <p className="px-4 py-10 text-center text-sm text-muted-foreground">Todavía no hay solicitudes.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/50 text-left">
-                      <th className="px-4 py-2 t-etiqueta">Código</th>
-                      <th className="px-4 py-2 t-etiqueta">Cliente</th>
-                      <th className="px-4 py-2 t-etiqueta">Banco</th>
-                      <th className="px-4 py-2 t-etiqueta">Llegó</th>
-                      <th className="px-4 py-2 t-etiqueta">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {recientes.map((s) => (
-                      <tr key={s.id} className="hover:bg-muted/30">
-                        <td className="cifras px-4 py-2.5 font-mono text-chico font-semibold text-marca-700">{s.codigo}</td>
-                        <td className="max-w-[220px] truncate px-4 py-2.5 font-medium">
-                          {s.perfiles_cliente ? `${s.perfiles_cliente.nombres} ${s.perfiles_cliente.apellidos}` : "Cliente sin perfil"}
-                        </td>
-                        <td className="px-4 py-2.5 text-muted-foreground">{s.banco}</td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{haceCuanto(s.created_at)}</td>
-                        <td className="px-4 py-2.5">
-                          <Estado valor={s.estado} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <div className="border-t border-border px-4 py-2.5">
-              <Leyenda
-                items={[
-                  { texto: "Pendiente", color: "bg-oro-500", pista: "Espera que un gestor revise el comprobante." },
-                  { texto: "Aprobado", color: "bg-emerald-500", pista: "Revisado y correcto: espera la transferencia." },
-                  { texto: "Pagado", color: "bg-emerald-700", pista: "La transferencia ya se hizo y el cliente fue avisado." },
-                  { texto: "Rechazado", color: "bg-red-500", pista: "El cliente recibió el motivo y puede volver a enviarlo." },
-                ]}
-              />
-            </div>
-          </Panel>
-
-          <Panel titulo="Equipo hoy" ayuda="Casos resueltos desde las 00:00 por cada persona: solicitudes, identidades y tarjetas." cuerpo="p-0">
-            {equipo.length === 0 ? (
-              <Vacio className="m-4 border-0 bg-transparent py-8" titulo="Nadie resolvió casos hoy" detalle="Aparecerán aquí a medida que el equipo trabaje." />
-            ) : (
-              <ul className="divide-y divide-border">
-                {equipo.slice(0, 8).map((p) => {
-                  const max = Number(equipo[0].resueltas) || 1;
-                  return (
-                    <li key={p.usuario_id} className="px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate text-sm font-semibold">{(p.email || "").split("@")[0]}</span>
-                        <Pista texto={`${p.aprobadas} aprobados · ${p.rechazadas} rechazados${p.minutos_promedio ? ` · ${Math.round(p.minutos_promedio)} min por caso en promedio` : ""}`} fin>
-                          <span className="cifras cursor-help text-sm font-bold">{p.resueltas}</span>
-                        </Pista>
-                      </div>
-                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-marca-500" style={{ width: `${(Number(p.resueltas) / max) * 100}%` }} />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Panel>
-        </div>
-      )}
+      {/* ── Admin y supervisor: indicadores ── */}
+      {!esGestor && <ResumenGraficos esAdmin={esAdmin} />}
     </Shell>
   );
 }
