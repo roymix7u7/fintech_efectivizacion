@@ -10,7 +10,9 @@
  *   · Referrer-Policy: a otros sitios no les llega la dirección completa
  *     de la página (que podría llevar datos en la URL).
  *   · Permissions-Policy: la cámara solo para esta web (fotos del DNI y
- *     la tarjeta); micrófono y ubicación, para nadie.
+ *     la tarjeta); ubicación, para nadie. El micrófono solo se le presta
+ *     al chat propio, que va incrustado en el panel, para que el asesor
+ *     grabe notas de voz; sin chat propio, para nadie.
  *   · HSTS: el navegador solo entra por https (en local no aplica).
  */
 const origenDe = (url) => {
@@ -23,11 +25,17 @@ const origenDe = (url) => {
 // Los que pueden incrustar la ficha: Chatwoot y el chat propio (el que esté configurado).
 const CHATWOOT = [origenDe(process.env.NEXT_PUBLIC_CHATWOOT_URL), origenDe(process.env.NEXT_PUBLIC_CHAT_URL)].filter(Boolean).join(" ") || null;
 
+// A quién se le presta el micrófono: al chat propio (y, en desarrollo, al que corre en esta computadora).
+const MICROFONO = [origenDe(process.env.NEXT_PUBLIC_CHAT_URL), process.env.NODE_ENV !== "production" && origenDe(process.env.NEXT_PUBLIC_CHAT_PANEL_LOCAL)]
+  .filter(Boolean)
+  .map((o) => `"${o}"`)
+  .join(" ");
+
 const comunes = [
   { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), payment=()" },
+  { key: "Permissions-Policy", value: `camera=(self), microphone=(${MICROFONO}), geolocation=(), payment=()` },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
 ];
 

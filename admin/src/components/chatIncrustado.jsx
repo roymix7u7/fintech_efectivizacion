@@ -215,7 +215,8 @@ export default function ChatIncrustado() {
         mandarAlChat({ type: "atk-chat:ping" });
       }}
       // Sonido, portapapeles y pantalla completa para el chat.
-      allow="autoplay; clipboard-read; clipboard-write; fullscreen"
+      // microphone: para que el asesor grabe notas de voz (next.config.mjs se lo presta solo al chat).
+      allow="autoplay; clipboard-read; clipboard-write; fullscreen; microphone"
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
       style={
