@@ -54,6 +54,12 @@ export async function POST(req) {
       }
       const { url } = await chat("/sso", { metodo: "POST", cuerpo: { email: correo } });
       if (!url) throw new Error("El chat no devolvió el enlace.");
+      // Solo en desarrollo: el panel del chat servido desde esta computadora (los datos siguen en el servidor).
+      const local = process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_CHAT_PANEL_LOCAL;
+      if (local) {
+        const u = new URL(url);
+        return responder({ url: `${local.replace(/\/$/, "")}${u.pathname}${u.search}` });
+      }
       return responder({ url });
     } catch (e) {
       return responder({ error: "No se pudo abrir el chat. " + e.message }, 502);

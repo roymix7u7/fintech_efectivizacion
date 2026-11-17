@@ -37,7 +37,8 @@ const ESTADO = "atk:chat-estado";
 const INFO = "atk:chat-info";
 const ORIGEN_CHAT = (() => {
   try {
-    return new URL(process.env.NEXT_PUBLIC_CHAT_URL).origin;
+    // NEXT_PUBLIC_CHAT_PANEL_LOCAL: solo en desarrollo, para ver el panel del chat servido desde esta computadora.
+    return new URL(process.env.NEXT_PUBLIC_CHAT_PANEL_LOCAL || process.env.NEXT_PUBLIC_CHAT_URL).origin;
   } catch {
     return null;
   }
