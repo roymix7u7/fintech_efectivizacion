@@ -19,6 +19,7 @@ import { Motivo, Copiar, Dialogo, IconoAlerta } from "@/components/piezas";
 import Pista from "@/components/pista";
 import Desplegable from "@/components/desplegable";
 import AlertasCliente from "@/components/alertasCliente";
+import { rehacerRostro } from "@/lib/rostros";
 
 /**
  * Verificación de identidad de un cliente.
@@ -217,6 +218,9 @@ export default function KYCDetallePage() {
       entidad_id: perfil.id,
       datos_despues: { bloque_id: bloqueId },
     });
+
+    // La foto del rostro para el chat, con la selfie que se acaba de aprobar.
+    await rehacerRostro(params.id, perfil.foto_selfie_url);
 
     await siguienteOSalir();
   }

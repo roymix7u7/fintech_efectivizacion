@@ -4,6 +4,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { CHAT_EN_PANEL, enlaceDelChat } from "@/lib/chatPanel";
 import { tarjetaDelCliente } from "@/lib/fichaChat";
+import { fotosDeClientes } from "@/lib/rostros";
+import { getSession, sesionEnCache } from "@/lib/auth";
+import { puede } from "@/lib/permisos";
+
+/**
+ * Fotos de los clientes para el chat (lib/rostros.js): solo para quien
+ * tenga el permiso chat.fotos. Las que se crean después llegan solas, con
+ * id null.
+ */
+async function responderFotos(id, identificadores) {
+  const sesion = sesionEnCache() || (await getSession().catch(() => null));
+  if (!sesion || !puede(sesion, "chat.fotos")) return mandarAlChat({ type: "atk-chat:photos", id, photos: {} });
+  const ids = (Array.isArray(identificadores) ? identificadores : []).slice(0, 100).map(String);
+  const photos = await fotosDeClientes(ids, (nuevas) => mandarAlChat({ type: "atk-chat:photos", id: null, photos: nuevas })).catch(() => ({}));
+  mandarAlChat({ type: "atk-chat:photos", id, photos });
+}
 
 /**
  * El chat de atención, cargado una sola vez y vivo mientras dure la sesión
@@ -26,6 +42,8 @@ import { tarjetaDelCliente } from "@/lib/fichaChat";
  * También le da al chat la ficha del cliente de la conversación abierta
  * (lib/fichaChat.js): el chat la pide y la muestra en su panel lateral.
  * Se lee con la sesión del asesor, así cada rol ve lo que la base le deja.
+ * Igual con la foto del rostro de cada cliente (lib/rostros.js): el chat
+ * la pide y el panel la firma; el servidor del chat no guarda copia.
  *
  * Se carga cuando la barra confirma que la persona atiende el chat
  * (evento atk:chat-precargar) o al entrar a /chat. Se descarta al cerrar
@@ -102,6 +120,11 @@ export default function ChatIncrustado() {
         tarjetaDelCliente(e.data.contact)
           .catch(() => null)
           .then((card) => mandarAlChat({ type: "atk-chat:card", id, card }));
+        return;
+      }
+      // El chat pide las fotos de los clientes que tiene a la vista.
+      if (e.data?.type === "atk-chat:photos-request") {
+        responderFotos(e.data.id, e.data.identifiers);
         return;
       }
       // Un botón de la ficha lleva a una pantalla del panel (solo rutas propias).

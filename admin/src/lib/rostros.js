@@ -1,0 +1,232 @@
+import { supabase } from "./supabase";
+import { urlsFirmadas, extraerPath } from "./storage";
+
+/**
+ * Rostro del cliente para el chat del personal (migración 080).
+ *
+ * Una miniatura de 192 × 192 (~10 KB) recortada de la selfie de la
+ * verificación, en el bucket privado "rostros" como <user_id>.jpg.
+ *
+ *   · Se recorta aquí, en el navegador del personal: un detector de
+ *     rostros (MediaPipe) busca la cara y se guarda solo ese cuadro, sin
+ *     el DNI que el cliente sostiene. La selfie original no se toca.
+ *   · Se genera sola la primera vez que el chat pide la foto de un cliente
+ *     verificado que todavía no la tiene, y de nuevo al aprobar su
+ *     identidad (por si cambió la selfie).
+ *   · El chat nunca toca la base: le pide las fotos al panel
+ *     (components/chatIncrustado.jsx), que las firma con la sesión del
+ *     asesor. El enlace vence en una hora; el cliente no la ve nunca.
+ *
+ * El detector (~3 MB comprimido) se baja una sola vez por navegador, y
+ * solo cuando hay una miniatura que crear: mostrar las que ya existen no
+ * lo necesita.
+ */
+
+const BUCKET = "rostros";
+const BUCKET_KYC = "kyc-documentos";
+const CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21";
+const MODELO = "/modelos/rostros.tflite";
+const LADO = 192;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const FIRMA_SEG = 3600;
+const REUSAR_MS = 50 * 60 * 1000; // el enlace firmado se reusa hasta 10 min antes de vencer
+const SIN_FOTO_MS = 10 * 60 * 1000; // sin miniatura: no se vuelve a preguntar en 10 min
+const NO_SALIO = "atk-rostro-no-salio"; // selfies donde no se encontró la cara
+const REINTENTAR_MS = 7 * 24 * 60 * 60 * 1000;
+
+const memoria = new Map(); // user_id → { url: string | null, hasta: ms }
+const enCola = new Set();
+let cola = Promise.resolve();
+let detector = null;
+
+const esId = (id) => UUID.test(String(id || ""));
+const rutaDe = (id) => `${id}.jpg`;
+
+function leerNoSalio() {
+  try {
+    return JSON.parse(window.localStorage.getItem(NO_SALIO) || "{}");
+  } catch {
+    return {};
+  }
+}
+function marcarNoSalio(id) {
+  try {
+    const m = leerNoSalio();
+    m[id] = Date.now();
+    window.localStorage.setItem(NO_SALIO, JSON.stringify(m));
+  } catch {}
+}
+const noSalioHace = (m, id) => m[id] && Date.now() - m[id] < REINTENTAR_MS;
+
+/** El detector de rostros, cargado una sola vez. */
+function cargarDetector() {
+  if (!detector) {
+    detector = (async () => {
+      const vision = await import(/* webpackIgnore: true */ `${CDN}/vision_bundle.mjs`);
+      const archivos = await vision.FilesetResolver.forVisionTasks(`${CDN}/wasm`);
+      return vision.FaceDetector.createFromOptions(archivos, {
+        baseOptions: { modelAssetPath: MODELO, delegate: "CPU" },
+        runningMode: "IMAGE",
+        minDetectionConfidence: 0.5,
+      });
+    })().catch((e) => {
+      detector = null;
+      throw e;
+    });
+  }
+  return detector;
+}
+
+/**
+ * Recorta el rostro de una selfie (URL firmada). Devuelve un JPEG de
+ * 192 × 192 o null si no encontró una cara clara.
+ */
+export async function recortarRostro(urlSelfie) {
+  const det = await cargarDetector();
+  const r = await fetch(urlSelfie);
+  if (!r.ok) throw new Error("No se pudo leer la selfie.");
+  const img = await createImageBitmap(await r.blob(), { imageOrientation: "from-image" });
+
+  // Para buscar la cara basta una versión reducida: es más rápido.
+  const escala = Math.min(1, 640 / Math.max(img.width, img.height));
+  const chica = document.createElement("canvas");
+  chica.width = Math.round(img.width * escala);
+  chica.height = Math.round(img.height * escala);
+  chica.getContext("2d").drawImage(img, 0, 0, chica.width, chica.height);
+  const { detections = [] } = det.detect(chica);
+
+  // La selfie trae dos caras: la del cliente y la foto chiquita del DNI
+  // que sostiene. Se queda la más grande, y debe ser de buen tamaño.
+  const caja = detections
+    .map((d) => d.boundingBox)
+    .filter(Boolean)
+    .sort((a, b) => b.width * b.height - a.width * a.height)[0];
+  if (!caja || caja.width < chica.width * 0.12) return null;
+
+  // Un poco más que la cara (pelo y mentón) sin llegar al documento.
+  const cx = (caja.originX + caja.width / 2) / escala;
+  const cy = (caja.originY + caja.height / 2) / escala;
+  const lado = Math.min((Math.max(caja.width, caja.height) / escala) * 1.45, img.width, img.height);
+  const x = Math.max(0, Math.min(cx - lado / 2, img.width - lado));
+  const y = Math.max(0, Math.min(cy - lado * 0.55, img.height - lado));
+
+  const salida = document.createElement("canvas");
+  salida.width = LADO;
+  salida.height = LADO;
+  const ctx = salida.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, x, y, lado, lado, 0, 0, LADO, LADO);
+  img.close?.();
+  return new Promise((listo) => salida.toBlob(listo, "image/jpeg", 0.82));
+}
+
+/** Recorta y guarda la miniatura de un cliente. true si quedó guardada. */
+async function crearMiniatura(userId, urlSelfie) {
+  const blob = await recortarRostro(urlSelfie);
+  if (!blob) {
+    marcarNoSalio(userId);
+    return false;
+  }
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(rutaDe(userId), blob, { upsert: true, contentType: "image/jpeg", cacheControl: "3600" });
+  if (error) throw error;
+  memoria.delete(userId);
+  return true;
+}
+
+/** Firma la miniatura recién creada y la deja en memoria. */
+async function firmarUna(userId) {
+  const { data } = await supabase.storage.from(BUCKET).createSignedUrl(rutaDe(userId), FIRMA_SEG);
+  const url = data?.signedUrl || null;
+  memoria.set(userId, { url, hasta: Date.now() + (url ? REUSAR_MS : SIN_FOTO_MS) });
+  return url;
+}
+
+/**
+ * Crea, de a una, las miniaturas que faltan (solo de clientes con la
+ * identidad aprobada) y avisa cada una con alListo({ [user_id]: url }).
+ */
+function completar(ids, alListo) {
+  const noSalio = leerNoSalio();
+  const nuevos = ids.filter((id) => !enCola.has(id) && !noSalioHace(noSalio, id));
+  if (!nuevos.length) return;
+  nuevos.forEach((id) => enCola.add(id));
+
+  cola = cola.then(async () => {
+    try {
+      const { data: perfiles } = await supabase
+        .from("perfiles_cliente")
+        .select("user_id, foto_selfie")
+        .in("user_id", nuevos)
+        .not("fecha_validacion", "is", null)
+        .not("foto_selfie", "is", null);
+      if (!perfiles?.length) return;
+      const { urls } = await urlsFirmadas(BUCKET_KYC, perfiles.map((p) => p.foto_selfie));
+      for (const p of perfiles) {
+        const selfie = urls[extraerPath(BUCKET_KYC, p.foto_selfie)];
+        if (!selfie) continue;
+        try {
+          if (await crearMiniatura(p.user_id, selfie)) {
+            const url = await firmarUna(p.user_id);
+            if (url) alListo?.({ [p.user_id]: url });
+          }
+        } catch {
+          // Sin red, sin permiso o sin detector: se intentará otro día.
+        }
+      }
+    } catch {
+      // idem
+    } finally {
+      nuevos.forEach((id) => enCola.delete(id));
+    }
+  });
+}
+
+/**
+ * Fotos de varios clientes: { [user_id]: url firmada }. Los que no tienen
+ * miniatura no aparecen; si están verificados, se les crea en segundo
+ * plano y llegan después por alListo.
+ */
+export async function fotosDeClientes(ids, alListo) {
+  const validos = [...new Set((ids || []).filter(esId))].slice(0, 100);
+  const ahora = Date.now();
+  const fotos = {};
+  const pedir = [];
+  for (const id of validos) {
+    const m = memoria.get(id);
+    if (m && m.hasta > ahora) {
+      if (m.url) fotos[id] = m.url;
+    } else pedir.push(id);
+  }
+  if (!pedir.length) return fotos;
+
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrls(pedir.map(rutaDe), FIRMA_SEG);
+  if (error || !data) {
+    // Sin la migración 080 o sin permiso: nada que mostrar por un rato.
+    pedir.forEach((id) => memoria.set(id, { url: null, hasta: ahora + SIN_FOTO_MS }));
+    return fotos;
+  }
+  const faltan = [];
+  pedir.forEach((id, i) => {
+    const url = data[i]?.signedUrl || null;
+    memoria.set(id, { url, hasta: ahora + (url ? REUSAR_MS : SIN_FOTO_MS) });
+    if (url) fotos[id] = url;
+    else faltan.push(id);
+  });
+  if (faltan.length) completar(faltan, alListo);
+  return fotos;
+}
+
+/**
+ * Al aprobar una identidad: rehace la miniatura con la selfie de ahora.
+ * No frena la aprobación: si tarda más de unos segundos o falla, se deja
+ * para cuando el chat la pida.
+ */
+export async function rehacerRostro(userId, urlSelfie, esperaMs = 6000) {
+  if (!esId(userId) || !urlSelfie) return;
+  try {
+    await Promise.race([crearMiniatura(userId, urlSelfie), new Promise((listo) => setTimeout(listo, esperaMs))]);
+  } catch {}
+}

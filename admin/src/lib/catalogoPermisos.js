@@ -89,6 +89,9 @@ export const PARTES = {
   legal: [
     { clave: "publicar", titulo: "Publicar versiones nuevas", tipo: "accion", roles: ["admin"] },
   ],
+  chat: [
+    { clave: "fotos", titulo: "Ver la foto de los clientes", detalle: "Su rostro, recortado de la selfie de verificación", tipo: "vista", roles: ["admin", "supervisor", "gestor", "pagos"] },
+  ],
 };
 
 /** Las partes de una pantalla que le sirven a un rol. */
