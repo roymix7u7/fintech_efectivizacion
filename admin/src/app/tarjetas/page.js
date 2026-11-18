@@ -10,7 +10,8 @@ import { resolverCaso, tomarCaso } from "@/lib/casos";
 import { tomarSiguiente, minutosRestantes } from "@/lib/cola";
 import { puede } from "@/lib/permisos";
 import { colorDe } from "@/lib/colores";
-import { useIrAlDetalle } from "@/lib/hooks";
+import { useIrAlDetalle, useAtajos } from "@/lib/hooks";
+import Atajos from "@/components/atajos";
 import { cn } from "@/lib/utils";
 import { colorBanco, nombreBanco } from "@/lib/bancos";
 import { SiglaBanco, ChipBanco, DatoCorto } from "@/components/banco";
@@ -23,7 +24,7 @@ import BotonRefrescar from "@/components/refrescar";
 import Pista from "@/components/pista";
 import { Estado, Vacio, Aviso } from "@/components/marca";
 import { EsqueletoCola, Esqueleto, BotonAccion, CargaPantalla } from "@/components/carga";
-import { Segmentos, Buscador, Barra, Leyenda, Motivo, Copiar, Dialogo, IconoAlerta } from "@/components/piezas";
+import { Segmentos, Buscador, Barra, Leyenda, Motivo, Copiar, Dialogo, IconoAlerta, Tostada } from "@/components/piezas";
 
 /**
  * Verificación de tarjetas.
@@ -122,6 +123,7 @@ export default function TarjetasPage() {
   const [pidiendo, setPidiendo] = useState(false);
   // Lo que el revisor confirma haber mirado, por tarjeta.
   const [revisadoPor, setRevisadoPor] = useState({});
+  const [ok, setOk] = useState("");
   const router = useRouter();
   const detalleRef = useIrAlDetalle(seleccionada?.id);
 
@@ -341,6 +343,12 @@ export default function TarjetasPage() {
     if (!r.ok) {
       if (r.motivo === "TOMADO" || r.motivo === "RESUELTO") setConflicto(r);
       else setError(r.mensaje);
+    } else {
+      // Que se note lo que pasó: la ficha se cierra y llega la siguiente.
+      const quien = t.perfiles_cliente?.nombres?.split(" ")[0];
+      setOk(
+        `Tarjeta ${nombreBanco(t.banco)} ···· ${t.ultimos_4}${quien ? ` de ${quien}` : ""} ${aprobar ? "verificada" : "rechazada: se le avisó con el motivo"}.`,
+      );
     }
     setSeleccionada(null);
     setAjeno(null);
@@ -368,6 +376,8 @@ export default function TarjetasPage() {
     }
     if (data && data.ok === false) {
       setError("Esa tarjeta ya estaba dada de baja.");
+    } else {
+      setOk(`Tarjeta ${nombreBanco(t.banco)} ···· ${t.ultimos_4} dada de baja: se le avisó al cliente.`);
     }
     setMotivoBaja("");
     setSeleccionada(null);
@@ -396,6 +406,33 @@ export default function TarjetasPage() {
         .includes(t),
     );
   }, [tarjetas, busqueda]);
+
+  // ── Teclado: revisar sin soltar el teclado ──
+  // Mismo orden que COMPROBAR (más abajo): 1 nombre, 2 dígitos, 3 tapado, 4 otra foto.
+  const enRevision = seleccionada?.estado === "pendiente" && puedeResolver;
+  const clavesRevision = seleccionada ? ["nombre", "digitos", "cubierto", ...(seleccionada.foto_reverso ? ["dos"] : [])] : [];
+  const marcarPunto = (i) => () => {
+    const k = clavesRevision[i];
+    if (!k || !enRevision) return;
+    const id = seleccionada.id;
+    setRevisadoPor((m) => ({ ...m, [id]: { ...(m[id] || {}), [k]: !m[id]?.[k] } }));
+  };
+  const libre = accion === null && !ajeno;
+  const todoMarcado = clavesRevision.length > 0 && clavesRevision.every((k) => revisadoPor[seleccionada?.id]?.[k]);
+  useAtajos(
+    {
+      1: marcarPunto(0),
+      2: marcarPunto(1),
+      3: marcarPunto(2),
+      4: marcarPunto(3),
+      a: enRevision && puedeAprobar && libre && todoMarcado ? () => aprobar(seleccionada) : null,
+      r: enRevision && puedeRechazar && libre ? () => setModoRechazo(true) : null,
+      c: seleccionada ? () => setVista(COMPARAR) : null,
+      f: seleccionada ? () => setVista(FRENTE) : null,
+      n: filtro === "pendiente" && puedeResolver && !pidiendo ? () => atenderSiguiente() : null,
+    },
+    Boolean(session),
+  );
 
   if (!session) return <CargaPantalla />;
 
@@ -875,6 +912,15 @@ export default function TarjetasPage() {
                       )}
                     </div>
                     {faltaVerificar && puedeAprobar && <p className="text-center text-xs text-muted-foreground">{faltaVerificar}</p>}
+                    <Atajos
+                      items={[
+                        ["1–" + COMPROBAR.length, "marcar"],
+                        puedeAprobar && ["A", "verificar"],
+                        puedeRechazar && ["R", "rechazar"],
+                        ["C", "comparar"],
+                        ["N", "siguiente"],
+                      ]}
+                    />
                   </div>
                 )}
                 {s.estado === "aprobado" && ["gestor", "supervisor", "admin"].includes(session?.rol) && puede(session, "tarjetas.baja") && (
@@ -972,6 +1018,7 @@ export default function TarjetasPage() {
       />
 
       <Conflicto mensaje={conflicto?.mensaje} titulo={conflicto?.titulo} onCerrar={() => setConflicto(null)} />
+      <Tostada mensaje={ok} onCerrar={() => setOk("")} />
     </Shell>
   );
 }

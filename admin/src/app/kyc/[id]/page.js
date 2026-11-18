@@ -15,7 +15,9 @@ import Visor from "@/components/visor";
 import Conflicto from "@/components/conflicto";
 import { Estado, Aviso } from "@/components/marca";
 import { CargaPantalla, BotonAccion } from "@/components/carga";
-import { Motivo, Copiar, Dialogo, IconoAlerta } from "@/components/piezas";
+import { Motivo, Copiar, Dialogo, IconoAlerta, Tostada } from "@/components/piezas";
+import Atajos from "@/components/atajos";
+import { useAtajos, avisoPendiente } from "@/lib/hooks";
 import Pista from "@/components/pista";
 import Desplegable from "@/components/desplegable";
 import AlertasCliente from "@/components/alertasCliente";
@@ -108,6 +110,7 @@ export default function KYCDetallePage() {
   const [error, setError] = useState("");
   // Lo que el revisor confirma haber mirado. Aprobar espera a que esté todo.
   const [revisado, setRevisado] = useState({});
+  const [ok, setOk] = useState("");
   const router = useRouter();
   const params = useParams();
 
@@ -184,6 +187,21 @@ export default function KYCDetallePage() {
     });
   }, [router, cargar]);
 
+  // Cada identidad empieza limpia: nada marcado ni ventanas abiertas del
+  // caso anterior. Y si se llegó desde otra recién resuelta, se dice.
+  useEffect(() => {
+    setRevisado({});
+    setVista(DOCUMENTOS[0].campo);
+    setModoObservar(false);
+    setModoBloqueo(false);
+    setMotivo("");
+    setVerMas(false);
+    if (avisoPendiente.texto) {
+      setOk(avisoPendiente.texto);
+      avisoPendiente.texto = "";
+    }
+  }, [params.id]);
+
   async function aprobar() {
     if (!perfil) {
       setError("Este cliente aún no subió sus documentos, así que no se puede aprobar.");
@@ -228,6 +246,7 @@ export default function KYCDetallePage() {
     // La foto del rostro para el chat, con la selfie que se acaba de aprobar.
     await rehacerRostro(params.id, perfil.foto_selfie_url);
 
+    avisoPendiente.texto = `Identidad de ${perfil.nombres?.split(" ")[0] || "el cliente"} aprobada: ya puede operar.`;
     await siguienteOSalir();
   }
 
@@ -263,6 +282,8 @@ export default function KYCDetallePage() {
     });
     if (obsError) console.warn("Observaciones:", obsError.message);
 
+    setModoObservar(false);
+    avisoPendiente.texto = `Se observó a ${perfil.nombres?.split(" ")[0] || "el cliente"}: le llega el aviso para corregir.`;
     await siguienteOSalir();
   }
 
@@ -303,6 +324,29 @@ export default function KYCDetallePage() {
     if (!vacia && id) return router.push(`/kyc/${id}`);
     router.push("/kyc?vacia=1");
   }
+
+  // ── Teclado: revisar sin soltar el teclado ──
+  // Mismo orden que COMPROBAR (más abajo).
+  const PUNTOS = ["numero", "nombre", "rostro", "vigente"];
+  const enRevision =
+    ["gestor", "admin"].includes(session?.rol) && (cliente?.estado === "pendiente" || cliente?.estado === "observado") && accion === null && !ajeno;
+  const marcarPunto = (i) => () => enRevision && setRevisado((r) => ({ ...r, [PUNTOS[i]]: !r[PUNTOS[i]] }));
+  const listoAprobar = enRevision && perfil && bloqueId && PUNTOS.every((k) => revisado[k]) && puede(session, "kyc.aprobar");
+  useAtajos(
+    {
+      1: marcarPunto(0),
+      2: marcarPunto(1),
+      3: marcarPunto(2),
+      4: marcarPunto(3),
+      a: listoAprobar ? () => aprobar() : null,
+      o: enRevision && perfil && puede(session, "kyc.observar") ? () => setModoObservar(true) : null,
+      f: () => setVista("foto_dni_frontal"),
+      v: () => setVista("foto_dni_posterior"),
+      s: () => setVista("foto_selfie"),
+      c: () => setVista(COMPARAR),
+    },
+    !loading && Boolean(session),
+  );
 
   if (loading || !session) return <CargaPantalla texto="Cargando la ficha..." />;
 
@@ -790,6 +834,15 @@ export default function KYCDetallePage() {
                 )}
               </div>
               {faltaAprobar && puedeAprobar && <p className="text-center text-xs text-muted-foreground">{faltaAprobar}</p>}
+              <Atajos
+                items={[
+                  ["1–4", "marcar"],
+                  puedeAprobar && ["A", "aprobar"],
+                  puedeObservar && ["O", "observar"],
+                  ["F V S", "fotos"],
+                  ["C", "comparar"],
+                ]}
+              />
             </div>
           )}
         </aside>
@@ -869,6 +922,8 @@ export default function KYCDetallePage() {
           placeholder="Ej: envió comprobantes que no corresponden a sus operaciones."
         />
       </Dialogo>
+
+      <Tostada mensaje={ok} onCerrar={() => setOk("")} />
 
       {/* Al cerrar se vuelve a la cola: esta ficha ya no es suya. */}
       <Conflicto

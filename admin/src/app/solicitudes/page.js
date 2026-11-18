@@ -16,7 +16,8 @@ import {
   RESERVA_MINUTOS,
 } from "@/lib/cola";
 import { resolverCaso, tomarCaso } from "@/lib/casos";
-import { useRetraso, idsDeClientes, useIrAlDetalle } from "@/lib/hooks";
+import { useRetraso, idsDeClientes, useIrAlDetalle, useAtajos } from "@/lib/hooks";
+import Atajos from "@/components/atajos";
 import { cn } from "@/lib/utils";
 import Shell, { Documento, Check, Cruz, Manos, Reloj, Tarjeta as IconoTarjeta } from "@/components/shell";
 import Visor from "@/components/visor";
@@ -29,7 +30,7 @@ import BotonRefrescar from "@/components/refrescar";
 import Paginador from "@/components/paginador";
 import { EsqueletoCola, BarraCarga, BotonAccion, Esqueleto, CargaPantalla } from "@/components/carga";
 import { Estado, Vacio, Aviso } from "@/components/marca";
-import { Segmentos, Buscador, Barra, Leyenda, Motivo, Copiar, Dialogo, IconoAlerta } from "@/components/piezas";
+import { Segmentos, Buscador, Barra, Leyenda, Motivo, Copiar, Dialogo, IconoAlerta, Tostada } from "@/components/piezas";
 import { SiglaBanco, ChipBanco, DatoCorto } from "@/components/banco";
 
 /**
@@ -139,6 +140,7 @@ export default function SolicitudesPage() {
   const [error, setError] = useState("");
   // Mensaje de "lo tiene otro": se muestra en ventana, no en una linea.
   const [conflicto, setConflicto] = useState(null);
+  const [ok, setOk] = useState("");
   // id -> correo de cada persona del equipo. Sirve para decir quién
   // tiene cada caso sin pedir el dato fila por fila.
   const [equipo, setEquipo] = useState({});
@@ -454,7 +456,11 @@ export default function SolicitudesPage() {
     }
 
     // Terminado uno, va el siguiente sin pedirlo. Es el ritmo real de
-    // quien revisa cien al día.
+    // quien revisa cien al día. Que se note lo que pasó.
+    const quien = sol.perfiles_cliente?.nombres?.split(" ")[0];
+    setOk(`Solicitud ${sol.codigo}${quien ? ` de ${quien}` : ""} ${aprobar ? "aprobada: pasa a Pagos" : "rechazada: se le avisó con el motivo"}.`);
+    setModoRechazo(false);
+    setMotivo("");
     setSeleccionada(null);
     setAjeno(null);
     await cargar(filtro, { silencioso: true });
@@ -471,6 +477,17 @@ export default function SolicitudesPage() {
     if (texto.length < MIN_MOTIVO) return;
     await resolver(sol, false, texto);
   }
+
+  // ── Teclado ──
+  const enRevision = seleccionada?.estado === "pendiente" && puedeResolver && accion === null && !ajeno;
+  useAtajos(
+    {
+      a: enRevision && puedeAprobar ? () => aprobar(seleccionada) : null,
+      r: enRevision && puedeRechazar ? () => setModoRechazo(true) : null,
+      n: esCola && puedeResolver && !pidiendo ? () => atenderSiguiente() : null,
+    },
+    Boolean(session),
+  );
 
   if (!session) return <CargaPantalla />;
 
@@ -926,7 +943,8 @@ export default function SolicitudesPage() {
 
                 {/* Botones: siempre a la vista */}
                 {resoluble && (puedeAprobar || puedeRechazar) && (
-                  <div className="flex shrink-0 gap-2 border-t border-border bg-muted/30 p-3">
+                  <div className="shrink-0 space-y-2 border-t border-border bg-muted/30 p-3">
+                  <div className="flex gap-2">
                     {puedeAprobar && (
                       <Pista texto={ajeno ? "Otra persona tiene este caso." : null} className="block min-w-0 flex-1">
                         <BotonAccion
@@ -954,6 +972,8 @@ export default function SolicitudesPage() {
                         Rechazar
                       </BotonAccion>
                     )}
+                  </div>
+                  <Atajos items={[puedeAprobar && ["A", "aprobar"], puedeRechazar && ["R", "rechazar"], esCola && ["N", "siguiente"]]} />
                   </div>
                 )}
               </aside>
@@ -1001,6 +1021,7 @@ export default function SolicitudesPage() {
       </Dialogo>
 
       <SinPendientes visible={sinPendientes} onCerrar={() => setSinPendientes(false)} />
+      <Tostada mensaje={ok} onCerrar={() => setOk("")} />
 
       <Conflicto
         mensaje={conflicto?.mensaje}

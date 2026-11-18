@@ -7,14 +7,14 @@ import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { explicarError } from "@/lib/acciones";
 import { estadoCola, contadoresDe, tomarSiguiente, RESERVA_MINUTOS } from "@/lib/cola";
-import { useRetraso } from "@/lib/hooks";
+import { useRetraso, useAtajos, avisoPendiente } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import Shell, { Persona, Flecha, Manos, Reloj } from "@/components/shell";
 import Paginador from "@/components/paginador";
 import { EsqueletoFilas, BarraCarga, BotonAccion, CargaPantalla } from "@/components/carga";
 import SinPendientes from "@/components/sinPendientes";
 import { Estado, Vacio, Aviso } from "@/components/marca";
-import { Segmentos, Buscador, Barra, Leyenda, Avatar } from "@/components/piezas";
+import { Segmentos, Buscador, Barra, Leyenda, Avatar, Tostada } from "@/components/piezas";
 import Pista from "@/components/pista";
 import Revisor from "@/components/revisor";
 import { colorDe } from "@/lib/colores";
@@ -78,7 +78,13 @@ export default function KYCPage() {
       setSinPendientes(true);
       window.history.replaceState(null, "", "/kyc");
     }
+    // Lo que se acaba de resolver en la ficha (aprobada u observada).
+    if (avisoPendiente.texto) {
+      setOk(avisoPendiente.texto);
+      avisoPendiente.texto = "";
+    }
   }, []);
+  const [ok, setOk] = useState("");
   const peticion = useRef(0);
   // Lo último que se pidió: el efecto de los filtros no repite una carga
   // que ya está hecha (al abrir la pantalla se pedía dos o tres veces).
@@ -260,6 +266,9 @@ export default function KYCPage() {
   // mando como salida de emergencia.
   const puedeResolver = ["gestor", "admin"].includes(session?.rol);
   const esGestor = session?.rol === "gestor";
+
+  // N: atender la siguiente identidad, como en las otras colas.
+  useAtajos({ n: filtro === "pendiente" && puedeResolver && !pidiendo ? () => atenderSiguiente() : null }, Boolean(session));
 
   if (!session) return <CargaPantalla />;
 
@@ -470,6 +479,7 @@ export default function KYCPage() {
         onCerrar={() => setSinPendientes(false)}
         texto="No hay identidades esperando revisión. Cuando entre una nueva, el sistema te la asigna sola."
       />
+      <Tostada mensaje={ok} onCerrar={() => setOk("")} />
     </Shell>
   );
 }

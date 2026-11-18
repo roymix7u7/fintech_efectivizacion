@@ -62,3 +62,36 @@ export function useIrAlDetalle(clave) {
   }, [clave]);
   return ref;
 }
+
+/**
+ * Atajos de teclado de una pantalla: { a: aprobar, r: rechazar, "1": ... }.
+ * Una tecla sin función (o con función null) no hace nada.
+ *
+ * No responden mientras se escribe en un campo, con una ventana o un menú
+ * abierto, ni con Ctrl, Alt o Cmd (no pisan los del navegador). Las
+ * casillas sí dejan usarlos: marcar una con el mouse no apaga el teclado.
+ */
+export function useAtajos(mapa, activo = true) {
+  const ref = useRef(mapa);
+  ref.current = mapa;
+  useEffect(() => {
+    if (!activo) return undefined;
+    const alPulsar = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.defaultPrevented) return;
+      if (e.target?.closest?.("input:not([type=checkbox]):not([type=radio]), textarea, select, [contenteditable='true']")) return;
+      if (document.querySelector("[role='dialog'], [role='alertdialog'], [role='menu']")) return;
+      const accion = ref.current[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+      if (typeof accion !== "function") return;
+      e.preventDefault();
+      accion();
+    };
+    window.addEventListener("keydown", alPulsar);
+    return () => window.removeEventListener("keydown", alPulsar);
+  }, [activo]);
+}
+
+/**
+ * Un aviso que sobrevive al cambio de pantalla: al aprobar una identidad
+ * se pasa a la siguiente (otra dirección) y el "Aprobado" se muestra allá.
+ */
+export const avisoPendiente = { texto: "" };
