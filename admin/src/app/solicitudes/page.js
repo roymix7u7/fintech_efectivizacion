@@ -4,13 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { firmarCampo } from "@/lib/storage";
+import { firmarCampo, urlsFirmadas, extraerPath } from "@/lib/storage";
 import { explicarError } from "@/lib/acciones";
 import { puede } from "@/lib/permisos";
-import AlertasCliente from "@/components/alertasCliente";
+import { colorBanco, nombreBanco, recibeDeposito } from "@/lib/bancos";
 import {
   tomarSiguiente,
-  soltarCaso,
   estadoCola,
   contadoresDe,
   minutosRestantes,
@@ -19,7 +18,7 @@ import {
 import { resolverCaso, tomarCaso } from "@/lib/casos";
 import { useRetraso, idsDeClientes, useIrAlDetalle } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
-import Shell, { Documento, Check, Cruz, Manos, Reloj } from "@/components/shell";
+import Shell, { Documento, Check, Cruz, Manos, Reloj, Tarjeta as IconoTarjeta } from "@/components/shell";
 import Visor from "@/components/visor";
 import Conflicto from "@/components/conflicto";
 import SinPendientes from "@/components/sinPendientes";
@@ -29,9 +28,21 @@ import { colorDe } from "@/lib/colores";
 import BotonRefrescar from "@/components/refrescar";
 import Paginador from "@/components/paginador";
 import { EsqueletoCola, BarraCarga, BotonAccion, Esqueleto, CargaPantalla } from "@/components/carga";
-import { Estado, Dato, Vacio, Aviso } from "@/components/marca";
-import { Segmentos, Buscador, Barra, Panel, Leyenda, Motivo, Copiar } from "@/components/piezas";
+import { Estado, Vacio, Aviso } from "@/components/marca";
+import { Segmentos, Buscador, Barra, Leyenda, Motivo, Copiar, Dialogo, IconoAlerta } from "@/components/piezas";
+import { SiglaBanco, ChipBanco, DatoCorto } from "@/components/banco";
 
+/**
+ * Revisión de solicitudes (comprobantes).
+ *
+ * Pensada para resolverse sin bajar: la cola a la izquierda; al abrir una,
+ * el comprobante en grande y, al lado, la tarjeta usada (en el color de su
+ * banco), el titular con su selfie, dónde se le deposita y los botones,
+ * siempre abajo a la vista. Rechazar se escribe en una ventana.
+ *
+ * El cliente ya pasó la verificación de identidad: aquí no se vuelve a
+ * consultar su DNI.
+ */
 
 // Motivos que se repiten. Un clic los escribe y se pueden ajustar.
 const MOTIVOS_FRECUENTES = [
@@ -41,6 +52,12 @@ const MOTIVOS_FRECUENTES = [
   "El comprobante ya fue usado en otra solicitud.",
 ];
 const BUCKET = "comprobantes";
+const BUCKET_KYC = "kyc-documentos";
+
+// Alto del área de trabajo: la pantalla menos el encabezado (60), los
+// márgenes (40) y la barra de filtros (66). El visor resta su barra (46).
+const ALTO_AREA = "2xl:h-[calc(100dvh-170px)] 2xl:min-h-[540px]";
+const ALTO_VISOR = "h-[60vh] 2xl:h-[calc(100dvh-216px)] 2xl:min-h-[400px]";
 
 const POR_PAGINA = 25;
 const MIN_MOTIVO = 10;
@@ -58,7 +75,24 @@ const FILTROS = [
 // y la comisión (migración 065) sin romper si aún no se aplicó.
 const CAMPOS = `*,
    tarjetas (banco, ultimos_4),
-   perfiles_cliente (nombres, apellidos, telefono, dni, user_id)`;
+   perfiles_cliente (nombres, apellidos, tipo_documento, telefono, dni, user_id, foto_selfie)`;
+
+const nombreDe = (c) => (c ? `${c.nombres || ""} ${c.apellidos || ""}`.trim() || "Sin nombre" : "Cliente sin perfil");
+const inicialesDe = (c) =>
+  c ? `${(c.nombres || "").trim()[0] || ""}${(c.apellidos || "").trim()[0] || ""}`.toUpperCase() || "?" : "?";
+
+/** Firma la selfie de la verificación del titular. */
+async function firmarSelfie(valor) {
+  const path = extraerPath(BUCKET_KYC, valor);
+  if (!path) return null;
+  const { urls } = await urlsFirmadas(BUCKET_KYC, [path]);
+  return urls[path] || null;
+}
+
+const porcentaje = (n) =>
+  Number(n)
+    .toFixed(2)
+    .replace(/\.?0+$/, "");
 
 function fechaCorta(iso) {
   return new Date(iso).toLocaleDateString("es-PE", {
@@ -308,13 +342,6 @@ export default function SolicitudesPage() {
     await contarPendientes();
   }
 
-  async function soltar(sol) {
-    const { ok, error: e } = await soltarCaso("solicitud", sol.id);
-    if (!ok) return setError("No se pudo soltar el caso: " + e);
-    await cargar(filtro, { silencioso: true });
-    await contarPendientes();
-  }
-
   /**
    * Carga el detalle de una solicitud al pulsarla.
    *
@@ -340,14 +367,15 @@ export default function SolicitudesPage() {
       contarPendientes();
     }
 
-    const [firmadas] = await Promise.all([
+    const [firmadas, selfie] = await Promise.all([
       firmarCampo(BUCKET, [sol], "comprobante_url", "comprobante"),
+      firmarSelfie(sol.perfiles_cliente?.foto_selfie),
       cargarCuentas(sol.cliente_id),
     ]);
 
     // Si mientras tanto se pulsó otra, esta respuesta ya no vale.
     setSeleccionada((actual) =>
-      actual && actual.id === sol.id ? { ...actual, ...firmadas[0] } : actual,
+      actual && actual.id === sol.id ? { ...actual, ...firmadas[0], selfie } : actual,
     );
     setCargandoDetalle(false);
   }
@@ -420,12 +448,7 @@ export default function SolicitudesPage() {
 
   async function rechazar(sol) {
     const texto = motivo.trim();
-    if (texto.length < MIN_MOTIVO) {
-      setError(
-        `Explica el motivo con al menos ${MIN_MOTIVO} caracteres: el cliente lo va a leer en su app.`,
-      );
-      return;
-    }
+    if (texto.length < MIN_MOTIVO) return;
     await resolver(sol, false, texto);
   }
 
@@ -443,16 +466,29 @@ export default function SolicitudesPage() {
         )
       : solicitudes;
 
-  const cliente = seleccionada?.perfiles_cliente;
-  const nombre = cliente
-    ? `${cliente.nombres} ${cliente.apellidos}`
-    : "Cliente sin perfil";
+  const s = seleccionada;
+  const cliente = s?.perfiles_cliente;
+  const nombre = nombreDe(cliente);
+  const tipoDoc = cliente?.tipo_documento === "ce" ? "Carnet de extranjería" : "DNI";
+  const bancoTarjeta = s?.tarjetas?.banco || s?.banco;
+  const resoluble = s?.estado === "pendiente" && puedeResolver;
 
   const libres = Number(cola?.libres || 0);
   const esMia =
-    seleccionada?.estado === "pendiente" &&
-    seleccionada?.asignado_a === session.user.id &&
-    minutosRestantes(seleccionada?.asignado_en) > 0;
+    s?.estado === "pendiente" &&
+    s?.asignado_a === session.user.id &&
+    minutosRestantes(s?.asignado_en) > 0;
+
+  // Dónde se le deposita: la cuenta que eligió en la solicitud. Si ya no
+  // está activa queda lo que se guardó de ella; en solicitudes antiguas,
+  // sin cuenta elegida, las que pueden recibir según el banco.
+  const elegida = s?.cuenta_deposito_id ? cuentas.find((c) => c.id === s.cuenta_deposito_id) : null;
+  const guardada =
+    !elegida && s?.deposito_banco
+      ? { banco: s.deposito_banco, tipo: s.deposito_tipo, ultimos4: s.deposito_ultimos4 }
+      : null;
+  const destinos = elegida ? [elegida] : guardada ? [] : cuentas.filter((c) => recibeDeposito(bancoTarjeta, c));
+  const otrasCuentas = cuentas.filter((c) => !destinos.includes(c));
 
   return (
     <Shell
@@ -485,7 +521,8 @@ export default function SolicitudesPage() {
     >
       <BarraCarga activa={refrescando} />
 
-      {error && (
+      {/* Con una solicitud abierta, el error sale en su panel. */}
+      {error && !s && (
         <Aviso className="mb-4 animate-aparecer" titulo="No se pudo completar" onCerrar={() => setError("")}>
           {error}
         </Aviso>
@@ -532,9 +569,9 @@ export default function SolicitudesPage() {
         </div>
       </Barra>
 
-      <div className="grid gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
+      <div className={cn("grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]", ALTO_AREA)}>
         {/* ══════════ Cola o historial ══════════ */}
-        <section className="flex min-w-0 flex-col xl:sticky xl:top-[76px] xl:max-h-[calc(100dvh-150px)] xl:self-start">
+        <section className="flex min-h-0 min-w-0 flex-col">
           {esCola && esGestor && (
             <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
               Tus casos
@@ -573,12 +610,12 @@ export default function SolicitudesPage() {
               <div
                 className={cn(
                   "scroll-fino -mx-1 min-h-0 flex-1 space-y-2 overflow-y-auto px-1 pb-1 transition-opacity",
-                  "max-h-[60vh] xl:max-h-none",
+                  "max-h-[60vh] 2xl:max-h-none",
                   refrescando && "opacity-60",
                 )}
               >
                 {visibles.map((sol, i) => {
-                  const activa = seleccionada?.id === sol.id;
+                  const activa = s?.id === sol.id;
                   const e = espera(sol.created_at);
                   const tomada = esCola && sol.asignado_a && minutosRestantes(sol.asignado_en) > 0;
                   return (
@@ -587,7 +624,7 @@ export default function SolicitudesPage() {
                       onClick={() => abrir(sol)}
                       style={{ "--retraso": `${Math.min(i, 12) * 28}ms` }}
                       className={cn(
-                        "entra pulsable w-full rounded-xl border bg-card px-3.5 py-3 text-left",
+                        "entra pulsable flex w-full items-center gap-3 rounded-xl border bg-card px-3 py-2.5 text-left",
                         tomada &&
                           (sol.asignado_a === session.user.id
                             ? "border-l-4 border-l-marca-600"
@@ -597,41 +634,38 @@ export default function SolicitudesPage() {
                           : "border-border hover:border-marca-200 hover:shadow-panel",
                       )}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="cifras font-mono text-chico font-bold text-marca-700">{sol.codigo}</span>
-                        {!sol.comprobante_url && (
-                          <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-700">Sin foto</span>
-                        )}
-                        <span
-                          className={cn(
-                            "ml-auto inline-flex shrink-0 items-center gap-1 text-xs",
-                            esCola && e.urgente ? "font-bold text-oro-700" : "font-medium text-muted-foreground",
-                          )}
-                        >
-                          {esCola && e.urgente && <Reloj className="h-3.5 w-3.5" />}
-                          {esCola ? e.texto : fechaCorta(sol.fecha_revision || sol.created_at)}
-                        </span>
-                      </div>
-                      <p className="mt-1 truncate text-md font-semibold">
-                        {sol.perfiles_cliente
-                          ? `${sol.perfiles_cliente.nombres} ${sol.perfiles_cliente.apellidos}`
-                          : "Cliente sin perfil"}
-                      </p>
-                      <div className="mt-0.5 flex items-center gap-2 text-chico text-muted-foreground">
-                        <span className="font-semibold text-foreground/75">{sol.tarjetas?.banco || sol.banco}</span>
-                        <span className="cifras font-mono">···· {sol.tarjetas?.ultimos_4 || "····"}</span>
-                        {!esCola && <Estado valor={sol.estado} className="ml-auto" />}
-                        {tomada && (
-                          <span className="ml-auto">
-                            <Revisor
-                              id={sol.asignado_a}
-                              persona={equipo[sol.asignado_a]}
-                              minutos={minutosRestantes(sol.asignado_en)}
-                              propio={sol.asignado_a === session.user.id}
-                            />
+                      <SiglaBanco banco={sol.tarjetas?.banco || sol.banco} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="min-w-0 truncate text-sm font-bold text-foreground">{nombreDe(sol.perfiles_cliente)}</span>
+                          <span
+                            className={cn(
+                              "ml-auto inline-flex shrink-0 items-center gap-1 text-xs",
+                              esCola && e.urgente ? "font-bold text-oro-700" : "font-medium text-muted-foreground",
+                            )}
+                          >
+                            {esCola && e.urgente && <Reloj className="h-3.5 w-3.5" />}
+                            {esCola ? e.texto : fechaCorta(sol.fecha_revision || sol.created_at)}
                           </span>
-                        )}
-                      </div>
+                        </span>
+                        <span className="mt-0.5 flex items-center gap-2 text-chico text-muted-foreground">
+                          <span className="cifras min-w-0 truncate font-mono">{sol.codigo}</span>
+                          {!sol.comprobante_url && (
+                            <span className="shrink-0 rounded bg-red-50 px-1.5 py-px text-xs font-bold text-red-700">Sin foto</span>
+                          )}
+                          {!esCola && <Estado valor={sol.estado} className="ml-auto" />}
+                          {tomada && (
+                            <span className="ml-auto shrink-0">
+                              <Revisor
+                                id={sol.asignado_a}
+                                persona={equipo[sol.asignado_a]}
+                                minutos={minutosRestantes(sol.asignado_en)}
+                                propio={sol.asignado_a === session.user.id}
+                              />
+                            </span>
+                          )}
+                        </span>
+                      </span>
                     </button>
                   );
                 })}
@@ -668,255 +702,283 @@ export default function SolicitudesPage() {
         </section>
 
         {/* ══════════ Detalle ══════════ */}
-        <section ref={detalleRef} className="min-w-0 scroll-mt-20">
+        <section ref={detalleRef} className="min-h-0 min-w-0 scroll-mt-20">
           {primeraCarga ? (
-            <div className="space-y-4">
-              <Esqueleto className="h-16 w-full rounded-xl" />
-              <div className="grid gap-4 2xl:grid-cols-2">
-                <Esqueleto className="h-[480px] rounded-xl" />
-                <div className="space-y-4">
-                  <Esqueleto className="h-40 rounded-xl" />
-                  <Esqueleto className="h-32 rounded-xl" />
-                </div>
-              </div>
+            <div className="grid h-full gap-4 2xl:grid-cols-[minmax(0,1fr)_410px]">
+              <Esqueleto className={cn("rounded-xl", ALTO_VISOR)} />
+              <Esqueleto className="h-[420px] rounded-xl 2xl:h-full" />
             </div>
-          ) : !seleccionada ? (
+          ) : !s ? (
             <Vacio
-              className="min-h-[360px]"
+              className="h-full min-h-[360px]"
               icono={<Documento />}
               titulo="Elige una solicitud de la lista"
               detalle="Al pulsarla se cargan el comprobante, los datos del titular y su cuenta de destino."
             />
           ) : (
-            <div key={seleccionada.id} className="animate-aparecer space-y-4">
-              {/* Encabezado */}
-              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-panel">
-                <h2 className="cifras font-mono text-lg font-bold text-marca-700">{seleccionada.codigo}</h2>
-                <Copiar texto={seleccionada.codigo} soloIcono etiqueta="Copiar el código" />
-                <Estado valor={seleccionada.estado} />
-                <Pista texto={`Enviada el ${fechaLarga(seleccionada.created_at)}`}>
-                  <span className="cursor-help text-sm text-muted-foreground">{espera(seleccionada.created_at).texto}</span>
-                </Pista>
-
-                {esMia && (
-                  <div className="ml-auto flex items-center gap-2">
-                    <Pista fin texto="Es tuya mientras dure la reserva. Al agotarse vuelve a la cola y cualquiera puede tomarla.">
-                      <span className="cifras inline-flex cursor-help items-center gap-1 rounded-full bg-oro-100 px-2.5 py-1 text-xs font-bold text-oro-700">
-                        <Reloj className="h-3.5 w-3.5" />
-                        {minutosRestantes(seleccionada.asignado_en)} min
-                      </span>
-                    </Pista>
-                    <Pista fin texto="Devolverla a la cola para que la tome otra persona.">
-                      <BotonAccion tono="neutro" tamano="chico" onClick={() => soltar(seleccionada)}>
-                        Soltar
-                      </BotonAccion>
-                    </Pista>
-                  </div>
+            <div key={s.id} className="grid h-full animate-aparecer gap-4 2xl:grid-cols-[minmax(0,1fr)_410px]">
+              {/* Comprobante */}
+              <div className="min-w-0">
+                {cargandoDetalle && !s.comprobante && !s.comprobante_error ? (
+                  <Esqueleto className={cn("w-full rounded-xl", ALTO_VISOR)} />
+                ) : (
+                  <Visor
+                    url={s.comprobante}
+                    error={s.comprobante_error}
+                    path={s.comprobante_path}
+                    titulo="Comprobante de la operación"
+                    alto={ALTO_VISOR}
+                  />
                 )}
               </div>
 
-              {ajeno && (
-                <Aviso tono="espera" titulo={`${ajeno.quien} está revisando este caso`}>
-                  Puedes mirarlo, pero resolverlo es suyo hasta que pasen {ajeno.libre_en} min.
-                </Aviso>
-              )}
-
-              <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,1fr)]">
-                {/* Comprobante */}
-                <div className="min-w-0 space-y-3">
-                  {cargandoDetalle ? (
-                    <Esqueleto className="h-[520px] w-full rounded-xl" />
-                  ) : (
-                    <Visor
-                      url={seleccionada.comprobante}
-                      error={seleccionada.comprobante_error}
-                      path={seleccionada.comprobante_path}
-                      titulo="Comprobante de la operación"
-                      alto="h-[520px]"
-                    />
-                  )}
-                  {seleccionada.modalidad && (
-                    <div
-                      className={
-                        seleccionada.modalidad === "siguiente"
-                          ? "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3"
-                          : "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-muted/50 px-4 py-3"
-                      }
-                    >
-                      <p className="t-etiqueta text-sky-800">Depósito</p>
-                      <p className="text-md font-semibold">
-                        {seleccionada.modalidad === "siguiente" ? "Al día siguiente" : "Mismo día"}
-                        {seleccionada.porcentaje_comision != null &&
-                          ` · comisión ${Number(seleccionada.porcentaje_comision)
-                            .toFixed(2)
-                            .replace(/\.?0+$/, "")} %`}
+              {/* Decisión: todo en una columna, los botones siempre abajo */}
+              <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-panel">
+                <div className="scroll-fino min-h-0 flex-1 overflow-y-auto">
+                  {/* La tarjeta usada, con el color de su banco */}
+                  <div
+                    className="flex items-center gap-3 px-5 py-3.5"
+                    style={{ backgroundColor: colorBanco(bancoTarjeta).fondo, color: colorBanco(bancoTarjeta).texto }}
+                  >
+                    <IconoTarjeta className="h-6 w-6 shrink-0 opacity-80" />
+                    <div className="min-w-0 flex-1">
+                      <p className="flex min-w-0 items-baseline gap-2.5">
+                        <span className="min-w-0 truncate text-lg font-extrabold leading-tight">{nombreBanco(bancoTarjeta)}</span>
+                        <span className="cifras shrink-0 font-mono text-lg font-bold tracking-wider">···· {s.tarjetas?.ultimos_4 || "····"}</span>
                       </p>
-                      {seleccionada.modalidad === "siguiente" && seleccionada.fecha_deposito && (
-                        <p className="text-chico text-muted-foreground">
-                          Se paga el{" "}
-                          {new Date(`${seleccionada.fecha_deposito}T12:00:00`).toLocaleDateString("es-PE", {
-                            weekday: "long",
-                            day: "numeric",
-                            month: "long",
-                          })}
-                        </p>
+                      <p className="mt-0.5 text-xs font-semibold opacity-85">Tarjeta usada</p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-white/95 p-px">
+                      <Estado valor={s.estado} />
+                    </span>
+                  </div>
+
+                  {/* Código, espera y reserva */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-border px-5 py-2.5">
+                    <span className="cifras font-mono text-sm font-bold text-marca-700">{s.codigo}</span>
+                    <Copiar texto={s.codigo} soloIcono etiqueta="Copiar el código" />
+                    <Pista texto={`Enviada el ${fechaLarga(s.created_at)}`}>
+                      <span className="cursor-help text-xs text-muted-foreground">{espera(s.created_at).texto}</span>
+                    </Pista>
+                    {esMia && (
+                      <Pista fin texto="Es tuya mientras dure la reserva. Al agotarse vuelve sola a la cola y cualquiera puede tomarla.">
+                        <span className="cifras ml-auto inline-flex cursor-help items-center gap-1 rounded-full bg-oro-100 px-2 py-0.5 text-xs font-bold text-oro-700">
+                          <Reloj className="h-3.5 w-3.5" />
+                          {minutosRestantes(s.asignado_en)} min
+                        </span>
+                      </Pista>
+                    )}
+                  </div>
+
+                  {/* Avisos */}
+                  {(error || ajeno) && (
+                    <div className="space-y-2 border-b border-border p-3">
+                      {error && (
+                        <Aviso titulo="No se pudo completar" onCerrar={() => setError("")}>
+                          {error}
+                        </Aviso>
+                      )}
+                      {ajeno && (
+                        <Aviso tono="espera" titulo={`${ajeno.quien} está revisando este caso`}>
+                          Puedes mirarlo, pero resolverlo es suyo hasta que pasen {ajeno.libre_en} min.
+                        </Aviso>
                       )}
                     </div>
                   )}
-                  {seleccionada.nota_cliente && (
-                    <div className="rounded-xl border border-marca-200 bg-marca-50 px-4 py-3">
-                      <p className="t-etiqueta text-marca-600">Nota del cliente</p>
-                      <p className="mt-1 text-md">{seleccionada.nota_cliente}</p>
-                    </div>
-                  )}
-                </div>
 
-                {/* Datos y acciones */}
-                <div className="min-w-0 space-y-4">
-                  <AlertasCliente key={seleccionada.cliente_id} id={seleccionada.cliente_id} />
-                  <Panel titulo="Titular">
-                    <p className="text-base font-semibold">{nombre}</p>
-                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
-                      <Dato etiqueta="DNI" mono accion={<Copiar texto={cliente?.dni} soloIcono etiqueta="Copiar DNI" />}>
-                        {cliente?.dni}
-                      </Dato>
-                      <Dato etiqueta="Teléfono" mono accion={<Copiar texto={cliente?.telefono} soloIcono etiqueta="Copiar teléfono" />}>
-                        {cliente?.telefono}
-                      </Dato>
-                      <Dato etiqueta="Tarjeta usada">{seleccionada.tarjetas?.banco || seleccionada.banco}</Dato>
-                      <Dato etiqueta="Terminación" mono>
-                        ···· {seleccionada.tarjetas?.ultimos_4}
-                      </Dato>
-                    </dl>
-                  </Panel>
-
-                  <Panel
-                    titulo="Cuenta de destino"
-                    ayuda="El pago se deposita en una cuenta del mismo banco de la tarjeta. Las de otros bancos salen atenuadas."
-                  >
-                    {cargandoCuentas ? (
-                      <div className="space-y-2">
-                        <Esqueleto className="h-12 w-full" />
-                        <Esqueleto className="h-12 w-full" />
+                  {/* Titular */}
+                  <div className="space-y-3.5 border-b border-border px-5 py-4">
+                    <div className="flex items-center gap-4">
+                      <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full bg-marca-50 ring-2 ring-border ring-offset-2">
+                        {s.selfie ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={s.selfie} alt={`Selfie de ${nombre}`} className="h-full w-full object-cover" />
+                        ) : (
+                          <span
+                            className={cn(
+                              "flex h-full w-full items-center justify-center text-md font-bold text-marca-700",
+                              cargandoDetalle && "animate-pulse",
+                            )}
+                          >
+                            {inicialesDe(cliente)}
+                          </span>
+                        )}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="t-etiqueta">Titular</p>
+                        <p className="mt-0.5 break-words text-lg font-bold leading-tight">{nombre}</p>
                       </div>
-                    ) : cuentas.length === 0 ? (
-                      <Aviso>Sin cuenta registrada: no hay dónde depositarle.</Aviso>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-x-4 rounded-lg bg-muted/40 px-3.5 py-2.5">
+                      <DatoCorto etiqueta={tipoDoc} copiar={cliente?.dni} mono chico>
+                        {cliente?.dni}
+                      </DatoCorto>
+                      <DatoCorto etiqueta="Celular" copiar={cliente?.telefono} mono chico>
+                        {cliente?.telefono}
+                      </DatoCorto>
+                    </dl>
+                  </div>
+
+                  {/* Depósito */}
+                  <div className="space-y-3 border-b border-border px-5 py-4">
+                    <div className="flex items-center gap-2">
+                      <p className="t-seccion">Depósito</p>
+                      <Pista texto="La cuenta que eligió el cliente al enviar la solicitud. Una tarjeta de banco principal recibe en una cuenta de ahorros del mismo banco." />
+                      {s.modalidad && (
+                        <span
+                          className={cn(
+                            "ml-auto rounded-full px-2 py-0.5 text-xs font-bold",
+                            s.modalidad === "siguiente" ? "bg-sky-50 text-sky-800" : "bg-muted text-foreground",
+                          )}
+                        >
+                          {s.modalidad === "siguiente" ? "Al día siguiente" : "Mismo día"}
+                          {s.porcentaje_comision != null && ` · ${porcentaje(s.porcentaje_comision)} %`}
+                        </span>
+                      )}
+                    </div>
+                    {s.modalidad === "siguiente" && s.fecha_deposito && (
+                      <p className="-mt-1.5 text-xs text-muted-foreground">
+                        Se paga el{" "}
+                        {new Date(`${s.fecha_deposito}T12:00:00`).toLocaleDateString("es-PE", {
+                          weekday: "long",
+                          day: "numeric",
+                          month: "long",
+                        })}
+                      </p>
+                    )}
+
+                    {cargandoCuentas ? (
+                      <Esqueleto className="h-14 w-full rounded-lg" />
+                    ) : guardada ? (
+                      <CuentaDestino banco={guardada.banco} tipo={guardada.tipo} numero={guardada.ultimos4 ? `···· ${guardada.ultimos4}` : null} />
+                    ) : destinos.length === 0 ? (
+                      <Aviso>Sin cuenta donde depositarle.</Aviso>
                     ) : (
                       <ul className="space-y-2">
-                        {cuentas.map((c) => {
-                          const mismoBanco = c.banco === (seleccionada.tarjetas?.banco || seleccionada.banco);
-                          return (
-                            <li
-                              key={c.id}
-                              className={cn(
-                                "flex items-center justify-between gap-3 rounded-lg border px-3 py-2",
-                                mismoBanco ? "border-emerald-200 bg-emerald-50/70" : "border-border bg-muted/30 opacity-60",
-                              )}
-                            >
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-bold">{c.banco}</p>
-                                <p className="text-xs font-semibold text-muted-foreground">
-                                  {c.tipo === "interbancaria" ? "CCI" : "Ahorros"}
-                                </p>
-                              </div>
-                              <span className="flex items-center gap-1">
-                                <span className="cifras font-mono text-sm font-semibold text-marca-700">{c.numero_cuenta}</span>
-                                <Copiar texto={c.numero_cuenta} soloIcono etiqueta="Copiar el número" />
-                              </span>
-                            </li>
-                          );
-                        })}
+                        {destinos.map((c) => (
+                          <li key={c.id}>
+                            <CuentaDestino banco={c.banco} tipo={c.tipo} numero={c.numero_cuenta} copiar />
+                          </li>
+                        ))}
                       </ul>
                     )}
-                  </Panel>
+                    {!cargandoCuentas && otrasCuentas.length > 0 && (
+                      <Pista
+                        texto={otrasCuentas
+                          .map((c) => `${nombreBanco(c.banco)} ${c.tipo === "interbancaria" ? "CCI" : "ahorros"} ${c.numero_cuenta}`)
+                          .join(" · ")}
+                      >
+                        <span className="cursor-help text-xs text-muted-foreground underline decoration-dotted underline-offset-2">
+                          Tiene {otrasCuentas.length} cuenta{otrasCuentas.length === 1 ? "" : "s"} más
+                        </span>
+                      </Pista>
+                    )}
+                  </div>
+
+                  {s.nota_cliente && (
+                    <div className="border-b border-border px-5 py-4">
+                      <p className="t-etiqueta text-marca-600">Nota del cliente</p>
+                      <p className="mt-1 text-sm">{s.nota_cliente}</p>
+                    </div>
+                  )}
 
                   {/* Resolución */}
-                  {seleccionada.estado === "pendiente" && !puedeResolver ? (
-                    <Aviso tono="info">
-                      Estás viendo la cola como supervisor: aprobar y rechazar es del gestor que tiene el caso.
-                    </Aviso>
-                  ) : seleccionada.estado === "pendiente" ? (
-                    <Panel titulo={modoRechazo ? "Rechazar la solicitud" : "Resolver"} tono={modoRechazo ? "peligro" : undefined}>
-                      {!modoRechazo ? (
-                        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                          {puedeAprobar && (
-                          <BotonAccion
-                            onClick={() => aprobar(seleccionada)}
-                            cargando={accion === "aprobando"}
-                            disabled={accion !== null || Boolean(ajeno)}
-                            tono="exito"
-                            tamano="grande"
-                            icono={<Check className="h-5 w-5" />}
-                          >
-                            {accion === "aprobando" ? "Aprobando..." : "Aprobar solicitud"}
-                          </BotonAccion>
-                          )}
-                          {puedeRechazar && (
-                          <BotonAccion
-                            onClick={() => setModoRechazo(true)}
-                            disabled={accion !== null || Boolean(ajeno)}
-                            tono="peligroSuave"
-                            tamano="grande"
-                            icono={<Cruz className="h-4 w-4" />}
-                          >
-                            Rechazar
-                          </BotonAccion>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="animate-aparecer space-y-3">
-                          <Motivo
-                            id="motivo"
-                            etiqueta="Motivo"
-                            ayuda="El cliente lee este texto en su app. Dile exactamente qué corregir para que pueda volver a enviarlo."
-                            valor={motivo}
-                            onCambio={setMotivo}
-                            minimo={MIN_MOTIVO}
-                            sugerencias={MOTIVOS_FRECUENTES}
-                            placeholder="Ej: El voucher está borroso y no se distingue el número de operación."
-                          />
-                          <div className="flex justify-end gap-2">
-                            <BotonAccion
-                              onClick={() => {
-                                setModoRechazo(false);
-                                setMotivo("");
-                              }}
-                              disabled={accion !== null}
-                              tono="neutro"
-                            >
-                              Cancelar
-                            </BotonAccion>
-                            <BotonAccion
-                              onClick={() => rechazar(seleccionada)}
-                              cargando={accion === "rechazando"}
-                              disabled={accion !== null || motivo.trim().length < MIN_MOTIVO}
-                              tono="peligro"
-                            >
-                              {accion === "rechazando" ? "Rechazando..." : "Confirmar rechazo"}
-                            </BotonAccion>
-                          </div>
-                        </div>
-                      )}
-                    </Panel>
-                  ) : (
-                    <Panel titulo="Resolución">
-                      <Dato etiqueta="Resuelta el">
-                        {seleccionada.fecha_revision ? fechaLarga(seleccionada.fecha_revision) : null}
-                      </Dato>
-                      {seleccionada.motivo_rechazo && (
-                        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                  {s.estado === "pendiente" && !puedeResolver ? (
+                    <div className="p-4">
+                      <Aviso tono="info">Estás viendo la cola como supervisor: aprobar y rechazar es del gestor que tiene el caso.</Aviso>
+                    </div>
+                  ) : s.estado !== "pendiente" ? (
+                    <div className="space-y-3 px-5 py-4">
+                      <dl>
+                        <DatoCorto etiqueta={s.estado === "rechazado" ? "Rechazada el" : "Resuelta el"} completo>
+                          {s.fecha_revision ? fechaLarga(s.fecha_revision) : null}
+                        </DatoCorto>
+                      </dl>
+                      {s.motivo_rechazo && (
+                        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
                           <p className="t-etiqueta text-red-700">Motivo comunicado al cliente</p>
-                          <p className="mt-1 text-md text-red-900">{seleccionada.motivo_rechazo}</p>
+                          <p className="mt-1 text-sm text-red-900">{s.motivo_rechazo}</p>
                         </div>
                       )}
-                    </Panel>
-                  )}
+                    </div>
+                  ) : null}
                 </div>
-              </div>
+
+                {/* Botones: siempre a la vista */}
+                {resoluble && (puedeAprobar || puedeRechazar) && (
+                  <div className="flex shrink-0 gap-2 border-t border-border bg-muted/30 p-3">
+                    {puedeAprobar && (
+                      <Pista texto={ajeno ? "Otra persona tiene este caso." : null} className="block min-w-0 flex-1">
+                        <BotonAccion
+                          onClick={() => aprobar(s)}
+                          cargando={accion === "aprobando"}
+                          disabled={accion !== null || Boolean(ajeno)}
+                          tono="exito"
+                          tamano="grande"
+                          className="w-full"
+                          icono={<Check className="h-5 w-5" />}
+                        >
+                          {accion === "aprobando" ? "Aprobando..." : "Aprobar"}
+                        </BotonAccion>
+                      </Pista>
+                    )}
+                    {puedeRechazar && (
+                      <BotonAccion
+                        onClick={() => setModoRechazo(true)}
+                        disabled={accion !== null || Boolean(ajeno)}
+                        tono="peligroSuave"
+                        tamano="grande"
+                        className={puedeAprobar ? "shrink-0" : "w-full"}
+                        icono={<Cruz className="h-4 w-4" />}
+                      >
+                        Rechazar
+                      </BotonAccion>
+                    )}
+                  </div>
+                )}
+              </aside>
             </div>
           )}
         </section>
       </div>
+
+      {/* Rechazar: en una ventana, sin mover la ficha. */}
+      <Dialogo
+        abierto={modoRechazo}
+        onCerrar={() => setModoRechazo(false)}
+        bloqueado={accion === "rechazando"}
+        titulo="Rechazar la solicitud"
+        descripcion="El cliente lee este texto en su app. Dile exactamente qué corregir para que pueda volver a enviarlo."
+        tono="peligro"
+        icono={<IconoAlerta />}
+        ancho="max-w-lg"
+        pie={
+          <>
+            <BotonAccion tono="neutro" disabled={accion !== null} onClick={() => setModoRechazo(false)}>
+              Cancelar
+            </BotonAccion>
+            <BotonAccion
+              tono="peligro"
+              onClick={() => s && rechazar(s)}
+              cargando={accion === "rechazando"}
+              disabled={accion !== null || motivo.trim().length < MIN_MOTIVO}
+            >
+              {accion === "rechazando" ? "Rechazando..." : "Confirmar rechazo"}
+            </BotonAccion>
+          </>
+        }
+      >
+        <Motivo
+          id="motivo"
+          etiqueta="Motivo"
+          valor={motivo}
+          onCambio={setMotivo}
+          minimo={MIN_MOTIVO}
+          filas={4}
+          sugerencias={MOTIVOS_FRECUENTES}
+          placeholder="Ej: El voucher está borroso y no se distingue el número de operación."
+        />
+      </Dialogo>
 
       <SinPendientes visible={sinPendientes} onCerrar={() => setSinPendientes(false)} />
 
@@ -934,5 +996,24 @@ export default function SolicitudesPage() {
         }
       />
     </Shell>
+  );
+}
+
+/** La cuenta donde se deposita, con su banco en color. */
+function CuentaDestino({ banco, tipo, numero, copiar = false }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2.5">
+      <SiglaBanco banco={banco} className="h-9 w-9 text-[10px]" />
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-1.5 text-sm font-bold">
+          {nombreBanco(banco)}
+          <span className="text-xs font-semibold text-muted-foreground">{tipo === "interbancaria" ? "CCI" : "Ahorros"}</span>
+        </p>
+        <p className="flex min-w-0 items-center gap-1">
+          <span className="cifras truncate font-mono text-md font-bold text-marca-700">{numero || "—"}</span>
+          {copiar && numero && <Copiar texto={numero} soloIcono etiqueta="Copiar el número de cuenta" />}
+        </p>
+      </div>
+    </div>
   );
 }

@@ -6,15 +6,17 @@ import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { actualizar, registrarAuditoria, explicarError } from "@/lib/acciones";
 import { estadoCola, contadoresDe } from "@/lib/cola";
+import { DropdownMenu } from "radix-ui";
 import { cn } from "@/lib/utils";
-import Shell, { Personas, Mas, Candado, Basura } from "@/components/shell";
+import Shell, { Personas, Mas, Candado, Basura, Lapiz, Burbuja } from "@/components/shell";
+import { ChipBanco } from "@/components/banco";
 import { fijarAccesoChat } from "@/components/abrirChat";
-import { Vacio, Aviso, Estado } from "@/components/marca";
+import { Vacio, Aviso } from "@/components/marca";
 import { EsqueletoFilas, BotonAccion, CargaPantalla } from "@/components/carga";
-import { Segmentos, Buscador, Barra, Leyenda, Campo, Dialogo, Tostada, Copiar, Avatar, useConfirmar, IconoCheck } from "@/components/piezas";
+import { Segmentos, Buscador, Barra, Campo, Dialogo, Tostada, Copiar, Avatar, useConfirmar, IconoCheck } from "@/components/piezas";
 import Pista from "@/components/pista";
 import { puede, soloLecturaEn } from "@/lib/permisos";
-import { BANCOS_TARJETA } from "@/lib/bancos";
+import { BANCOS_TARJETA, nombreBanco } from "@/lib/bancos";
 import Desplegable from "@/components/desplegable";
 import { ESTADOS } from "@/lib/disponibilidad";
 
@@ -41,6 +43,13 @@ const ROLES = [
   },
 ];
 const rolDe = (clave) => ROLES.find((r) => r.clave === clave);
+// Color de cada rol: el rol se reconoce sin leerlo.
+const ESTILO_ROL = {
+  gestor: "bg-marca-50 text-marca-700 ring-marca-200",
+  pagos: "bg-oro-50 text-oro-800 ring-oro-300",
+  supervisor: "bg-marca-600 text-white ring-marca-600",
+  admin: "bg-marca-900 text-white ring-marca-900",
+};
 
 const CORREO = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
 const NUEVO = { email: "", rol: "gestor", sede_id: "" };
@@ -67,6 +76,10 @@ export default function EquipoPage() {
   const [bancosPago, setBancosPago] = useState({});
   const [confirmar, ventanaConfirmar] = useConfirmar();
   const [sincronizando, setSincronizando] = useState(false);
+  // Ventana de rol, sede y bancos (se abre desde el menú ⋯ de cada fila).
+  const [editando, setEditando] = useState(null);
+  const [borrador, setBorrador] = useState({ rol: "gestor", sede_id: "" });
+  const [errorEdicion, setErrorEdicion] = useState("");
   const router = useRouter();
 
   const cargar = useCallback(async () => {
@@ -192,32 +205,61 @@ export default function EquipoPage() {
     cargar();
   }
 
-  async function cambiarRol(persona, rol) {
-    if (persona.id === session.user.id) return setError("No puedes cambiarte el rol a ti mismo.");
-    const si = await confirmar({
-      titulo: `¿Cambiar el rol de ${persona.email}?`,
-      texto: `Pasará de ${rolDe(persona.rol)?.etiqueta || "sin rol"} a ${rolDe(rol)?.etiqueta}. ${rolDe(rol)?.detalle}`,
-      boton: "Cambiar rol",
-      tono: rol === "admin" ? "atencion" : "info",
-    });
-    if (!si) return;
+  /** Abre la ventana para cambiar rol, sede y bancos de una persona. */
+  function abrirEdicion(persona) {
+    setBorrador({ rol: persona.rol, sede_id: persona.sede_id || "" });
+    setErrorEdicion("");
+    setEditando(persona);
+  }
 
-    setGuardando(persona.id);
-    setError("");
-    const r = await actualizar("users", { id: persona.id }, { rol });
+  /**
+   * Guarda rol y sede de una vez. La ventana ya muestra qué hace el rol
+   * nuevo, así que no se pide otra confirmación encima.
+   */
+  async function guardarEdicion() {
+    const p = editando;
+    if (!p) return;
+    const cambios = {};
+    if (borrador.rol !== p.rol) {
+      if (p.id === session.user.id) return setErrorEdicion("No puedes cambiarte el rol a ti mismo.");
+      cambios.rol = borrador.rol;
+    }
+    // El administrador no pertenece a una sede: la suya no se toca.
+    if (borrador.rol !== "admin" && (borrador.sede_id || "") !== (p.sede_id || "")) cambios.sede_id = borrador.sede_id || null;
+    if (!Object.keys(cambios).length) return setEditando(null);
+
+    setGuardando(p.id);
+    setErrorEdicion("");
+    const r = await actualizar("users", { id: p.id }, cambios);
     setGuardando(null);
-    if (!r.ok) return setError("No se pudo cambiar el rol: " + r.error);
+    if (!r.ok) return setErrorEdicion("No se pudo guardar: " + r.error);
 
-    await registrarAuditoria({
-      usuario_id: session.user.id,
-      accion: "CAMBIAR_ROL",
-      entidad: "users",
-      entidad_id: persona.id,
-      datos_antes: { rol: persona.rol },
-      datos_despues: { rol },
-    });
-    setOk(`${persona.email} ahora es ${rolDe(rol)?.etiqueta.toLowerCase()}.`);
-    if (persona.atiende_chat) sincronizarChat({ silencioso: true });
+    if (cambios.rol) {
+      await registrarAuditoria({
+        usuario_id: session.user.id,
+        accion: "CAMBIAR_ROL",
+        entidad: "users",
+        entidad_id: p.id,
+        datos_antes: { rol: p.rol },
+        datos_despues: { rol: cambios.rol },
+      });
+    }
+    if ("sede_id" in cambios) {
+      await registrarAuditoria({
+        usuario_id: session.user.id,
+        accion: "CAMBIAR_SEDE",
+        entidad: "users",
+        entidad_id: p.id,
+        datos_despues: { sede_id: cambios.sede_id },
+      });
+    }
+    setOk(
+      cambios.rol
+        ? `${p.email} ahora es ${rolDe(cambios.rol)?.etiqueta.toLowerCase()}.`
+        : `Sede de ${p.email} actualizada.`,
+    );
+    setEditando(null);
+    if (p.atiende_chat) sincronizarChat({ silencioso: true });
     cargar();
   }
 
@@ -250,25 +292,6 @@ export default function EquipoPage() {
       entidad_id: persona.id,
       datos_despues: { banco },
     });
-  }
-
-  async function cambiarSede(persona, sedeId) {
-    setGuardando(persona.id);
-    setError("");
-    const r = await actualizar("users", { id: persona.id }, { sede_id: sedeId || null });
-    setGuardando(null);
-    if (!r.ok) return setError("No se pudo cambiar la sede: " + r.error);
-
-    await registrarAuditoria({
-      usuario_id: session.user.id,
-      accion: "CAMBIAR_SEDE",
-      entidad: "users",
-      entidad_id: persona.id,
-      datos_despues: { sede_id: sedeId },
-    });
-    setOk(`Sede de ${persona.email} actualizada.`);
-    if (persona.atiende_chat) sincronizarChat({ silencioso: true });
-    cargar();
   }
 
   async function alternarBloqueo(persona) {
@@ -472,8 +495,8 @@ export default function EquipoPage() {
       descripcion={`${equipo.length} persona${equipo.length === 1 ? "" : "s"} con acceso al panel`}
       ayuda={
         esAdmin
-          ? "Como administrador cambias roles, sedes y bancos de Pagos desde esta lista."
-          : "Cambiar roles y mover gente entre sedes es del administrador. Tú creas gestores para tu sede y puedes bloquearlos."
+          ? "Como administrador cambias roles, sedes y bancos de Pagos desde el menú ⋯ de cada persona. El punto sobre la inicial dice si está conectada."
+          : "Cambiar roles y mover gente entre sedes es del administrador. Tú creas gestores para tu sede y puedes bloquearlos desde el menú ⋯."
       }
       acciones={
         <div className="flex items-center gap-2">
@@ -540,21 +563,19 @@ export default function EquipoPage() {
       ) : (
         <div className="overflow-hidden rounded-xl border border-border bg-card shadow-panel">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-sm">
+            <table className="w-full min-w-[720px] text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50 text-left">
-                  <th className="px-4 py-2.5 t-etiqueta">Persona</th>
-                  <th className="px-4 py-2.5 t-etiqueta">Rol</th>
-                  <th className="px-4 py-2.5 t-etiqueta">Sede</th>
+                  <th className="px-5 py-2.5 t-etiqueta">Persona</th>
+                  <th className="px-4 py-2.5 t-etiqueta">Rol y sede</th>
                   {verRendimiento && (
-                  <th className="px-4 py-2.5 t-etiqueta">
-                    <span className="inline-flex items-center gap-1">
-                      Últimos 7 días
-                      <Pista texto="Casos resueltos (solicitudes, identidades y tarjetas). Pasa el cursor sobre el número para ver el detalle." />
-                    </span>
-                  </th>
+                    <th className="px-4 py-2.5 t-etiqueta">
+                      <span className="inline-flex items-center gap-1">
+                        7 días
+                        <Pista texto="Casos resueltos en los últimos 7 días (solicitudes, identidades y tarjetas). Pasa el cursor sobre el número para ver el detalle." />
+                      </span>
+                    </th>
                   )}
-                  <th className="px-4 py-2.5 t-etiqueta">Estado</th>
                   {conChat && (
                     <th className="px-4 py-2.5 t-etiqueta">
                       <Pista texto="Quién atiende el chat de clientes. Supervisor o administrador entra como jefe (ve todo y los reportes); gestor o pagos, como asesor (recibe chats).">
@@ -562,7 +583,9 @@ export default function EquipoPage() {
                       </Pista>
                     </th>
                   )}
-                  <th className="px-4 py-2.5" />
+                  <th className="w-14 px-4 py-2.5">
+                    <span className="sr-only">Opciones</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -572,166 +595,117 @@ export default function EquipoPage() {
                   const bloqueado = p.estado === "bloqueado";
                   const puedeBloquear = !yo && (esAdmin || (p.rol === "gestor" && p.sede_id === miSede));
                   const bancos = bancosPago[p.id] || [];
+                  const opciones = [
+                    puedeRol && !yo && { texto: "Editar rol y sede", icono: <Lapiz />, onSelect: () => abrirEdicion(p) },
+                    conChat &&
+                      puedeChat(p) && {
+                        texto: p.atiende_chat ? "Sacar del chat" : "Invitar al chat",
+                        icono: <Burbuja />,
+                        onSelect: () => alternarChat(p),
+                        deshabilitado: sincronizando,
+                      },
+                    puedeBloquearPersonal &&
+                      puedeBloquear && {
+                        texto: bloqueado ? "Desbloquear" : "Bloquear el acceso",
+                        icono: <Candado />,
+                        onSelect: () => alternarBloqueo(p),
+                        peligro: !bloqueado,
+                        separar: true,
+                      },
+                    esAdmin &&
+                      !yo &&
+                      puedeEliminar && {
+                        texto: "Eliminar cuenta",
+                        icono: <Basura />,
+                        onSelect: () => eliminarPersona(p),
+                        peligro: true,
+                        deshabilitado: sincronizando,
+                      },
+                  ].filter(Boolean);
                   return (
-                    <tr key={p.id} className={cn("align-top transition", bloqueado ? "bg-muted/40" : "hover:bg-muted/30")}>
-                      <td className="px-4 py-3">
+                    <tr key={p.id} className={cn("transition", bloqueado ? "bg-muted/40" : "hover:bg-muted/30")}>
+                      {/* Persona: el punto sobre la inicial dice si está conectada */}
+                      <td className="px-5 py-3">
                         <div className={cn("flex items-center gap-3", bloqueado && "opacity-60")}>
-                          <Avatar texto={p.email} tono={yo ? "oro" : "marca"} />
+                          <Presencia p={p} bloqueado={bloqueado}>
+                            <Avatar texto={p.email} tono={yo ? "oro" : "marca"} />
+                          </Presencia>
                           <div className="min-w-0">
-                            <p className="flex items-center gap-2 truncate font-semibold">
-                              {p.email}
-                              {yo && <span className="rounded bg-oro-100 px-1.5 py-0.5 text-xs font-bold text-oro-700">Tú</span>}
+                            <p className="flex items-center gap-2 font-semibold">
+                              <span className="truncate">{p.email}</span>
+                              {yo && <span className="shrink-0 rounded bg-oro-100 px-1.5 py-0.5 text-xs font-bold text-oro-700">Tú</span>}
+                              {bloqueado && (
+                                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-700">
+                                  <Candado className="h-3 w-3" /> Bloqueado
+                                </span>
+                              )}
                             </p>
-                            {p.disponibilidad && !bloqueado && <EstadoAhora p={p} />}
-                            {p.rol === "pagos" && (
-                              <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                                {BANCOS_TARJETA.map((b) => {
-                                  const activo = bancos.includes(b);
-                                  if (!esAdmin && !activo) return null;
-                                  return (
-                                    <button
-                                      key={b}
-                                      onClick={() => puedeBancos && alternarBancoPago(p, b)}
-                                      disabled={!puedeBancos || guardando === p.id}
-                                      aria-pressed={activo}
-                                      title={puedeBancos ? (activo ? `Quitar ${b}` : `Asignar ${b}`) : undefined}
-                                      className={cn(
-                                        "rounded-full px-2 py-0.5 text-xs font-bold ring-1 ring-inset transition",
-                                        activo ? "bg-marca-700 text-white ring-marca-700" : "bg-card text-muted-foreground ring-border hover:text-foreground",
-                                        puedeBancos ? "pulsable" : "cursor-default",
-                                        "disabled:opacity-60",
-                                      )}
-                                    >
-                                      {b}
-                                    </button>
-                                  );
-                                })}
-                                {!bancos.length && <span className="text-xs font-semibold text-oro-700">Sin bancos: no podrá pagar nada</span>}
-                              </div>
-                            )}
+                            {!bloqueado && p.disponibilidad && p.disponibilidad !== "desconectado" && <EstadoAhora p={p} />}
                           </div>
                         </div>
                       </td>
+
+                      {/* Rol y sede */}
                       <td className="px-4 py-3">
-                        {puedeRol ? (
-                          <Desplegable
-                            variante="panel"
-                            className="h-9 w-40 py-1 text-sm"
-                            aria-label={`Rol de ${p.email}`}
-                            valor={p.rol}
-                            onCambio={(v) => cambiarRol(p, v)}
-                            deshabilitado={guardando === p.id || yo}
-                            title={yo ? "No puedes cambiarte el rol a ti mismo" : undefined}
-                            opciones={[
-                              ...(p.rol === "cliente" ? [{ valor: "cliente", texto: "Sin rol asignado" }] : []),
-                              ...ROLES.map((r) => ({ valor: r.clave, texto: r.etiqueta, detalle: r.detalle })),
-                            ]}
-                          />
-                        ) : (
-                          <Pista texto={rolDe(p.rol)?.detalle || "Cambiar roles es del administrador"}>
-                            <span className="cursor-help rounded-full bg-muted px-2.5 py-1 text-chico font-bold text-muted-foreground">
-                              {rolDe(p.rol)?.etiqueta || "Sin rol asignado"}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <Pista texto={rolDe(p.rol)?.detalle || "Sin rol asignado"}>
+                            <span
+                              className={cn(
+                                "cursor-help rounded-full px-2.5 py-0.5 text-xs font-bold ring-1 ring-inset",
+                                ESTILO_ROL[p.rol] || "bg-muted text-muted-foreground ring-border",
+                              )}
+                            >
+                              {rolDe(p.rol)?.etiqueta || "Sin rol"}
                             </span>
                           </Pista>
+                          <span className={cn("text-sm", p.sede ? "text-foreground/80" : "text-muted-foreground")}>
+                            {p.rol === "admin" ? "Todas las sedes" : p.sede || "Sin sede"}
+                          </span>
+                        </div>
+                        {p.rol === "pagos" && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                            {bancos.length ? (
+                              bancos.map((b) => <ChipBanco key={b} banco={b} />)
+                            ) : (
+                              <span className="text-xs font-semibold text-oro-700">Sin bancos: no podrá pagar nada</span>
+                            )}
+                          </div>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        {puedeRol ? (
-                          <Desplegable
-                            variante="panel"
-                            className="h-9 w-44 py-1 text-sm"
-                            aria-label={`Sede de ${p.email}`}
-                            valor={p.sede_id || ""}
-                            onCambio={(v) => cambiarSede(p, v)}
-                            deshabilitado={guardando === p.id || p.rol === "admin"}
-                            title={p.rol === "admin" ? "El administrador no pertenece a una sede" : undefined}
-                            opciones={[
-                              { valor: "", texto: "Sin sede" },
-                              ...sedes.map((s) => ({ valor: s.id, texto: s.nombre })),
-                            ]}
-                          />
-                        ) : (
-                          <span className="text-muted-foreground">{p.sede || "Sin sede"}</span>
-                        )}
-                      </td>
+
                       {verRendimiento && (
-                      <td className="px-4 py-3">
-                        {m && Number(m.resueltas) > 0 ? (
-                          <Pista
-                            texto={`${m.aprobadas} aprobados · ${m.rechazadas} rechazados u observados${m.minutos_promedio ? ` · ${Math.round(m.minutos_promedio)} min por caso en promedio` : ""}`}
-                          >
-                            <span className="cifras cursor-help font-bold">{m.resueltas} resueltos</span>
-                          </Pista>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      )}
-                      <td className="px-4 py-3">
-                        <Estado valor={bloqueado ? "bloqueado" : "activo"} etiqueta={bloqueado ? "Bloqueado" : "Activo"} />
-                      </td>
-                      {conChat && (
                         <td className="px-4 py-3">
-                          <Interruptor
-                            activo={p.atiende_chat}
-                            deshabilitado={!puedeChat(p) || guardando === p.id || sincronizando}
-                            onCambio={() => alternarChat(p)}
-                            etiqueta={`${p.email} atiende el chat`}
-                            pista={
-                              bloqueado
-                                ? "Bloqueado: no entra al chat"
-                                : !puedeChat(p)
-                                  ? "Solo el administrador, o el supervisor con los gestores de su sede"
-                                  : p.atiende_chat
-                                    ? "Sacar del chat"
-                                    : "Invitar al chat"
-                            }
-                          />
-                          {p.atiende_chat && !bloqueado && (
-                            <span className="mt-1 block text-xs text-muted-foreground">
-                              {p.rol === "supervisor" || p.rol === "admin" ? "Jefe" : "Asesor"}
-                            </span>
+                          {m && Number(m.resueltas) > 0 ? (
+                            <Pista
+                              texto={`${m.aprobadas} aprobados · ${m.rechazadas} rechazados u observados${m.minutos_promedio ? ` · ${Math.round(m.minutos_promedio)} min por caso en promedio` : ""}`}
+                            >
+                              <span className="cursor-help">
+                                <span className="cifras text-md font-bold">{m.resueltas}</span>{" "}
+                                <span className="text-xs text-muted-foreground">resueltos</span>
+                              </span>
+                            </Pista>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </td>
                       )}
+
+                      {conChat && (
+                        <td className="px-4 py-3">
+                          {p.atiende_chat && !bloqueado ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
+                              <Burbuja className="h-3.5 w-3.5" />
+                              {p.rol === "supervisor" || p.rol === "admin" ? "Jefe" : "Asesor"}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      )}
+
                       <td className="px-4 py-3 text-right">
-                        {puedeBloquearPersonal && (
-                        <Pista
-                          texto={
-                            yo
-                              ? "No puedes bloquearte a ti mismo"
-                              : !puedeBloquear
-                                ? "Solo puedes bloquear gestores de tu sede"
-                                : bloqueado
-                                  ? "Devolverle el acceso al panel"
-                                  : "Quitarle el acceso al panel de inmediato"
-                          }
-                          fin
-                        >
-                          <BotonAccion
-                            tono={bloqueado ? "neutro" : "peligroSuave"}
-                            tamano="chico"
-                            onClick={() => alternarBloqueo(p)}
-                            disabled={guardando === p.id || !puedeBloquear}
-                            icono={<Candado className="h-3.5 w-3.5" />}
-                          >
-                            {bloqueado ? "Desbloquear" : "Bloquear"}
-                          </BotonAccion>
-                        </Pista>
-                        )}
-                        {esAdmin && !yo && puedeEliminar && (
-                          <Pista texto="Eliminar la cuenta (si ya trabajó, queda de baja y se conserva lo que hizo)" fin>
-                            <BotonAccion
-                              tono="peligroSuave"
-                              tamano="chico"
-                              onClick={() => eliminarPersona(p)}
-                              disabled={guardando === p.id || sincronizando}
-                              icono={<Basura className="h-3.5 w-3.5" />}
-                              className="ml-1.5 mt-1.5 sm:mt-0"
-                            >
-                              <span className="sr-only sm:not-sr-only">Eliminar</span>
-                            </BotonAccion>
-                          </Pista>
+                        {opciones.length > 0 && (
+                          <MenuOpciones etiqueta={`Opciones de ${p.email}`} opciones={opciones} ocupado={guardando === p.id} />
                         )}
                       </td>
                     </tr>
@@ -739,16 +713,6 @@ export default function EquipoPage() {
                 })}
               </tbody>
             </table>
-          </div>
-          <div className="border-t border-border px-4 py-2.5">
-            <Leyenda
-              titulo="Roles"
-              items={ROLES.map((r) => ({
-                texto: r.etiqueta,
-                color: { gestor: "bg-marca-300", pagos: "bg-oro-500", supervisor: "bg-marca-500", admin: "bg-marca-900" }[r.clave],
-                pista: r.detalle,
-              }))}
-            />
           </div>
         </div>
       )}
@@ -865,6 +829,103 @@ export default function EquipoPage() {
         </div>
       </Dialogo>
 
+      {/* Rol, sede y bancos: desde el menú ⋯ de cada fila. */}
+      <Dialogo
+        abierto={Boolean(editando)}
+        onCerrar={() => setEditando(null)}
+        bloqueado={guardando === editando?.id}
+        titulo="Editar rol y sede"
+        descripcion={editando?.email}
+        icono={<Lapiz className="h-5 w-5" />}
+        pie={
+          <>
+            <BotonAccion tono="neutro" onClick={() => setEditando(null)} disabled={guardando === editando?.id}>
+              Cancelar
+            </BotonAccion>
+            <BotonAccion
+              onClick={guardarEdicion}
+              cargando={guardando === editando?.id}
+              disabled={
+                !editando ||
+                (borrador.rol === editando.rol && (borrador.sede_id || "") === (editando.sede_id || ""))
+              }
+            >
+              Guardar
+            </BotonAccion>
+          </>
+        }
+      >
+        {editando && (
+          <div className="space-y-4">
+            {errorEdicion && <Aviso>{errorEdicion}</Aviso>}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Campo etiqueta="Rol" htmlFor="rolEditar">
+                <Desplegable
+                  id="rolEditar"
+                  variante="panel"
+                  valor={borrador.rol}
+                  onCambio={(v) => setBorrador((b) => ({ ...b, rol: v }))}
+                  opciones={[
+                    ...(editando.rol === "cliente" ? [{ valor: "cliente", texto: "Sin rol asignado" }] : []),
+                    ...ROLES.map((r) => ({ valor: r.clave, texto: r.etiqueta, detalle: r.detalle })),
+                  ]}
+                />
+              </Campo>
+              <Campo etiqueta="Sede" htmlFor="sedeEditar" ayuda={borrador.rol === "admin" ? "El administrador ve todas las sedes." : undefined}>
+                <Desplegable
+                  id="sedeEditar"
+                  variante="panel"
+                  valor={borrador.sede_id}
+                  onCambio={(v) => setBorrador((b) => ({ ...b, sede_id: v }))}
+                  deshabilitado={borrador.rol === "admin"}
+                  opciones={[{ valor: "", texto: "Sin sede" }, ...sedes.map((s) => ({ valor: s.id, texto: s.nombre }))]}
+                />
+              </Campo>
+            </div>
+            {rolDe(borrador.rol) && (
+              <p
+                className={cn(
+                  "rounded-lg px-3 py-2.5 text-sm",
+                  borrador.rol === "admin" && editando.rol !== "admin" ? "bg-oro-50 text-oro-900" : "bg-muted text-muted-foreground",
+                )}
+              >
+                <strong className="text-foreground">{rolDe(borrador.rol).etiqueta}:</strong> {rolDe(borrador.rol).detalle}
+                {borrador.rol === "admin" && editando.rol !== "admin" && " Tendrá el control total del panel."}
+              </p>
+            )}
+
+            {/* Bancos de Pagos: se guardan al pulsarlos. */}
+            {editando.rol === "pagos" && borrador.rol === "pagos" && puedeBancos && (
+              <div>
+                <p className="mb-1.5 text-sm font-semibold">Bancos que paga</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {BANCOS_TARJETA.map((b) => {
+                    const activo = (bancosPago[editando.id] || []).includes(b);
+                    return (
+                      <button
+                        key={b}
+                        type="button"
+                        onClick={() => alternarBancoPago(editando, b)}
+                        disabled={guardando === editando.id}
+                        aria-pressed={activo}
+                        className={cn(
+                          "pulsable rounded-full px-3 py-1 text-xs font-bold ring-1 ring-inset transition disabled:opacity-60",
+                          activo ? "bg-marca-700 text-white ring-marca-700" : "bg-card text-muted-foreground ring-border hover:text-foreground",
+                        )}
+                      >
+                        {activo && "✓ "}
+                        {nombreBanco(b)}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">Cada banco se guarda al pulsarlo. Sin bancos no podrá pagar nada.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </Dialogo>
+
       {ventanaConfirmar}
       <Tostada mensaje={ok} onCerrar={() => setOk("")} />
     </Shell>
@@ -895,29 +956,77 @@ function EstadoAhora({ p }) {
   );
 }
 
-/** Interruptor de sí/no (role="switch"), con su pista. */
-function Interruptor({ activo, deshabilitado, onCambio, etiqueta, pista }) {
+/** La inicial con un punto de color: conectada, ocupada, desconectada... */
+function Presencia({ p, bloqueado, children }) {
+  const e = ESTADOS[p.disponibilidad] || ESTADOS.desconectado;
+  const apagado = bloqueado || !p.disponibilidad || p.disponibilidad === "desconectado";
+  const d = p.disponibilidad_desde ? new Date(p.disponibilidad_desde) : null;
+  const desde = d ? ` desde el ${d.toLocaleDateString("es-PE", { day: "numeric", month: "short" })}` : "";
   return (
-    <Pista texto={pista}>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={Boolean(activo)}
-        aria-label={etiqueta}
-        disabled={deshabilitado}
-        onClick={onCambio}
-        className={cn(
-          "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marca-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-          activo ? "bg-emerald-600" : "bg-muted-foreground/30",
-        )}
-      >
+    <Pista texto={bloqueado ? "Bloqueado" : `${e.texto}${desde}`}>
+      <span className="relative shrink-0 cursor-help">
+        {children}
         <span
+          aria-hidden
           className={cn(
-            "inline-block h-5 w-5 rounded-full bg-white shadow transition-transform",
-            activo ? "translate-x-[22px]" : "translate-x-0.5",
+            "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-card",
+            apagado ? "bg-muted-foreground/40" : e.punto,
           )}
         />
-      </button>
+      </span>
     </Pista>
+  );
+}
+
+/**
+ * Menú ⋯ con las acciones de una fila. modal={false}: así la ventana de
+ * confirmación que abre una opción no queda trabada detrás del menú.
+ */
+function MenuOpciones({ etiqueta, opciones, ocupado }) {
+  return (
+    <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label={etiqueta}
+          disabled={ocupado}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marca-500 disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground"
+        >
+          {ocupado ? (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
+          ) : (
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5" aria-hidden>
+              <circle cx="5" cy="12" r="1.8" />
+              <circle cx="12" cy="12" r="1.8" />
+              <circle cx="19" cy="12" r="1.8" />
+            </svg>
+          )}
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={4}
+          className="z-50 min-w-[210px] rounded-xl border border-border bg-card p-1 shadow-alzado animate-aparecer"
+        >
+          {opciones.map((o, i) => (
+            <div key={o.texto}>
+              {o.separar && i > 0 && <DropdownMenu.Separator className="my-1 h-px bg-border" />}
+              <DropdownMenu.Item
+                disabled={o.deshabilitado}
+                onSelect={o.onSelect}
+                className={cn(
+                  "flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold outline-none transition data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                  o.peligro ? "text-red-700 data-[highlighted]:bg-red-50" : "text-foreground data-[highlighted]:bg-muted",
+                )}
+              >
+                <span className={cn("[&>svg]:h-4 [&>svg]:w-4", o.peligro ? "text-red-600" : "text-muted-foreground")}>{o.icono}</span>
+                {o.texto}
+              </DropdownMenu.Item>
+            </div>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
