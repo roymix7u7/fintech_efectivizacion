@@ -32,8 +32,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FIRMA_SEG = 3600;
 const REUSAR_MS = 50 * 60 * 1000; // el enlace firmado se reusa hasta 10 min antes de vencer
 const SIN_FOTO_MS = 10 * 60 * 1000; // sin miniatura: no se vuelve a preguntar en 10 min
-const NO_SALIO = "atk-rostro-no-salio"; // selfies donde no se encontró la cara
-const REINTENTAR_MS = 7 * 24 * 60 * 60 * 1000;
+// Selfies donde no se encontró la cara: no se vuelven a bajar en un día.
+// (v2: las marcadas antes de probar la foto girada se reintentan.)
+const NO_SALIO = "atk-rostro-no-salio-v2";
+const REINTENTAR_MS = 24 * 60 * 60 * 1000;
 
 const memoria = new Map(); // user_id → { url: string | null, hasta: ms }
 const enCola = new Set();
@@ -68,7 +70,7 @@ function cargarDetector() {
       return vision.FaceDetector.createFromOptions(archivos, {
         baseOptions: { modelAssetPath: MODELO, delegate: "CPU" },
         runningMode: "IMAGE",
-        minDetectionConfidence: 0.5,
+        minDetectionConfidence: 0.4,
       });
     })().catch((e) => {
       detector = null;
@@ -88,36 +90,95 @@ export async function recortarRostro(urlSelfie) {
   if (!r.ok) throw new Error("No se pudo leer la selfie.");
   const img = await createImageBitmap(await r.blob(), { imageOrientation: "from-image" });
 
+  // Las fotos del celular a veces llegan de costado. Se busca la cara tal
+  // cual y, si no aparece, girada; con los ojos y la boca se sabe hacia
+  // dónde mira y se endereza antes de recortar.
+  let foto = null;
+  let cara = null;
+  for (const grados of [0, 90, 270, 180]) {
+    foto = girar(img, grados);
+    cara = caraPrincipal(det, foto);
+    if (cara) break;
+  }
+  img.close?.();
+  if (!cara) return null;
+  if (cara.enderezar) {
+    const derecha = girar(foto, cara.enderezar);
+    const otra = caraPrincipal(det, derecha);
+    if (otra) {
+      foto = derecha;
+      cara = otra;
+    }
+  }
+  return recortar(foto, cara);
+}
+
+/** La imagen girada (0, 90, 180 o 270 grados), en un lienzo. */
+function girar(img, grados) {
+  const lienzo = document.createElement("canvas");
+  const deCostado = grados === 90 || grados === 270;
+  lienzo.width = deCostado ? img.height : img.width;
+  lienzo.height = deCostado ? img.width : img.height;
+  const ctx = lienzo.getContext("2d");
+  ctx.translate(lienzo.width / 2, lienzo.height / 2);
+  ctx.rotate((grados * Math.PI) / 180);
+  ctx.drawImage(img, -img.width / 2, -img.height / 2);
+  return lienzo;
+}
+
+/**
+ * La cara del cliente en coordenadas de la foto, o null. La selfie trae
+ * dos caras: la suya y la foto chiquita del DNI que sostiene; se queda la
+ * más grande, y debe tener un tamaño razonable.
+ */
+function caraPrincipal(det, foto) {
   // Para buscar la cara basta una versión reducida: es más rápido.
-  const escala = Math.min(1, 640 / Math.max(img.width, img.height));
+  const escala = Math.min(1, 640 / Math.max(foto.width, foto.height));
   const chica = document.createElement("canvas");
-  chica.width = Math.round(img.width * escala);
-  chica.height = Math.round(img.height * escala);
-  chica.getContext("2d").drawImage(img, 0, 0, chica.width, chica.height);
+  chica.width = Math.round(foto.width * escala);
+  chica.height = Math.round(foto.height * escala);
+  chica.getContext("2d").drawImage(foto, 0, 0, chica.width, chica.height);
   const { detections = [] } = det.detect(chica);
+  const mayor = detections
+    .filter((d) => d.boundingBox)
+    .sort((a, b) => b.boundingBox.width * b.boundingBox.height - a.boundingBox.width * a.boundingBox.height)[0];
+  const caja = mayor?.boundingBox;
+  if (!caja || caja.width < chica.width * 0.08) return null;
+  return {
+    x: caja.originX / escala,
+    y: caja.originY / escala,
+    ancho: caja.width / escala,
+    alto: caja.height / escala,
+    enderezar: giroParaEnderezar(mayor.keypoints, chica.width, chica.height),
+  };
+}
 
-  // La selfie trae dos caras: la del cliente y la foto chiquita del DNI
-  // que sostiene. Se queda la más grande, y debe ser de buen tamaño.
-  const caja = detections
-    .map((d) => d.boundingBox)
-    .filter(Boolean)
-    .sort((a, b) => b.width * b.height - a.width * a.height)[0];
-  if (!caja || caja.width < chica.width * 0.12) return null;
+/**
+ * Cuánto girar (en el sentido del reloj) para que la cara quede derecha:
+ * de los ojos a la boca debe ir hacia abajo. Puntos del detector: 0 y 1
+ * los ojos, 3 la boca (de 0 a 1 sobre la imagen).
+ */
+function giroParaEnderezar(puntos, ancho, alto) {
+  if (!puntos || puntos.length < 4) return 0;
+  const dx = ((puntos[3].x - (puntos[0].x + puntos[1].x) / 2) * ancho) || 0;
+  const dy = ((puntos[3].y - (puntos[0].y + puntos[1].y) / 2) * alto) || 0;
+  if (Math.abs(dy) >= Math.abs(dx)) return dy >= 0 ? 0 : 180;
+  return dx > 0 ? 90 : 270;
+}
 
-  // Un poco más que la cara (pelo y mentón) sin llegar al documento.
-  const cx = (caja.originX + caja.width / 2) / escala;
-  const cy = (caja.originY + caja.height / 2) / escala;
-  const lado = Math.min((Math.max(caja.width, caja.height) / escala) * 1.45, img.width, img.height);
-  const x = Math.max(0, Math.min(cx - lado / 2, img.width - lado));
-  const y = Math.max(0, Math.min(cy - lado * 0.55, img.height - lado));
-
+/** Un cuadro algo mayor que la cara (pelo y mentón), sin llegar al documento. */
+function recortar(foto, caja) {
+  const cx = caja.x + caja.ancho / 2;
+  const cy = caja.y + caja.alto / 2;
+  const lado = Math.min(Math.max(caja.ancho, caja.alto) * 1.45, foto.width, foto.height);
+  const x = Math.max(0, Math.min(cx - lado / 2, foto.width - lado));
+  const y = Math.max(0, Math.min(cy - lado * 0.55, foto.height - lado));
   const salida = document.createElement("canvas");
   salida.width = LADO;
   salida.height = LADO;
   const ctx = salida.getContext("2d");
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, x, y, lado, lado, 0, 0, LADO, LADO);
-  img.close?.();
+  ctx.drawImage(foto, x, y, lado, lado, 0, 0, LADO, LADO);
   return new Promise((listo) => salida.toBlob(listo, "image/jpeg", 0.82));
 }
 
@@ -171,13 +232,16 @@ function completar(ids, alListo) {
           if (await crearMiniatura(p.user_id, selfie)) {
             const url = await firmarUna(p.user_id);
             if (url) alListo?.({ [p.user_id]: url });
+          } else {
+            console.info(`[rostros] No se encontró una cara clara en la selfie de ${p.user_id}; quedan sus iniciales.`);
           }
-        } catch {
-          // Sin red, sin permiso o sin detector: se intentará otro día.
+        } catch (e) {
+          // Sin red, sin permiso o sin detector: se intentará la próxima vez.
+          console.warn(`[rostros] No se pudo crear la foto de ${p.user_id}:`, e?.message || e);
         }
       }
-    } catch {
-      // idem
+    } catch (e) {
+      console.warn("[rostros] No se pudieron preparar las fotos:", e?.message || e);
     } finally {
       nuevos.forEach((id) => enCola.delete(id));
     }
