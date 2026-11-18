@@ -43,6 +43,27 @@ export default function DashboardPage() {
     };
   }, [router]);
 
+  // Las colas se actualizan solas mientras se mira el resumen: entra una
+  // solicitud, tarjeta o identidad y el número cambia sin recargar.
+  useEffect(() => {
+    if (!session) return;
+    let espera = null;
+    const avisar = () => {
+      clearTimeout(espera);
+      espera = setTimeout(cargarColas, 800);
+    };
+    const canal = supabase
+      .channel(`resumen-${Date.now().toString(36)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "solicitudes" }, avisar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tarjetas" }, avisar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "users", filter: "rol=eq.cliente" }, avisar)
+      .subscribe();
+    return () => {
+      clearTimeout(espera);
+      supabase.removeChannel(canal);
+    };
+  }, [session]);
+
   async function cargarColas() {
     const { colas: c, error: e } = await estadoCola();
     if (e) setError("No se pudieron cargar las colas: " + e);
@@ -91,7 +112,7 @@ export default function DashboardPage() {
       session={session}
       titulo="Resumen"
       descripcion={hoy.charAt(0).toUpperCase() + hoy.slice(1)}
-      ayuda="Los números se actualizan al entrar a esta pantalla. Pulsa una cola para ir a atenderla; los indicadores de abajo se pueden ver por 7, 30 o 90 días."
+      ayuda="Las colas se actualizan solas, al momento. Pulsa una cola para ir a atenderla; los indicadores de abajo se pueden ver por 7, 30 o 90 días."
     >
       {error && (
         <Aviso className="mb-4" onCerrar={() => setError("")}>

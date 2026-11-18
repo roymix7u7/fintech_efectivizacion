@@ -488,7 +488,8 @@ export default function PagosPage() {
       if (!["admin", "pagos"].includes(s.rol)) return router.push("/dashboard");
       setSession(s);
 
-      const r = await cargarResumen();
+      // El lote no depende del resumen: se piden a la vez.
+      const [r] = await Promise.all([cargarResumen(), cargarLote()]);
       // Arranca en el primer banco propio con trabajo pendiente: es lo
       // que el encargado viene a hacer.
       const propios = r.filter((x) => x.es_mio);
@@ -496,7 +497,6 @@ export default function PagosPage() {
       setBanco(
         s.rol === "admin" ? null : ((conTrabajo || propios[0])?.banco ?? null),
       );
-      cargarLote();
     });
   }, [router, cargarResumen, cargarLote]);
 

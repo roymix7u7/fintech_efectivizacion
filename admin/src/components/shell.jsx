@@ -423,16 +423,43 @@ export default function Shell({
     if (!permitida && visibles.length > 0) router.replace(visibles[0].ruta);
   }, [permitida, visibles, router]);
 
+  // Hasta que la barra trae sus números, valen los que manda la pantalla
+  // (recién leídos). Después mandan los de la barra, que se actualizan
+  // solos: si no, una pantalla que leyó los números al abrir los dejaba
+  // congelados.
+  const [fresco, setFresco] = useState(false);
   const refrescar = useCallback(
     async (forzar = false) => {
-      if (!forzar && Date.now() - pedidosEn < 20000) return;
+      if (!forzar && Date.now() - pedidosEn < 20000) return setFresco(true);
       pedidosEn = Date.now();
       const nuevos = await pedirContadores(session.rol);
       contadoresGuardados = { ...contadoresGuardados, ...nuevos };
       setGlobales(contadoresGuardados);
+      setFresco(true);
     },
     [session.rol],
   );
+
+  // En tiempo real: entra una solicitud, una tarjeta o un cliente nuevo y
+  // los números de la barra cambian al momento, en cualquier pantalla.
+  // Varios cambios seguidos se juntan en una sola consulta.
+  useEffect(() => {
+    let espera = null;
+    const avisar = () => {
+      clearTimeout(espera);
+      espera = setTimeout(() => document.visibilityState === "visible" && refrescar(true), 800);
+    };
+    const canal = supabase
+      .channel(`barra-${Date.now().toString(36)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "solicitudes" }, avisar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tarjetas" }, avisar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "users", filter: "rol=eq.cliente" }, avisar)
+      .subscribe();
+    return () => {
+      clearTimeout(espera);
+      supabase.removeChannel(canal);
+    };
+  }, [refrescar]);
 
   useEffect(() => {
     refrescar();
@@ -449,8 +476,7 @@ export default function Shell({
     };
   }, [refrescar]);
 
-  // Lo que manda la pantalla es más fresco que lo guardado.
-  const cuentas = { ...globales, ...contadores };
+  const cuentas = fresco ? { ...contadores, ...globales } : { ...globales, ...contadores };
   const cuenta = (s) => cuentas[s.contador] || 0;
 
   function alternarPlegado() {

@@ -60,7 +60,8 @@ export default function KYCPage() {
   // Cada gestor ve lo suyo. Antes la lista mostraba todos los
   // pendientes a todo el mundo, asi que cinco personas abrian el mismo
   // cliente aunque la cola ya lo hubiera repartido.
-  const [soloMias, setSoloMias] = useState(true);
+  // Supervisor y admin no reciben casos: abren viendo toda la cola.
+  const [soloMias, setSoloMias] = useState(() => (sesionEnCache()?.rol ? sesionEnCache().rol === "gestor" : true));
   const [pidiendo, setPidiendo] = useState(false);
   const [equipo, setEquipo] = useState({});
   const [sinPendientes, setSinPendientes] = useState(false);
@@ -79,9 +80,14 @@ export default function KYCPage() {
     }
   }, []);
   const peticion = useRef(0);
+  // Lo último que se pidió: el efecto de los filtros no repite una carga
+  // que ya está hecha (al abrir la pantalla se pedía dos o tres veces).
+  const ultima = useRef("");
+  const claveDe = (estado, pag, buscar, mias) => [estado, pag, (buscar || "").trim(), mias].join("|");
 
   const cargar = useCallback(async (estado, pag, buscar, silencioso, mias, yo) => {
     const mia = ++peticion.current;
+    ultima.current = claveDe(estado, pag, buscar, mias);
     if (silencioso) setRefrescando(true);
     else setPrimeraCarga(true);
     setError("");
@@ -195,7 +201,8 @@ export default function KYCPage() {
   }, [router, cargar]);
 
   useEffect(() => {
-    if (!session) return;
+    // Hasta la carga inicial (con la sesión confirmada) no se pide nada desde aquí.
+    if (!session || !ultima.current || ultima.current === claveDe(filtro, pagina, termino, soloMias)) return;
     cargar(filtro, pagina, termino, true, soloMias, session.user.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [termino, pagina, filtro, soloMias]);
@@ -210,18 +217,27 @@ export default function KYCPage() {
    */
   useEffect(() => {
     if (!session) return;
+    // Solo los cambios de clientes, y varios seguidos se juntan en una sola
+    // recarga (al tomar o resolver un caso llegan dos o tres a la vez).
+    let espera = null;
     const canal = supabase
       .channel(`cola-kyc-${Date.now().toString(36)}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "users" },
+        { event: "*", schema: "public", table: "users", filter: "rol=eq.cliente" },
         () => {
-          cargar(filtro, pagina, termino, true, soloMias, session.user.id);
-          estadoCola().then(({ colas }) => setContadores(contadoresDe(colas)));
+          clearTimeout(espera);
+          espera = setTimeout(() => {
+            cargar(filtro, pagina, termino, true, soloMias, session.user.id);
+            estadoCola().then(({ colas }) => setContadores(contadoresDe(colas)));
+          }, 400);
         },
       )
       .subscribe();
-    return () => supabase.removeChannel(canal);
+    return () => {
+      clearTimeout(espera);
+      supabase.removeChannel(canal);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, filtro, pagina, termino, soloMias]);
 

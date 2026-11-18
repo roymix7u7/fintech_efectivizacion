@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession, sesionEnCache } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -210,6 +210,29 @@ export default function TarjetasPage() {
     cargar(filtro, session?.rol === "gestor", session?.user.id, opciones);
     contarPendientes();
   }
+  const recargarRef = useRef(recargar);
+  recargarRef.current = recargar;
+
+  /**
+   * La lista se actualiza sola: entra una tarjeta nueva, otro la toma o la
+   * resuelve, y se ve en el momento, sin recargar la página. No cierra la
+   * ficha abierta. Varios cambios seguidos se juntan en una sola recarga.
+   */
+  useEffect(() => {
+    if (!session) return;
+    let espera = null;
+    const canal = supabase
+      .channel(`cola-tarjetas-${Date.now().toString(36)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tarjetas" }, () => {
+        clearTimeout(espera);
+        espera = setTimeout(() => recargarRef.current({ silencioso: true }), 400);
+      })
+      .subscribe();
+    return () => {
+      clearTimeout(espera);
+      supabase.removeChannel(canal);
+    };
+  }, [session]);
 
   /** Toma la siguiente tarjeta libre. Al encadenar avisa si no queda. */
   async function atenderSiguiente({ auto = false } = {}) {
@@ -234,11 +257,13 @@ export default function TarjetasPage() {
       const { count } = await q;
       return count || 0;
     };
-    setContadores({
-      solicitudesPendientes: await cuenta("solicitudes", { estado: "pendiente" }),
-      kycPendientes: await cuenta("users", { rol: "cliente", estado: "pendiente" }),
-      tarjetasPendientes: await cuenta("tarjetas", { estado: "pendiente", activa: true }),
-    });
+    // Los tres a la vez, no uno tras otro.
+    const [solicitudesPendientes, kycPendientes, tarjetasPendientes] = await Promise.all([
+      cuenta("solicitudes", { estado: "pendiente" }),
+      cuenta("users", { rol: "cliente", estado: "pendiente" }),
+      cuenta("tarjetas", { estado: "pendiente", activa: true }),
+    ]);
+    setContadores({ solicitudesPendientes, kycPendientes, tarjetasPendientes });
   }
 
   async function abrir(t) {

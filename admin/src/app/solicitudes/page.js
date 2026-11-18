@@ -166,12 +166,17 @@ export default function SolicitudesPage() {
   // Evita que una respuesta lenta pise a otra mas reciente cuando el
   // usuario cambia de pestana o sigue escribiendo.
   const peticion = useRef(0);
+  // La página y la búsqueda a la vista: una recarga (tiempo real, abrir un
+  // caso, Actualizar) las respeta en vez de volver a la primera página sin
+  // filtro.
+  const vista = useRef({ pag: 0, buscar: "" });
+  vista.current = { pag: pagina, buscar: termino };
 
   const cargar = useCallback(async (estado, opciones = {}) => {
     const {
       idPreferido = null,
-      pag = 0,
-      buscar = "",
+      pag = vista.current.pag,
+      buscar = vista.current.buscar,
       silencioso = false,
     } = opciones;
     const mia = ++peticion.current;
@@ -270,8 +275,15 @@ export default function SolicitudesPage() {
     });
   }, [router, cargar]);
 
-  // Al cambiar la busqueda o la pagina, se vuelve a pedir al servidor.
+  // Al cambiar la busqueda o la pagina, se vuelve a pedir al servidor. Al
+  // abrir la pantalla no: de eso se encarga la carga inicial (si no, la
+  // lista se pedía dos veces).
+  const arranco = useRef(false);
   useEffect(() => {
+    if (!arranco.current) {
+      arranco.current = true;
+      return;
+    }
     if (!session) return;
     cargar(filtro, { pag: pagina, buscar: termino, silencioso: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -286,18 +298,26 @@ export default function SolicitudesPage() {
    */
   useEffect(() => {
     if (!session) return;
+    // Varios cambios seguidos (tomar, resolver, pagar) se juntan en una sola recarga.
+    let espera = null;
     const canal = supabase
       .channel(`cola-solicitudes-${Date.now().toString(36)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "solicitudes" },
         () => {
-          cargar(filtro, { silencioso: true });
-          contarPendientes();
+          clearTimeout(espera);
+          espera = setTimeout(() => {
+            cargar(filtro, { silencioso: true });
+            contarPendientes();
+          }, 400);
         },
       )
       .subscribe();
-    return () => supabase.removeChannel(canal);
+    return () => {
+      clearTimeout(espera);
+      supabase.removeChannel(canal);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, filtro]);
 
@@ -311,7 +331,7 @@ export default function SolicitudesPage() {
     setSeleccionada(null);
     setModoRechazo(false);
     setMotivo("");
-    cargar(clave, { buscar: termino });
+    cargar(clave, { pag: 0, buscar: termino });
   }
 
   async function contarPendientes() {
@@ -338,7 +358,7 @@ export default function SolicitudesPage() {
       await contarPendientes();
       return;
     }
-    await cargar("pendiente", { idPreferido: id, silencioso: true });
+    await cargar("pendiente", { idPreferido: id, pag: 0, buscar: "", silencioso: true });
     await contarPendientes();
   }
 

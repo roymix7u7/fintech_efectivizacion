@@ -113,7 +113,19 @@ export default function KYCDetallePage() {
 
   const cargar = useCallback(
     async (rol) => {
-      const { data: user } = await supabase.from("users").select("*").eq("id", params.id).maybeSingle();
+      // Todo lo que no depende de otra cosa se pide junto: la ficha abre en
+      // un solo viaje al servidor en vez de cinco seguidos.
+      const [{ data: user }, { data: bloquesData }, { data: perfilData }, { data: consentimientos }] = await Promise.all([
+        supabase.from("users").select("*").eq("id", params.id).maybeSingle(),
+        // Bloques de comision para elegir al aprobar. Los crea el admin.
+        supabase.rpc("listar_bloques"),
+        supabase.from("perfiles_cliente").select("*").eq("user_id", params.id).maybeSingle(),
+        supabase
+          .from("consentimientos")
+          .select("id, tipo, version, aceptado_en, dispositivo")
+          .eq("user_id", params.id)
+          .order("aceptado_en", { ascending: false }),
+      ]);
 
       if (!user) {
         router.push("/kyc");
@@ -124,27 +136,19 @@ export default function KYCDetallePage() {
       // Abrir una ficha libre la toma (gestor y administrador). El
       // supervisor entra a mirar: no se la quita a quien la tiene. El rol
       // llega por argumento porque cargar() corre antes de guardar la sesión.
+      // Va a la par de la firma de las fotos.
       const puedeTomar = ["gestor", "admin"].includes(rol);
-      if (puedeTomar && (user.estado === "pendiente" || user.estado === "observado")) {
-        const r = await tomarCaso("kyc", params.id);
-        if (!r.ok && r.motivo === "TOMADO") setAjeno(r);
-      }
+      const tomando =
+        puedeTomar && (user.estado === "pendiente" || user.estado === "observado")
+          ? tomarCaso("kyc", params.id).then((r) => {
+              if (!r.ok && r.motivo === "TOMADO") setAjeno(r);
+            })
+          : null;
 
-      // Bloques de comision para elegir al aprobar. Los crea el admin.
-      const { data: bloquesData } = await supabase.rpc("listar_bloques");
       const lista = bloquesData || [];
       setBloques(lista);
       // Si el cliente no tiene bloque, se propone el predeterminado.
       setBloqueId((actual) => actual || lista.find((b) => b.es_default)?.id || null);
-
-      const [{ data: perfilData }, { data: consentimientos }] = await Promise.all([
-        supabase.from("perfiles_cliente").select("*").eq("user_id", params.id).maybeSingle(),
-        supabase
-          .from("consentimientos")
-          .select("id, tipo, version, aceptado_en, dispositivo")
-          .eq("user_id", params.id)
-          .order("aceptado_en", { ascending: false }),
-      ]);
       setAceptaciones(consentimientos || []);
 
       // Se firma el path guardado en la columna en vez de reconstruirlo a
@@ -163,6 +167,8 @@ export default function KYCDetallePage() {
         if (perfilData.bloque_id) setBloqueId(perfilData.bloque_id);
       }
 
+      // Antes de mostrar, se sabe si otra persona lo tiene (los botones no parpadean).
+      await tomando;
       setPerfil(perfilData);
       setLoading(false);
     },

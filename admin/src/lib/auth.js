@@ -82,6 +82,7 @@ export async function login(email, password) {
   }
 
   enMemoria = { user: data.user, rol: userData.rol, permisos: acceso.permisos, ip: acceso.ip, superadmin: acceso.superadmin };
+  confirmadaEn = Date.now();
   // Quien entra al panel viene a trabajar: queda en línea y empieza a
   // recibir casos. Si falla (sin migración 070, sin red), entra igual.
   olvidarDisponibilidad();
@@ -102,6 +103,7 @@ export async function login(email, password) {
  */
 export async function logout() {
   enMemoria = null;
+  confirmadaEn = 0;
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -135,29 +137,51 @@ function terminarPorDetras(token) {
  * A diferencia de la version anterior, tambien revisa el estado: antes
  * un miembro del staff bloqueado seguia operando mientras no cerrara
  * sesion, porque el estado solo se miraba al hacer login.
+ *
+ * Cada pantalla la pide al abrirse y espera la respuesta para cargar sus
+ * datos. Para que cambiar de pantalla sea inmediato:
+ *   · Lo confirmado hace menos de VIGENTE_MS se reusa sin preguntar.
+ *     Bloquear a alguien o cambiarle los accesos se nota a más tardar en
+ *     ese tiempo (y la base, con sus políticas, lo frena desde el primer
+ *     momento).
+ *   · Si varias partes la piden a la vez (la pantalla, el chat, la barra),
+ *     se hace una sola consulta.
+ *   · El perfil y los accesos se piden juntos, no uno tras otro.
  */
-export async function getSession() {
+const VIGENTE_MS = 60 * 1000;
+let confirmadaEn = 0;
+let enCurso = null;
+
+export function getSession() {
+  if (enMemoria && Date.now() - confirmadaEn < VIGENTE_MS) return Promise.resolve(enMemoria);
+  if (!enCurso) {
+    enCurso = confirmarSesion().finally(() => {
+      enCurso = null;
+    });
+  }
+  return enCurso;
+}
+
+async function confirmarSesion() {
   const { data } = await supabase.auth.getSession();
-  if (!data.session) return null;
-
-  const { data: userData } = await supabase
-    .from("users")
-    .select("rol, estado")
-    .eq("id", data.session.user.id)
-    .maybeSingle();
-
-  if (!userData) return null;
-  if (userData.estado === "bloqueado" || userData.rol === "cliente") {
-    await supabase.auth.signOut();
+  if (!data.session) {
+    enMemoria = null;
     return null;
   }
-  if (!ROLES_STAFF.includes(userData.rol)) {
+
+  const [{ data: userData }, acceso] = await Promise.all([
+    supabase.from("users").select("rol, estado").eq("id", data.session.user.id).maybeSingle(),
+    leerMiAcceso(),
+  ]);
+
+  if (!userData) return null;
+  if (userData.estado === "bloqueado" || userData.rol === "cliente" || !ROLES_STAFF.includes(userData.rol)) {
+    enMemoria = null;
     await supabase.auth.signOut();
     return null;
   }
 
   // Con la sesión ya abierta también se revisa la IP: si cambió de red, sale.
-  const acceso = await leerMiAcceso();
   if (!acceso.permitida) {
     enMemoria = null;
     dejarAviso(mensajeIp(acceso.ip));
@@ -166,5 +190,6 @@ export async function getSession() {
   }
 
   enMemoria = { user: data.session.user, rol: userData.rol, permisos: acceso.permisos, ip: acceso.ip, superadmin: acceso.superadmin };
+  confirmadaEn = Date.now();
   return enMemoria;
 }

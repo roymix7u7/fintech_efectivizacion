@@ -86,20 +86,20 @@ export default function EquipoPage() {
     setLoading(true);
     setError("");
 
-    const { data, error: e } = await supabase.rpc("listar_equipo");
+    // Todo junto: la lista abre en un solo viaje al servidor.
+    const [{ data, error: e }, { data: asignados }, { data: sedesData }, { data: rend }, { colas }] = await Promise.all([
+      supabase.rpc("listar_equipo"),
+      supabase.from("pagos_bancos").select("user_id, banco"),
+      supabase.from("sedes").select("id, nombre, activa").order("nombre"),
+      supabase.rpc("rendimiento_equipo", { p_dias: 7, p_sede: null }),
+      estadoCola(),
+    ]);
     if (e) {
       setError(explicarError(e, "No se pudo cargar el equipo."));
       setLoading(false);
       return;
     }
     setEquipo(data || []);
-
-    const [{ data: asignados }, { data: sedesData }, { data: rend }, { colas }] = await Promise.all([
-      supabase.from("pagos_bancos").select("user_id, banco"),
-      supabase.from("sedes").select("id, nombre, activa").order("nombre"),
-      supabase.rpc("rendimiento_equipo", { p_dias: 7, p_sede: null }),
-      estadoCola(),
-    ]);
     const mapa = {};
     for (const a of asignados || []) (mapa[a.user_id] ||= []).push(a.banco);
     setBancosPago(mapa);
