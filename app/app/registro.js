@@ -872,9 +872,11 @@ export default function RegistroScreen() {
                     onCambio={setAceptaTerminos}
                     error={intentos > 0 && !aceptaTerminos}
                     senal={intentos}
-                    accessibilityLabel="Acepto los Términos y condiciones y la Política de privacidad"
+                    accessibilityLabel="Declaro que soy mayor de 18 años y acepto los Términos y condiciones y la Política de privacidad"
                   >
-                    Acepto los <Enlace onPress={() => router.push("/legal/terminos")}>Términos y condiciones</Enlace> y la{" "}
+                    {/* Los términos exigen ser mayor de 18 años: se declara aquí, al aceptarlos. */}
+                    Declaro que soy mayor de 18 años y acepto los{" "}
+                    <Enlace onPress={() => router.push("/legal/terminos")}>Términos y condiciones</Enlace> y la{" "}
                     <Enlace onPress={() => router.push("/legal/privacidad")}>Política de privacidad</Enlace>.
                   </Casilla>
                   <Casilla
