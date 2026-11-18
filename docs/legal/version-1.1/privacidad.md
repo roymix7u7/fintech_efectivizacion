@@ -25,7 +25,7 @@ No vendemos tus datos ni los usamos para publicidad de terceros.
 
 ## 4. Quién puede verlos
 - Solo el personal autorizado de AlToque, y cada persona según su función: verificación, pagos, atención o supervisión. Cada revisión queda registrada.
-- Si escribes por el chat desde Mi cuenta, el asesor que te atiende ve tu nombre, tu documento y el estado de tus trámites, para ayudarte sin pedirte esos datos otra vez. Si tu identidad ya está verificada, también ve una foto pequeña de tu rostro, recortada de tu selfie de verificación (sin tu documento), para reconocerte y evitar que alguien se haga pasar por ti. Esa foto solo la ve nuestro personal, dentro de su panel; no se guarda en el servidor del chat.
+- Si escribes por el chat desde Mi cuenta, el asesor que te atiende ve tu nombre, tu documento y el estado de tus trámites, para ayudarte sin pedirte esos datos otra vez. Si tu identidad ya está verificada, también ve una foto pequeña hecha de tu selfie de verificación, para reconocerte y evitar que alguien se haga pasar por ti. Esa foto solo la ve nuestro personal, dentro de su panel; no se guarda en el servidor del chat.
 - Las autoridades, cuando la ley lo exija.
 
 También los proveedores que nos dan la tecnología, solo para prestarnos ese servicio y sin poder usar tus datos para otros fines:
